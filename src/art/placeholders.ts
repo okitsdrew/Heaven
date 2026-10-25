@@ -15,6 +15,7 @@ export const Tex = {
   siege: 'decor_siege',
   wreck: 'decor_wreck',
   rubble: 'obstacle_rubble',
+  coin: 'coin',
 } as const;
 
 export const enemyFrames = {
@@ -266,6 +267,12 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
     ],
     { g: 0x2a2830, G: 0x3e3b48, d: 0x15131a },
   );
+
+  fromGrid(scene, Tex.coin, ['.yyyy.', 'yYYYYy', 'yYwwYy', 'yYwYYy', 'yYYYYy', '.yyyy.'], {
+    y: 0xb8821c,
+    Y: 0xf2c94a,
+    w: 0xfff2b0,
+  });
 
   softCircle(scene, Tex.glow, 32, 0xffffff, 0.9);
   softCircle(scene, Tex.shadow, 16, 0x000000, 0.6);

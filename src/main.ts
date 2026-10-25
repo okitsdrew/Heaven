@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import { loadSavedConfig } from './config';
+import { loadProfile } from './save';
 import { GameScene } from './scenes/GameScene';
 
 loadSavedConfig();
+loadProfile();
 
 new Phaser.Game({
   type: Phaser.AUTO,

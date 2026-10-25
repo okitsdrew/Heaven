@@ -4,6 +4,7 @@ import { cfg } from '../config';
 import { Input } from '../input';
 import { toScreen, Vec2 } from '../iso';
 import { Hittable } from './Arrows';
+import { canUse } from '../skills';
 import { Fx } from './Fx';
 import { Player } from './Player';
 
@@ -65,7 +66,7 @@ export class SwordSlash {
 
   // While armed or swinging, the attack button belongs to the sword instead of the bow.
   get blocksFire(): boolean {
-    return cfg.abilities.swordSlash && (this.armed || this.active);
+    return canUse('swordSlash') && (this.armed || this.active);
   }
 
   // A dash or teleport cancels a swing that is already under way and the chain moves on to the next one.
@@ -90,7 +91,7 @@ export class SwordSlash {
     this.cooldown = Math.max(0, this.cooldown - dt);
 
     const shelved = player.invincible;
-    if (!cfg.abilities.swordSlash) this.cancel();
+    if (!canUse('swordSlash')) this.cancel();
     else if (!shelved) {
       if (input.justPressed('abilityR') && !this.slash) {
         if (this.armed) this.armed = false;
@@ -371,7 +372,7 @@ export class SwordSlash {
     const glow = this.swordGlow;
     gfx.clear();
     glow.clear();
-    if (!cfg.abilities.swordSlash) return;
+    if (!canUse('swordSlash')) return;
 
     const c = cfg.swordSlash;
     const px = cfg.render.pixelScale;

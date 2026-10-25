@@ -4,6 +4,7 @@ import { cfg } from '../config';
 import { toScreen, toWorld } from '../iso';
 import { Pool } from '../util/pool';
 import { SpatialHash } from '../util/spatialHash';
+import { stats } from '../skills';
 import { Fx } from './Fx';
 
 export interface Hittable {
@@ -77,7 +78,7 @@ export class Arrows {
   // on screen, so every arrow visibly travels the same distance whichever way the iso projection skews it.
   fire(x: number, y: number, dirX: number, dirY: number): void {
     const b = cfg.bow;
-    const count = Math.max(1, Math.round(b.arrowsPerShot));
+    const count = stats.arrows();
     const aim = toScreen(dirX, dirY);
     const base = Math.atan2(aim.y, aim.x);
     const spread = Phaser.Math.DegToRad(b.spreadDeg);
@@ -92,10 +93,10 @@ export class Arrows {
       a.x = x;
       a.y = y;
       a.traveled = 0;
-      a.range = b.arrowRange;
+      a.range = stats.range();
       a.speed = b.arrowSpeed;
-      a.damage = b.damage;
-      a.pierce = Math.round(b.pierce);
+      a.damage = stats.damage();
+      a.pierce = stats.pierce();
       a.hitRadius = b.arrowHitRadius;
       a.hits.clear();
       a.trail = 0;

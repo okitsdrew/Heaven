@@ -71,3 +71,53 @@ export class Hud {
     });
   }
 }
+
+// Screen-fixed run info along the top edge: time left, gold, level and an XP bar.
+export class RunHud {
+  private timer: Phaser.GameObjects.Text;
+  private info: Phaser.GameObjects.Text;
+  private bar: Phaser.GameObjects.Graphics;
+  private toast: Phaser.GameObjects.Text;
+  private toastTime = 0;
+
+  constructor(scene: Phaser.Scene) {
+    const style = { fontFamily: 'monospace', stroke: '#120f18', strokeThickness: 4 };
+    this.timer = scene.add
+      .text(0, 14, '', { ...style, fontSize: '28px', fontStyle: 'bold', color: '#f2d7a6' })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(5e6);
+    this.info = scene.add
+      .text(0, 50, '', { ...style, fontSize: '15px', color: '#e9e3f5' })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(5e6);
+    this.bar = scene.add.graphics().setScrollFactor(0).setDepth(5e6);
+    this.toast = scene.add
+      .text(0, 120, '', { ...style, fontSize: '22px', fontStyle: 'bold', color: '#d9b8ff' })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(5e6)
+      .setVisible(false);
+  }
+
+  announce(text: string): void {
+    this.toast.setText(text).setVisible(true).setAlpha(1);
+    this.toastTime = 2;
+  }
+
+  update(dt: number, width: number, d: { left: number; gold: number; level: number; xp: number; need: number }): void {
+    const secs = Math.max(0, Math.ceil(d.left));
+    this.timer.setPosition(width / 2, 14).setText(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
+    this.timer.setColor(d.left <= 3 ? '#ff7a7a' : '#f2d7a6');
+    this.info.setPosition(width / 2, 50).setText(`gold ${d.gold}   level ${d.level}`);
+    const w = 160;
+    const x = width / 2 - w / 2;
+    this.bar.clear();
+    this.bar.fillStyle(0x14111c, 0.85).fillRect(x, 74, w, 6);
+    this.bar.fillStyle(0xb070ff, 1).fillRect(x, 74, w * Math.min(1, d.xp / d.need), 6);
+    this.toastTime -= dt;
+    this.toast.setPosition(width / 2, 120).setAlpha(Math.max(0, Math.min(1, this.toastTime)));
+    if (this.toastTime <= 0) this.toast.setVisible(false);
+  }
+}

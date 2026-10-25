@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { fairyFrames, Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { toScreen, Vec2 } from '../iso';
+import { canUse } from '../skills';
 import { Fx } from './Fx';
 import { Player } from './Player';
 
@@ -54,7 +55,7 @@ export class Fairies {
     this.time += dt;
     const px = cfg.render.pixelScale;
     const c = cfg.fairy;
-    const enabled = { fire: cfg.abilities.fireFairy, ice: cfg.abilities.iceFairy };
+    const enabled = { fire: canUse('fireFairy'), ice: canUse('iceFairy') };
     const despawn = cfg.world.despawnRadius;
     const outside = (p: Vec2, factor = 1) => Math.hypot(p.x - player.x, p.y - player.y) > despawn * factor;
     toScreen(player.x, player.y, screen);

@@ -4,6 +4,7 @@ import { Input } from '../input';
 import { ellipseHalfSize, toScreen, Vec2 } from '../iso';
 import { Hittable } from './Arrows';
 import { Fx } from './Fx';
+import { canUse } from '../skills';
 import { Player } from './Player';
 
 interface Storm {
@@ -57,6 +58,14 @@ export class Abilities {
     this.waveGfx = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
   }
 
+  // Clears running spells and cooldowns for a fresh run.
+  reset(): void {
+    this.waves.length = 0;
+    this.storms.length = 0;
+    this.aiming = null;
+    this.resetCooldowns();
+  }
+
   resetCooldowns(): void {
     this.fireCooldown = 0;
     this.iceCooldown = 0;
@@ -95,8 +104,8 @@ export class Abilities {
     if (input.justPressed('abilityQ')) this.aiming = this.aiming === 'fire' ? null : 'fire';
     if (input.justPressed('abilityE')) this.aiming = this.aiming === 'ice' ? null : 'ice';
     if (input.justPressed('abilityR')) this.aiming = null;
-    if (this.aiming === 'fire' && !cfg.abilities.fireFairy) this.aiming = null;
-    if (this.aiming === 'ice' && !cfg.abilities.iceFairy) this.aiming = null;
+    if (this.aiming === 'fire' && !canUse('fireFairy')) this.aiming = null;
+    if (this.aiming === 'ice' && !canUse('iceFairy')) this.aiming = null;
     if (this.aiming && this.aiming !== was) this.onAimStart();
     if (this.swallowFire && !input.isDown('fire')) this.swallowFire = false;
     this.preview.fire = this.aiming === 'fire';

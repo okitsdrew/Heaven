@@ -55,9 +55,14 @@ In-game overlay, toggled with backtick. Must include:
 - **One-hit death**, with a small forgiving hitbox (about the torso only).
 - Arrows: if they hit an enemy they consume 1 pierce and deal damage. At 0 pierce the arrow disappears on hit. If pierce is greater than 0, the arrow continues through until it runs out of range or hits another enemy.
 - Extra arrows (More Bullets) fire in a small fan, about 8° apart, not parallel.
-- **Dash (Space):** ~0.15s, ~250 units in the direction the player is moving (the last move direction if standing still), fully invincible during it, passes through enemies, 0.75s cooldown shown as a ring on the player.
-- **Teleport (right click, later unlock):** jump ~200 units toward the cursor at dash speed (invincible while travelling), 0.1s cooldown. Input is locked for 0.2s afterwards while he keeps walking the way he went; the dash does the same. Shown as a dark purple line zipping between start and end. For now it is a dev toggle that runs alongside the dash; whether it eventually replaces the dash is open.
+- **Dash (Space):** ~0.075s, ~150 units in the direction the player is moving (the last move direction if standing still), fully invincible during it, passes through enemies, 0.3s cooldown shown as a ring on the player.
+- **Teleport (right click, later unlock):** jump ~200 units toward the cursor at its own speed (`teleport.speed`) (invincible while travelling), 0.1s cooldown. Input is locked for 0.2s afterwards while he keeps walking the way he went; the dash does the same. Shown as a dark purple line zipping between start and end. For now it is a dev toggle that runs alongside the dash; whether it eventually replaces the dash is open.
 - **Level and XP persist across runs.** (Mechanic to be fleshed out later.) Each level-up grants 1 skill point. Start with a gentle curve like `10 x level^1.5` and tune.
+
+## 7a. Current build notes (phase 3)
+- Skills (Fire Fairy, Ice Fairy, Sword Slash) are unlocked from a **Skills** page next to the tree rather than as tree nodes. Prerequisites from section 10 are shown but not enforced while everything is free (`tree.free`).
+- Tree node positions are draggable and saved to `localStorage` separately from progress; `tree.revealAll` shows hidden nodes so they can be arranged.
+- Gold and XP persist in the versioned save (`heaven.save.v1`). Uncollected gold from a run is lost when a new run starts.
 
 ## 7. Run loop
 - Base run time: **10 seconds**. Max with all time upgrades: 10 + 25 + 100 = **135s**.

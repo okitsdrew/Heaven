@@ -10,13 +10,18 @@ import { Enemies, hpAt, pushOut, spawnRateAt } from '../game/Enemies';
 import { Fairies } from '../game/Fairies';
 import { Fx } from '../game/Fx';
 import { Ground } from '../game/Ground';
-import { Hud } from '../game/Hud';
+import { Gold } from '../game/Gold';
+import { Hud, RunHud } from '../game/Hud';
 import { Player } from '../game/Player';
 import { SwordSlash } from '../game/SwordSlash';
 import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
+import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
+import { canUse, stats as upgrades, unlockEverything } from '../skills';
+import { Screens } from '../ui/Screens';
 import { SpatialHash } from '../util/spatialHash';
+import { addXp, setLevel, xpToNext } from '../xp';
 
 const screen = { x: 0, y: 0 };
 
@@ -30,9 +35,14 @@ export class GameScene extends Phaser.Scene {
   private chunks!: Chunks;
   private targetList: Hittable[] = [];
   private clock = 0;
-  private kills = 0;
-  private deadTimer = 0;
+  private run = { kills: 0, gold: 0, xp: 0, levels: 0 };
+  private endTimer = 0;
+  private endTitle = '';
   private dead = false;
+  private menu = false;
+  private gold!: Gold;
+  private runHud!: RunHud;
+  private screens!: Screens;
   private fx!: Fx;
   private ground!: Ground;
   private abilities!: Abilities;
@@ -63,6 +73,14 @@ export class GameScene extends Phaser.Scene {
     this.dummies = new Dummies(this);
     this.enemies = new Enemies(this);
     this.chunks = new Chunks(this, this.fx);
+    this.gold = new Gold(this);
+    this.runHud = new RunHud(this);
+    this.screens = new Screens();
+    this.gold.onCollect = (v) => {
+      profile.gold += v;
+      this.run.gold += v;
+      persist();
+    };
     this.fairies = new Fairies(this, this.fx);
     this.abilities = new Abilities(this, this.fx, () => this.targetList);
     this.swordSlash = new SwordSlash(this, this.fx, () => this.targetList);
@@ -105,7 +123,14 @@ export class GameScene extends Phaser.Scene {
       this.fx.smoke(screen.x, screen.y - 8 * cfg.render.pixelScale, 10, 10);
     };
     this.enemies.onKilled = (x, y, type) => {
-      this.kills++;
+      this.run.kills++;
+      this.run.xp += cfg.xp.perKill;
+      const gained = addXp(cfg.xp.perKill);
+      if (gained > 0) {
+        this.run.levels += gained;
+        this.runHud.announce(`LEVEL ${profile.level}!`);
+      }
+      this.gold.drop(x, y, cfg.gold.perKill);
       const px = cfg.render.pixelScale;
       const size = cfg[type].scale;
       toScreen(x, y, screen);
@@ -131,7 +156,44 @@ export class GameScene extends Phaser.Scene {
       { label: 'Clock to 0', run: () => (this.clock = 0) },
       { label: 'Spawn 50 enemies', run: () => this.spawnBurst(50) },
       { label: 'Clear enemies', run: () => this.enemies.clear() },
-      { label: 'Restart run', run: () => this.restart() },
+      { label: 'Restart run', run: () => this.startRun() },
+      { label: 'End run (show summary)', run: () => this.endRun('Run ended') },
+      { label: 'Open skill tree', run: () => this.openTree() },
+      { label: 'Add 100 gold', run: () => this.addProfile('gold', 100) },
+      { label: 'Add 10 skill points', run: () => this.addProfile('skillPoints', 10) },
+      {
+        label: 'Set level...',
+        run: () => {
+          const v = Number(prompt('Set level', String(profile.level)));
+          if (Number.isFinite(v) && v >= 1) setLevel(v);
+        },
+      },
+      {
+        label: 'Unlock all nodes and skills',
+        run: () => {
+          unlockEverything();
+          persistNow();
+        },
+      },
+      { label: 'Export save', run: () => prompt('Save JSON (copy it)', exportSave()) },
+      {
+        label: 'Import save',
+        run: () => {
+          const text = prompt('Paste save JSON');
+          if (!text) return;
+          try {
+            importSave(text);
+          } catch {
+            alert('That is not valid save JSON.');
+          }
+        },
+      },
+      {
+        label: 'Reset save (gold, level, tree)',
+        run: () => {
+          if (confirm('Erase gold, level, XP and every skill tree purchase?')) resetSave();
+        },
+      },
       { label: 'Spawn target dummies', run: () => this.dummies.spawnRing(this.player.x, this.player.y) },
       { label: 'Clear dummies', run: () => this.dummies.clear() },
       {
@@ -151,6 +213,10 @@ export class GameScene extends Phaser.Scene {
     const input = this.input2;
     input.update();
     if (input.justPressed('devMenu')) this.devMenu.toggle();
+    if (this.menu) {
+      input.endFrame();
+      return;
+    }
 
     const dt = Math.min(deltaMs / 1000, 0.05) * cfg.time.timeScale;
     const cam = this.cameras.main;
@@ -172,11 +238,13 @@ export class GameScene extends Phaser.Scene {
       this.player.x = body.x;
       this.player.y = body.y;
       this.clock += dt;
+      if (this.clock >= upgrades.runTime()) this.endRun("Time's up");
     }
 
     const view = { halfW: cam.width / 2, halfH: cam.height / 2 };
     const slowAt = (x: number, y: number, r: number) => this.abilities.slowAt(x, y, r);
     this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, slowAt, !this.dead);
+    this.gold.update(dt, this.player.x, this.player.y, !this.dead);
     this.enemies.insertInto(this.targets);
     this.targetList.length = 0;
     for (const d of this.dummies.list) if (d.alive) this.targetList.push(d);
@@ -186,11 +254,11 @@ export class GameScene extends Phaser.Scene {
     this.abilities.update(dt, this.player, input, cursor);
     this.swordSlash.update(dt, this.player, input);
     if (!this.dead && !this.player.invincible && !cfg.debug.godMode) {
-      if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius)) this.die();
+      if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius)) this.endRun('You died', true);
     }
     if (this.dead) {
-      this.deadTimer -= dt;
-      if (this.deadTimer <= 0) this.restart();
+      this.endTimer -= dt;
+      if (this.endTimer <= 0) this.showSummary();
     }
     this.fairies.update(dt, this.player, { fire: this.abilities.fireAttach(), ice: this.abilities.iceAttach() });
     this.fx.update(dt);
@@ -209,10 +277,18 @@ export class GameScene extends Phaser.Scene {
     this.arrows.render();
     this.dummies.render();
     this.enemies.render(this.player.x);
+    this.gold.render(cam);
+    this.runHud.update(dt, cam.width, {
+      left: upgrades.runTime() - this.clock,
+      gold: profile.gold,
+      level: profile.level,
+      xp: profile.xp,
+      need: xpToNext(profile.level),
+    });
     this.hud.update(cam.width, cam.height, [
-      { key: 'Q', color: 0xff7a20, enabled: cfg.abilities.fireFairy, remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
-      { key: 'E', color: 0x7fd4ff, enabled: cfg.abilities.iceFairy, remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown, active: this.abilities.aiming === 'ice' },
-      { key: 'R', color: 0xb070ff, enabled: cfg.abilities.swordSlash, remaining: this.swordSlash.cooldown, total: cfg.swordSlash.cooldown, active: this.swordSlash.armed || this.swordSlash.active },
+      { key: 'Q', color: 0xff7a20, enabled: canUse('fireFairy'), remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
+      { key: 'E', color: 0x7fd4ff, enabled: canUse('iceFairy'), remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown, active: this.abilities.aiming === 'ice' },
+      { key: 'R', color: 0xb070ff, enabled: canUse('swordSlash'), remaining: this.swordSlash.cooldown, total: cfg.swordSlash.cooldown, active: this.swordSlash.armed || this.swordSlash.active },
     ]);
     this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
     this.drawDebug();
@@ -231,12 +307,21 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < n; i++) this.enemies.spawn(this.clock, this.player.x, this.player.y, view);
   }
 
-  // Placeholder until the run loop and end screen exist: smoke, shake, then a fresh run in place.
-  private die(): void {
+  private addProfile(field: 'gold' | 'skillPoints', amount: number): void {
+    profile[field] += amount;
+    persistNow();
+  }
+
+  // Ends the run: a death gets smoke and shake first, then the summary menu appears.
+  private endRun(title: string, died = false): void {
+    if (this.dead) return;
     this.dead = true;
-    this.deadTimer = cfg.run.restartDelay;
-    this.playerView.setVisible(false);
+    this.endTitle = title;
+    this.endTimer = died ? 0.9 : 0.5;
     this.swordSlash.interrupt();
+    persistNow();
+    if (!died) return;
+    this.playerView.setVisible(false);
     toScreen(this.player.x, this.player.y, screen);
     const px = cfg.render.pixelScale;
     this.fx.smoke(screen.x, screen.y - 10 * px, cfg.run.deathSmoke, 8 * px);
@@ -244,14 +329,33 @@ export class GameScene extends Phaser.Scene {
     this.fx.addShake(cfg.run.deathShake);
   }
 
-  private restart(): void {
+  private showSummary(): void {
+    this.menu = true;
+    this.screens.showSummary(
+      { title: this.endTitle, kills: this.run.kills, gold: this.run.gold, xp: this.run.xp, levelsGained: this.run.levels, time: this.clock },
+      () => this.startRun(),
+      () => this.openTree(),
+    );
+  }
+
+  private openTree(): void {
+    this.menu = true;
+    this.screens.showTree(() => this.startRun());
+  }
+
+  private startRun(): void {
+    this.screens.hide();
+    this.menu = false;
     this.dead = false;
     this.clock = 0;
-    this.kills = 0;
+    this.run = { kills: 0, gold: 0, xp: 0, levels: 0 };
     this.enemies.clear();
-    this.abilities.resetCooldowns();
+    this.gold.clear();
+    this.abilities.reset();
+    this.swordSlash.cancel();
     this.swordSlash.cooldown = 0;
-    Object.assign(this.player, { vx: 0, vy: 0 });
+    Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0, dashTime: 0, teleportTime: 0, lockTime: 0 });
+    toScreen(0, 0, this.camCenter);
     this.playerView.setVisible(true);
   }
 
@@ -266,7 +370,7 @@ export class GameScene extends Phaser.Scene {
           `enemies ${this.enemies.count}/${cfg.spawn.maxEnemies}`,
           `clock ${clock(this.clock)}${cfg.debug.godMode ? '  GOD' : ''}`,
           `spawn ${spawnRateAt(this.clock).toFixed(1)}/s  hp ${Math.round(hpAt(this.clock))}`,
-          `kills ${this.kills}`,
+          `kills ${this.run.kills}  gold piles ${this.gold.piles}`,
           `arrows ${this.arrows.activeCount}`,
           `chunks ${this.chunks.loaded}  obstacles ${this.chunks.obstacles.length}`,
           `dummies ${this.dummies.aliveCount}/${this.dummies.list.length}`,

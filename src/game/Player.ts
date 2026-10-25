@@ -1,5 +1,6 @@
 import { cfg } from '../config';
 import { Input } from '../input';
+import { canUse, stats } from '../skills';
 import { toScreen, toWorld, Vec2 } from '../iso';
 
 const tmp = { x: 0, y: 0 };
@@ -82,7 +83,7 @@ export class Player {
   // 0 right after a shot, rising to 1 as the next shot is about to release.
   get drawProgress(): number {
     if (this.fireCooldown <= 0) return 0;
-    const window = Math.min(cfg.feel.drawTime, 1 / Math.max(cfg.bow.fireRate, 0.01));
+    const window = Math.min(cfg.feel.drawTime, 1 / Math.max(stats.fireRate(), 0.01));
     return 1 - Math.min(1, this.fireCooldown / window);
   }
 
@@ -102,7 +103,7 @@ export class Player {
       }
     }
 
-    if (cfg.abilities.dash && input.justPressed('dash')) this.dashBuffer = Math.max(cfg.dash.inputBuffer, 1e-4);
+    if (canUse('dash') && input.justPressed('dash')) this.dashBuffer = Math.max(cfg.dash.inputBuffer, 1e-4);
     if (this.dashBuffer > 0 && !this.dashing && this.dashCooldown <= 0) {
       this.resolveMoveDir(input);
       this.startDash();
@@ -111,7 +112,7 @@ export class Player {
     this.armsUpTimer = Math.max(0, this.armsUpTimer - dt);
 
     this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
-    if (cfg.abilities.teleport && input.justPressed('teleport') && this.teleportCooldown <= 0) {
+    if (canUse('teleport') && input.justPressed('teleport') && this.teleportCooldown <= 0) {
       this.teleport();
     }
 
@@ -128,7 +129,7 @@ export class Player {
 
   private updateMove(dt: number, input: Input): void {
     // Move input is in screen directions (W = up the screen); convert to a world direction.
-    const speed = cfg.player.moveSpeed * (this.shootSlowTimer > 0 ? cfg.player.shootSpeedMult : 1);
+    const speed = stats.moveSpeed() * (this.shootSlowTimer > 0 ? cfg.player.shootSpeedMult : 1);
     screenToWorldVel(input.move.x, input.move.y, speed, tmp);
     const tx = tmp.x;
     const ty = tmp.y;
@@ -175,12 +176,11 @@ export class Player {
     screenToWorldVel(dx, dy, cfg.teleport.distance, tmp);
     const jumpX = tmp.x;
     const jumpY = tmp.y;
-    screenToWorldVel(dx, dy, cfg.player.moveSpeed, tmp);
+    screenToWorldVel(dx, dy, stats.moveSpeed(), tmp);
     this.tpEndVx = tmp.x;
     this.tpEndVy = tmp.y;
 
-    const dashSpeed = cfg.dash.distance / cfg.dash.duration;
-    const travel = cfg.teleport.matchDashSpeed && dashSpeed > 0 ? cfg.teleport.distance / dashSpeed : 0;
+    const travel = cfg.teleport.speed > 0 ? cfg.teleport.distance / cfg.teleport.speed : 0;
     this.teleportCooldown = cfg.teleport.cooldown;
     this.lockTime = 0;
     this.onTeleport(fromX, fromY, fromX + jumpX, fromY + jumpY, travel);
@@ -240,7 +240,7 @@ export class Player {
     this.dashVx = tmp.x;
     this.dashVy = tmp.y;
     // Carry normal run speed out of the dash rather than the dash speed.
-    screenToWorldVel(this.lastMoveX, this.lastMoveY, cfg.player.moveSpeed, tmp);
+    screenToWorldVel(this.lastMoveX, this.lastMoveY, stats.moveSpeed(), tmp);
     this.dashEndVx = tmp.x;
     this.dashEndVy = tmp.y;
     this.dashBuffer = 0;
@@ -280,7 +280,7 @@ export class Player {
       // Keep the remainder so holding fire gives an exact cadence.
       while (this.fireCooldown <= 0) {
         this.onFire(this.x, this.y, this.aimX, this.aimY);
-        this.fireCooldown += 1 / Math.max(cfg.bow.fireRate, 0.01);
+        this.fireCooldown += 1 / Math.max(stats.fireRate(), 0.01);
       }
     } else if (this.fireCooldown < 0) {
       this.fireCooldown = 0;
