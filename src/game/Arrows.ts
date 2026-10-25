@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
-import { toScreen } from '../iso';
+import { toScreen, toWorld } from '../iso';
 import { Pool } from '../util/pool';
 import { SpatialHash } from '../util/spatialHash';
 import { Fx } from './Fx';
@@ -20,6 +20,7 @@ interface Arrow {
   y: number;
   dirX: number;
   dirY: number;
+  stretch: number;
   traveled: number;
   range: number;
   speed: number;
@@ -49,6 +50,7 @@ export class Arrows {
       y: 0,
       dirX: 1,
       dirY: 0,
+      stretch: 1,
       traveled: 0,
       range: 0,
       speed: 0,
@@ -70,18 +72,22 @@ export class Arrows {
     return this.pool.activeCount;
   }
 
-  // Fires a volley; extra arrows fan out around the aim direction.
+  // Fires a volley; extra arrows fan out around the aim direction. Speed, range and the fan are measured
+  // on screen, so every arrow visibly travels the same distance whichever way the iso projection skews it.
   fire(x: number, y: number, dirX: number, dirY: number): void {
     const b = cfg.bow;
     const count = Math.max(1, Math.round(b.arrowsPerShot));
-    const base = Math.atan2(dirY, dirX);
+    const aim = toScreen(dirX, dirY);
+    const base = Math.atan2(aim.y, aim.x);
     const spread = Phaser.Math.DegToRad(b.spreadDeg);
     for (let i = 0; i < count; i++) {
       const angle = base + (i - (count - 1) / 2) * spread;
       const a = this.pool.obtain();
       a.active = true;
-      a.dirX = Math.cos(angle);
-      a.dirY = Math.sin(angle);
+      const w = toWorld(Math.cos(angle), Math.sin(angle));
+      a.stretch = Math.hypot(w.x, w.y);
+      a.dirX = w.x / a.stretch;
+      a.dirY = w.y / a.stretch;
       a.x = x;
       a.y = y;
       a.traveled = 0;
@@ -100,7 +106,8 @@ export class Arrows {
   update(dt: number, targets: SpatialHash<Hittable>, maxTargetRadius: number): void {
     for (const a of this.pool.items) {
       if (!a.active) continue;
-      const step = Math.min(a.speed * dt, a.range - a.traveled);
+      const stepPx = Math.min(a.speed * dt, a.range - a.traveled);
+      const step = stepPx * a.stretch;
       const x1 = a.x + a.dirX * step;
       const y1 = a.y + a.dirY * step;
 
@@ -139,7 +146,7 @@ export class Arrows {
       }
       a.x = x1;
       a.y = y1;
-      a.traveled += step;
+      a.traveled += stepPx;
       if (a.traveled >= a.range - 1e-6) this.release(a);
     }
   }
