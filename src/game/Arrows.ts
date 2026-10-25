@@ -143,7 +143,7 @@ export class Arrows {
       a.sprite
         .setPosition(screen.x, screen.y - height)
         .setRotation(Math.atan2(ahead.y - screen.y, ahead.x - screen.x))
-        .setScale(cfg.render.pixelScale * 0.75)
+        .setScale(cfg.render.arrowScale)
         .setAlpha(Math.min(1, remaining * 6))
         .setDepth(screen.y);
     }

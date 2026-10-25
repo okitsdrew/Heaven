@@ -2,7 +2,9 @@
 
 export const defaults = {
   player: {
-    moveSpeed: 200,
+    moveSpeed: 300,
+    uniformScreenSpeed: true,
+    screenSpeedMult: 1,
     accel: 4000,
     hitRadius: 6,
   },
@@ -14,7 +16,7 @@ export const defaults = {
     spreadDeg: 8,
     arrowSpeed: 900,
     arrowRange: 400,
-    arrowHitRadius: 10,
+    arrowHitRadius: 15,
     muzzleOffset: 16,
     fireWhileDashing: true,
   },
@@ -34,6 +36,12 @@ export const defaults = {
   feel: {
     hitFlashTime: 0.06,
     bowKickTime: 0.08,
+    strideLength: 140,
+    walkBob: 1.5,
+    armReadyTime: 0.6,
+    armRaiseTime: 0.12,
+    drawTime: 0.3,
+    drawDistance: 6,
     damageNumbers: true,
   },
   dummy: {
@@ -45,10 +53,11 @@ export const defaults = {
   },
   render: {
     isoScale: Math.SQRT1_2,
-    pixelScale: 3,
+    pixelScale: 2,
     tileSize: 64,
-    arrowHeight: 16,
-    aimHeight: 24,
+    arrowScale: 3.375,
+    arrowHeight: 11,
+    aimHeight: 16,
     vignette: 0.85,
   },
   time: {
@@ -68,7 +77,9 @@ export type Param = { min: number; max: number; step: number } | 'bool';
 // Ranges for the dev menu. The type forces an entry for every config value.
 export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
   player: {
-    moveSpeed: { min: 50, max: 600, step: 5 },
+    moveSpeed: { min: 50, max: 800, step: 5 },
+    uniformScreenSpeed: 'bool',
+    screenSpeedMult: { min: 0.3, max: 2, step: 0.05 },
     accel: { min: 200, max: 20000, step: 100 },
     hitRadius: { min: 1, max: 30, step: 1 },
   },
@@ -100,6 +111,12 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
   feel: {
     hitFlashTime: { min: 0, max: 0.5, step: 0.01 },
     bowKickTime: { min: 0, max: 0.5, step: 0.01 },
+    strideLength: { min: 40, max: 400, step: 5 },
+    walkBob: { min: 0, max: 5, step: 0.1 },
+    armReadyTime: { min: 0, max: 3, step: 0.05 },
+    armRaiseTime: { min: 0, max: 1, step: 0.01 },
+    drawTime: { min: 0.02, max: 1.5, step: 0.01 },
+    drawDistance: { min: 0, max: 12, step: 0.5 },
     damageNumbers: 'bool',
   },
   dummy: {
@@ -113,6 +130,7 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     isoScale: { min: 0.3, max: 1.5, step: 0.01 },
     pixelScale: { min: 1, max: 6, step: 1 },
     tileSize: { min: 16, max: 256, step: 8 },
+    arrowScale: { min: 0.5, max: 10, step: 0.125 },
     arrowHeight: { min: 0, max: 40, step: 1 },
     aimHeight: { min: 0, max: 80, step: 1 },
     vignette: { min: 0, max: 1, step: 0.05 },
