@@ -9,7 +9,6 @@ import { Player } from './Player';
 const SHOULDER_X = 4;
 const SHOULDER_Y = 12;
 const CHEST_Y = 10;
-const ARM_SEGMENT = 6;
 const BOW_TIP_X = -1.1;
 const BOW_TIP_Y = 12.5;
 
@@ -32,6 +31,7 @@ export class PlayerView {
   private wasCooling = false;
   private phase = 0;
   private raise = 0;
+  private walk = 0;
 
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
     this.shadow = scene.add.image(0, 0, Tex.shadow);
@@ -47,6 +47,40 @@ export class PlayerView {
 
   onDashStart(): void {
     this.afterimageTimer = 0;
+  }
+
+  // Fire-fox style: light copies of the player along the path, plus a flame streak.
+  onTeleport(fromX: number, fromY: number, toX: number, toY: number): void {
+    const px = cfg.render.pixelScale;
+    const t = cfg.teleport;
+    const flip = this.body.flipX;
+    const key = this.body.texture.key;
+    const a = toScreen(fromX, fromY);
+    const b = toScreen(toX, toY);
+    for (let i = 0; i < t.afterimages; i++) {
+      const f = (i + 0.5) / t.afterimages;
+      const x = a.x + (b.x - a.x) * f;
+      const y = a.y + (b.y - a.y) * f;
+      // Copies nearest the start fade last, like a trail left behind.
+      this.fx.afterimage(key, x, y, flip, px, y, 0xff8a30, t.afterimageFade * (1.2 - f * 0.7), 0.55);
+    }
+    for (let i = 0; i < t.flames; i++) {
+      const f = Math.random();
+      const life = 0.3 + Math.random() * 0.3;
+      this.fx.particle({
+        x: a.x + (b.x - a.x) * f + (Math.random() - 0.5) * 8 * px,
+        y: a.y + (b.y - a.y) * f - (4 + Math.random() * 12) * px,
+        life,
+        from: 0.6 + Math.random() * 0.5,
+        to: 0.1,
+        alpha: 0.9,
+        tint: [0xff5a10, 0xff8a28, 0xffd98a][Math.floor(Math.random() * 3)],
+        vx: (Math.random() - 0.5) * 30,
+        vy: -20 - Math.random() * 30,
+      });
+    }
+    this.fx.smoke(a.x, a.y - 8 * px, 5, 8);
+    this.fx.addShake(cfg.camera.shakeOnCast * 0.5);
   }
 
   update(dt: number): void {
@@ -93,16 +127,17 @@ export class PlayerView {
     const pull = (1 + p.drawProgress * cfg.feel.drawDistance) * px;
     const nock = { x: grip.x - dirX * pull, y: grip.y - dirY * pull };
 
-    const handBow = lerp(
-      { x: shoulderBow.x + bowSide * 1.5 * px, y: shoulderBow.y + 8 * px + swing },
-      grip,
-      t,
-    );
-    const handDraw = lerp(
-      { x: shoulderDraw.x - bowSide * 1.5 * px, y: shoulderDraw.y + 8 * px - swing },
-      nock,
-      t,
-    );
+    // Walking holds the arms straight out to the sides (< I >); standing they hang down.
+    this.walk = Phaser.Math.Clamp(this.walk + (moving ? dt : -dt) / 0.1, 0, 1);
+    const f = cfg.feel;
+    const flap = swing * (f.walkArmFlap / 2.5);
+    const restBow = { x: shoulderBow.x + bowSide * 1.5 * px, y: shoulderBow.y + 8 * px + swing };
+    const restDraw = { x: shoulderDraw.x - bowSide * 1.5 * px, y: shoulderDraw.y + 8 * px - swing };
+    const wideBow = { x: shoulderBow.x + bowSide * f.walkArmSpread * px, y: shoulderBow.y + f.walkArmDrop * px + flap };
+    const wideDraw = { x: shoulderDraw.x - bowSide * f.walkArmSpread * px, y: shoulderDraw.y + f.walkArmDrop * px - flap };
+
+    const handBow = lerp(lerp(restBow, wideBow, this.walk), grip, t);
+    const handDraw = lerp(lerp(restDraw, wideDraw, this.walk), nock, t);
 
     const bowAngle = lerpAngle(bowSide > 0 ? 0 : Math.PI, aimAngle, t);
     this.bow
@@ -114,8 +149,8 @@ export class PlayerView {
 
     const g = this.arms;
     g.clear().setDepth(screen.y + 0.3).setAlpha(this.body.alpha);
-    const armA = solveArm(shoulderBow, handBow, ARM_SEGMENT * px);
-    const armB = solveArm(shoulderDraw, handDraw, ARM_SEGMENT * px);
+    const armA = solveArm(shoulderBow, handBow, f.armLength * px);
+    const armB = solveArm(shoulderDraw, handDraw, f.armLength * px);
     for (const [width, color] of [
       [3 * px, SLEEVE_EDGE],
       [2 * px, SLEEVE],
