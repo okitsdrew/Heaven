@@ -38,7 +38,7 @@ In-game overlay, toggled with backtick. Must include:
 - **Enemies:** shadowed wraiths (dark tattered silhouettes, glowing eyes). All types share a silhouette and differ by size, speed and a minor color variation. Models will be redesigned later.
 - Dead enemies puff into smoke and leave no body.
 - Dash visual: Bloodborne-style quick step.
-- Teleport visual (later): Fox/Falco fire-fox style from *Smash Bros.*, with light afterimage copies between the start and end points.
+- Teleport visual (later): a deep purple/black line zips between the start and end points, with small purple puffs at each end.
 
 ## 6. Player
 | Stat | Base |
