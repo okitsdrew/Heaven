@@ -68,7 +68,18 @@ export class SwordSlash {
     return cfg.abilities.swordSlash && (this.armed || this.active);
   }
 
-  // Only a dash or teleport interrupts the combo.
+  // A dash or teleport cancels a swing that is already under way and the chain moves on to the next one.
+  // A swing still in its telegraph is untouched here: update() shelves it until the dash or teleport ends.
+  interrupt(): void {
+    const s = this.slash;
+    if (!s || s.phase !== 'strike') return;
+    this.effects.length = 0;
+    s.swing++;
+    s.phase = 'telegraph';
+    s.t = 0;
+    if (s.swing > 2) this.slash = null;
+  }
+
   cancel(): void {
     this.slash = null;
     this.armed = false;
@@ -78,8 +89,9 @@ export class SwordSlash {
     this.time += dt;
     this.cooldown = Math.max(0, this.cooldown - dt);
 
+    const shelved = player.invincible;
     if (!cfg.abilities.swordSlash) this.cancel();
-    else {
+    else if (!shelved) {
       if (input.justPressed('abilityR') && !this.slash) {
         if (this.armed) this.armed = false;
         else if (this.cooldown <= 0) this.armed = true;
@@ -91,7 +103,7 @@ export class SwordSlash {
       }
     }
 
-    this.advance(dt, player);
+    if (!shelved) this.advance(dt, player);
     for (let i = this.effects.length - 1; i >= 0; i--) {
       this.effects[i].age += dt;
       if (this.effects[i].age >= cfg.swordSlash.effectTime) this.effects.splice(i, 1);

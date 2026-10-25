@@ -63,11 +63,11 @@ export class GameScene extends Phaser.Scene {
       this.playerView.onFire();
     };
     this.player.onDashStart = () => {
-      this.swordSlash.cancel();
+      this.swordSlash.interrupt();
       this.playerView.onDashStart();
     };
     this.player.onTeleport = (x0, y0, x1, y1, t) => {
-      this.swordSlash.cancel();
+      this.swordSlash.interrupt();
       this.playerView.onTeleport(x0, y0, x1, y1, t);
     };
     this.player.onTeleportArrive = (x, y) => this.playerView.onTeleportArrive(x, y);
