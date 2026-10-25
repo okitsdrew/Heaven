@@ -12,6 +12,8 @@ export const Tex = {
   vignette: 'vignette',
 } as const;
 
+export const walkFrames = ['player_walk0', 'player_walk1', 'player_walk2', 'player_walk3'];
+
 type Palette = Record<string, number>;
 
 function fromGrid(scene: Phaser.Scene, key: string, rows: string[], palette: Palette): void {
@@ -76,42 +78,44 @@ function vignette(scene: Phaser.Scene): void {
 }
 
 export function makePlaceholderArt(scene: Phaser.Scene): void {
-  // Robed rogue, hood up, cloak in muted wine.
-  fromGrid(
-    scene,
-    Tex.player,
-    [
-      '....hhhh....',
-      '...hHHHHh...',
-      '..hHhhhhHh..',
-      '..hhffffhh..',
-      '..hhfeefhh..',
-      '..chhffhhc..',
-      '.ccrrRRrrcc.',
-      '.ccrRRRRrcc.',
-      'cccrrRRrrccc',
-      'cccrbbbbrccc',
-      'cc.rrrrrr.cc',
-      'cc.rrRrrr.cc',
-      'c..rrRrrr..c',
-      '...rrRrrr...',
-      '..rrrRrrrr..',
-      '..rrrrrrrr..',
-      '...ll..ll...',
-      '...ll..ll...',
-    ],
-    {
-      h: 0x3b3550,
-      H: 0x585074,
-      f: 0x110e17,
-      e: 0xd9c9a8,
-      r: 0x2c283d,
-      R: 0x3d3754,
-      b: 0x8a6440,
-      c: 0x5a2a3c,
-      l: 0x18151f,
-    },
-  );
+  // Robed rogue, hood up, cloak in muted wine. Arms are drawn separately by PlayerView.
+  const legs = [
+    ['...ll..ll...', '...ll..ll...'],
+    ['..ll...ll...', '.......ll...'],
+    ['...ll..ll...', '...ll..ll...'],
+    ['...ll...ll..', '...ll.......'],
+  ];
+  const playerColors = {
+    h: 0x3b3550,
+    H: 0x585074,
+    f: 0x110e17,
+    e: 0xd9c9a8,
+    r: 0x2c283d,
+    R: 0x3d3754,
+    b: 0x8a6440,
+    c: 0x5a2a3c,
+    l: 0x18151f,
+  };
+  const torso = [
+    '....hhhh....',
+    '...hHHHHh...',
+    '..hHhhhhHh..',
+    '..hhffffhh..',
+    '..hhfeefhh..',
+    '..chhffhhc..',
+    '.ccrrRRrrcc.',
+    '.ccrRRRRrcc.',
+    'cccrrRRrrccc',
+    'cccrbbbbrccc',
+    'cc.rrrrrr.cc',
+    'cc.rrRrrr.cc',
+    'c..rrRrrr..c',
+    '...rrRrrr...',
+    '..rrrRrrrr..',
+    '..rrrrrrrr..',
+  ];
+  fromGrid(scene, Tex.player, [...torso, ...legs[0]], playerColors);
+  walkFrames.forEach((key, i) => fromGrid(scene, key, [...torso, ...legs[i]], playerColors));
 
   fromGrid(
     scene,

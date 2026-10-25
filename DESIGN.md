@@ -55,8 +55,8 @@ In-game overlay, toggled with backtick. Must include:
 - **One-hit death**, with a small forgiving hitbox (about the torso only).
 - Arrows: if they hit an enemy they consume 1 pierce and deal damage. At 0 pierce the arrow disappears on hit. If pierce is greater than 0, the arrow continues through until it runs out of range or hits another enemy.
 - Extra arrows (More Bullets) fire in a small fan, about 8° apart, not parallel.
-- **Dash (Space):** ~0.15s, ~250 units toward the cursor, fully invincible during it, passes through enemies, 0.75s cooldown shown as a ring on the player.
-- **Teleport (later unlock):** replaces the dash. Instant jump a set distance toward the cursor, no cooldown.
+- **Dash (Space):** ~0.15s, ~250 units in the direction the player is moving (the last move direction if standing still), fully invincible during it, passes through enemies, 0.75s cooldown shown as a ring on the player.
+- **Teleport (later unlock):** replaces the dash. Instant jump a set distance in the movement direction, no cooldown.
 - **Level and XP persist across runs.** (Mechanic to be fleshed out later.) Each level-up grants 1 skill point. Start with a gentle curve like `10 x level^1.5` and tune.
 
 ## 7. Run loop
