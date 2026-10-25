@@ -6,6 +6,7 @@ export interface HudSlot {
   enabled: boolean;
   remaining: number;
   total: number;
+  active?: boolean;
 }
 
 const SIZE = 44;
@@ -58,7 +59,7 @@ export class Hud {
         g.fillStyle(s.color, 0.35);
         g.fillRect(x, y, SIZE, SIZE);
       }
-      g.lineStyle(2, s.color, ready ? 1 : 0.4);
+      g.lineStyle(s.active ? 4 : 2, s.active ? 0xffffff : s.color, ready || s.active ? 1 : 0.4);
       g.strokeRect(x, y, SIZE, SIZE);
 
       this.labels[i].setVisible(true).setText(s.key).setPosition(x + SIZE / 2, y + SIZE / 2).setAlpha(ready ? 1 : 0.5);

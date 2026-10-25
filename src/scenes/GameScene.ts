@@ -10,6 +10,7 @@ import { Fx } from '../game/Fx';
 import { Ground } from '../game/Ground';
 import { Hud } from '../game/Hud';
 import { Player } from '../game/Player';
+import { SwordSlash } from '../game/SwordSlash';
 import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
@@ -27,6 +28,7 @@ export class GameScene extends Phaser.Scene {
   private ground!: Ground;
   private abilities!: Abilities;
   private fairies!: Fairies;
+  private swordSlash!: SwordSlash;
   private hud!: Hud;
   private targets = new SpatialHash<Hittable>(64);
   private devMenu!: DevMenu;
@@ -51,17 +53,29 @@ export class GameScene extends Phaser.Scene {
     this.dummies = new Dummies(this);
     this.fairies = new Fairies(this, this.fx);
     this.abilities = new Abilities(this, this.fx, () => this.dummies.list);
-    this.hud = new Hud(this, 2);
+    this.swordSlash = new SwordSlash(this, this.fx, () => this.dummies.list);
+    this.hud = new Hud(this, 3);
 
     this.player.onFire = (_x, _y, dx, dy) => {
       const m = this.playerView.muzzle();
       this.arrows.fire(m.x, m.y, dx, dy);
       this.playerView.onFire();
     };
-    this.player.onDashStart = () => this.playerView.onDashStart();
-    this.player.onTeleport = (x0, y0, x1, y1, t) => this.playerView.onTeleport(x0, y0, x1, y1, t);
+    this.player.onDashStart = () => {
+      this.swordSlash.cancel();
+      this.playerView.onDashStart();
+    };
+    this.player.onTeleport = (x0, y0, x1, y1, t) => {
+      this.swordSlash.cancel();
+      this.playerView.onTeleport(x0, y0, x1, y1, t);
+    };
     this.player.onTeleportArrive = (x, y) => this.playerView.onTeleportArrive(x, y);
     this.abilities.onCast = (kind) => this.fairies.flare(kind);
+    this.swordSlash.onDamage = (target, amount, x, y) => {
+      this.dummies.damage(target, amount);
+      toScreen(x, y, screen);
+      this.fx.damageNumber(screen.x, screen.y - 40, amount);
+    };
     this.abilities.onDamage = (target, amount, x, y) => {
       this.dummies.damage(target, amount);
       toScreen(x, y, screen);
@@ -88,7 +102,13 @@ export class GameScene extends Phaser.Scene {
     this.devMenu = new DevMenu([
       { label: 'Spawn target dummies', run: () => this.dummies.spawnRing(this.player.x, this.player.y) },
       { label: 'Clear dummies', run: () => this.dummies.clear() },
-      { label: 'Reset ability cooldowns', run: () => this.abilities.resetCooldowns() },
+      {
+        label: 'Reset ability cooldowns',
+        run: () => {
+          this.abilities.resetCooldowns();
+          this.swordSlash.cooldown = 0;
+        },
+      },
       { label: 'Recenter player', run: () => Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0 }) },
     ]);
     this.dummies.spawnRing(0, 0);
@@ -113,9 +133,11 @@ export class GameScene extends Phaser.Scene {
 
     this.targets.clear();
     this.dummies.update(dt, this.targets);
+    this.player.fireBlocked = this.swordSlash.blocksFire;
     this.player.update(dt, input, aimWorld);
     this.arrows.update(dt, this.targets, cfg.dummy.radius);
     this.abilities.update(dt, this.player, input, cursor);
+    this.swordSlash.update(dt, this.player, input);
     this.fairies.update(dt, this.player, { fire: this.abilities.fireAttach(), ice: this.abilities.iceAttach() });
     this.fx.update(dt);
 
@@ -134,6 +156,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.update(cam.width, cam.height, [
       { key: 'Q', color: 0xff7a20, enabled: cfg.abilities.fireFairy, remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown },
       { key: 'E', color: 0x7fd4ff, enabled: cfg.abilities.iceFairy, remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown },
+      { key: 'R', color: 0xb070ff, enabled: cfg.abilities.swordSlash, remaining: this.swordSlash.cooldown, total: cfg.swordSlash.cooldown, active: this.swordSlash.armed || this.swordSlash.active },
     ]);
     this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
     this.drawDebug();

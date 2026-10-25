@@ -19,6 +19,7 @@ Build order step 2 is in: movement, aiming, shooting, dash and the dev menu, wit
 | Space | Teleport toward cursor |
 | Q (hold, release) | Fire Wave: hold to preview the path, release to cast (needs Fire Fairy; dev menu `abilities` section) |
 | E (hold, release) | Ice Storm: hold to preview the circle at the cursor, release to cast (needs Ice Fairy) |
+| R (toggle) | Sword Slash: arms it, and the next attack becomes a 3-swing combo (dash or teleport cancels) |
 | Backtick | Dev menu |
 
 ## Tech

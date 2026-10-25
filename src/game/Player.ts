@@ -52,6 +52,7 @@ export class Player {
   private lockVx = 0;
   private lockVy = 0;
   readyTimer = 0;
+  fireBlocked = false;
   shootSlowTimer = 0;
   private lastMoveX = 0;
   private lastMoveY = 0;
@@ -265,7 +266,9 @@ export class Player {
 
   private updateFire(dt: number, input: Input): void {
     this.fireCooldown -= dt;
-    if (input.isDown('fire')) {
+    const holding = input.isDown('fire') && !this.fireBlocked;
+    if (this.fireBlocked) this.readyTimer = 0;
+    if (holding) {
       this.readyTimer = cfg.feel.armReadyTime;
       this.shootSlowTimer = cfg.player.shootSlowTime;
     } else {
@@ -273,7 +276,7 @@ export class Player {
       this.shootSlowTimer = Math.max(0, this.shootSlowTimer - dt);
     }
     const canFire = !this.dashing || cfg.bow.fireWhileDashing;
-    if (input.isDown('fire') && canFire) {
+    if (holding && canFire) {
       // Keep the remainder so holding fire gives an exact cadence.
       while (this.fireCooldown <= 0) {
         this.onFire(this.x, this.y, this.aimX, this.aimY);

@@ -10,6 +10,7 @@ export type Action =
   | 'teleport'
   | 'abilityQ'
   | 'abilityE'
+  | 'abilityR'
   | 'devMenu';
 
 export interface InputSource {
@@ -37,6 +38,7 @@ const keyBindings: Record<string, Action> = {
   Space: 'teleport',
   KeyQ: 'abilityQ',
   KeyE: 'abilityE',
+  KeyR: 'abilityR',
   Backquote: 'devMenu',
 };
 
