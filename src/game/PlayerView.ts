@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { bowArt, Tex, walkFrames } from '../art/placeholders';
+import { Tex, walkFrames } from '../art/placeholders';
 import { cfg } from '../config';
-import { ellipseHalfSize, toScreen, Vec2 } from '../iso';
+import { ellipseHalfSize, toScreen, toWorld, Vec2 } from '../iso';
 import { Fx } from './Fx';
 import { Player } from './Player';
 
@@ -9,6 +9,10 @@ import { Player } from './Player';
 const SHOULDER_X = 4;
 const SHOULDER_Y = 12;
 const CHEST_Y = 10;
+// The magic bow is drawn procedurally in this local frame: grip at the origin, aiming along +x.
+const BOW_HALF = 17;
+const BOW_STRING = 11;
+const BOW_POINTS = 28;
 
 const screen = { x: 0, y: 0 };
 const ahead = { x: 0, y: 0 };
@@ -16,11 +20,16 @@ const ahead = { x: 0, y: 0 };
 const SLEEVE = 0x3d3754;
 const SLEEVE_EDGE = 0x120f18;
 const SKIN = 0xc8b08a;
+const HAND_YELLOW = 0xf2d34a;
 
 export class PlayerView {
   private body: Phaser.GameObjects.Image;
   private shadow: Phaser.GameObjects.Image;
-  private bow: Phaser.GameObjects.Image;
+  private bowGfx: Phaser.GameObjects.Graphics;
+  private bowGlow: Phaser.GameObjects.Graphics;
+  private handGlow: Phaser.GameObjects.Image[];
+  private bowVis = 0;
+  private wispTimer = 0;
   private arms: Phaser.GameObjects.Graphics;
   private ring: Phaser.GameObjects.Graphics;
   private kick = 0;
@@ -35,7 +44,11 @@ export class PlayerView {
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
     this.shadow = scene.add.image(0, 0, Tex.shadow);
     this.body = scene.add.image(0, 0, Tex.player).setOrigin(0.5, 1);
-    this.bow = scene.add.image(0, 0, Tex.bow).setOrigin(bowArt.gripX / bowArt.width, 0.5);
+    this.bowGfx = scene.add.graphics();
+    this.bowGlow = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    this.handGlow = [0, 1].map(() =>
+      scene.add.image(0, 0, Tex.glow).setTint(0xa060ff).setBlendMode(Phaser.BlendModes.ADD),
+    );
     this.arms = scene.add.graphics();
     this.ring = scene.add.graphics();
   }
@@ -48,33 +61,52 @@ export class PlayerView {
     this.afterimageTimer = 0;
   }
 
-  // A dark purple line zips between the two points, with a puff of void at each end.
-  onTeleport(fromX: number, fromY: number, toX: number, toY: number): void {
+  // A dark purple line zips between the two points, with a puff of void at the start.
+  onTeleport(fromX: number, fromY: number, toX: number, toY: number, travelTime: number): void {
     const px = cfg.render.pixelScale;
     const a = toScreen(fromX, fromY);
     const b = toScreen(toX, toY);
     const lift = 10 * px;
-    this.fx.streak(a.x, a.y - lift, b.x, b.y - lift);
-    for (const end of [a, b]) {
-      for (let i = 0; i < cfg.teleport.puffs; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const life = 0.3 + Math.random() * 0.3;
-        this.fx.particle({
-          texture: Math.random() < 0.5 ? Tex.smoke : Tex.glow,
-          x: end.x,
-          y: end.y - lift,
-          life,
-          from: 0.5 + Math.random() * 0.5,
-          to: 1.5 + Math.random(),
-          alpha: 0.9,
-          tint: [0x07000d, 0x2a0a4a, 0x5a1a9a][Math.floor(Math.random() * 3)],
-          additive: false,
-          vx: Math.cos(angle) * 50,
-          vy: Math.sin(angle) * 30,
-        });
-      }
-    }
+    this.fx.streak(a.x, a.y - lift, b.x, b.y - lift, travelTime > 0 ? travelTime : undefined);
+    this.voidPuff(a.x, a.y - lift);
     this.fx.addShake(cfg.camera.shakeOnCast * 0.5);
+  }
+
+  onTeleportArrive(x: number, y: number): void {
+    const a = toScreen(x, y);
+    this.voidPuff(a.x, a.y - 10 * cfg.render.pixelScale);
+  }
+
+  private voidPuff(x: number, y: number): void {
+    for (let i = 0; i < cfg.teleport.puffs; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      this.fx.particle({
+        texture: Math.random() < 0.5 ? Tex.smoke : Tex.glow,
+        x,
+        y,
+        life: 0.3 + Math.random() * 0.3,
+        from: 0.5 + Math.random() * 0.5,
+        to: 1.5 + Math.random(),
+        alpha: 0.9,
+        tint: [0x07000d, 0x2a0a4a, 0x5a1a9a][Math.floor(Math.random() * 3)],
+        additive: false,
+        vx: Math.cos(angle) * 50,
+        vy: Math.sin(angle) * 30,
+      });
+    }
+  }
+
+  // Where arrows start in world space: the nocked arrow on the fully drawn string.
+  muzzle(): Vec2 {
+    const p = this.player;
+    const px = cfg.render.pixelScale;
+    const g = toScreen(p.x, p.y);
+    const a = toScreen(p.x + p.aimX, p.y + p.aimY);
+    const angle = Math.atan2(a.y - g.y, a.x - g.x);
+    const d = (cfg.feel.bowFloatDistance - BOW_STRING * cfg.render.bowScale - cfg.feel.drawDistance) * px;
+    const sx = g.x + Math.cos(angle) * d;
+    const sy = g.y - CHEST_Y * px + Math.sin(angle) * d;
+    return toWorld(sx, sy + cfg.render.arrowHeight);
   }
 
   update(dt: number): void {
@@ -98,7 +130,7 @@ export class PlayerView {
       .setScale(px)
       .setFlipX(facingLeft)
       .setDepth(screen.y)
-      .setAlpha(p.dashing ? 0.55 : 1);
+      .setAlpha(p.dashing || p.teleporting ? 0.55 : 1);
     this.shadow.setPosition(screen.x, screen.y).setScale(px * 0.9, px * 0.35).setDepth(screen.y - 1000);
 
     // While shooting he holds his arms up as if steering the bow with magic, and flaps them.
@@ -116,7 +148,6 @@ export class PlayerView {
     const dirX = Math.cos(aimAngle);
     const dirY = Math.sin(aimAngle);
     const bs = px * cfg.render.bowScale;
-    const stringDist = (bowArt.gripX - bowArt.stringX) * bs;
 
     const shoulderA = { x: cx + bowSide * SHOULDER_X * px, y: cy - SHOULDER_Y * px };
     const shoulderB = { x: cx - bowSide * SHOULDER_X * px, y: cy - SHOULDER_Y * px };
@@ -140,19 +171,17 @@ export class PlayerView {
     const armA = solveArm(shoulderA, pose(shoulderA, bowSide, 1), f.armLength * px);
     const armB = solveArm(shoulderB, pose(shoulderB, -bowSide, -1), f.armLength * px);
 
-    // The bow floats in front of him toward the cursor, shooting or not.
+    // The bow floats in front of him toward the cursor and phases in only while he shoots.
+    const visRate = p.readyTimer > 0 ? dt / Math.max(f.bowPhaseInTime, 1e-4) : -dt / Math.max(f.bowPhaseOutTime, 1e-4);
+    const prevVis = this.bowVis;
+    this.bowVis = Phaser.Math.Clamp(this.bowVis + visRate, 0, 1);
+    const vis = this.bowVis;
     const dist = (f.bowFloatDistance - kickT * 3) * px;
     const bowPos = {
       x: cx + dirX * dist,
       y: cy - CHEST_Y * px + dirY * dist + Math.sin(this.time * 3) * f.bowFloatBob * px,
     };
     const bowAngle = aimAngle;
-    this.bow
-      .setPosition(bowPos.x, bowPos.y)
-      .setRotation(bowAngle)
-      .setScale(bs)
-      .setDepth(screen.y + (dirY < 0 ? -0.5 : 0.5))
-      .setAlpha(this.body.alpha);
 
     const g = this.arms;
     g.clear().setDepth(screen.y + 0.3).setAlpha(this.body.alpha);
@@ -173,35 +202,18 @@ export class PlayerView {
     g.fillCircle(armA.hand.x, armA.hand.y, 1.2 * px);
     g.fillCircle(armB.hand.x, armB.hand.y, 1.2 * px);
 
-    // The string is drawn between the limb tips and pulls back toward him as the next shot nears.
-    const cos = Math.cos(bowAngle);
-    const sin = Math.sin(bowAngle);
-    const tip = (side: number): Vec2 => {
-      const u = (bowArt.stringX - bowArt.gripX) * bs;
-      const v = side * bowArt.halfHeight * bs;
-      return { x: bowPos.x + u * cos - v * sin, y: bowPos.y + u * sin + v * cos };
-    };
-    const a = tip(-1);
-    const b = tip(1);
-    const pull = p.drawProgress;
-    const drawing = p.readyTimer > 0 && pull > 0.02;
-    const rest = { x: bowPos.x - dirX * stringDist, y: bowPos.y - dirY * stringDist };
-    const pulled = drawing
-      ? { x: rest.x - dirX * pull * f.drawDistance * px, y: rest.y - dirY * pull * f.drawDistance * px }
-      : rest;
-    g.lineStyle(1, 0xd8d0c0, 0.9);
-    g.beginPath();
-    g.moveTo(a.x, a.y);
-    g.lineTo(pulled.x, pulled.y);
-    g.lineTo(b.x, b.y);
-    g.strokePath();
-    if (drawing) {
-      g.lineStyle(Math.max(1, px), 0x8a6a48, 1);
-      g.beginPath();
-      g.moveTo(pulled.x, pulled.y);
-      g.lineTo(bowPos.x + dirX * 5 * px, bowPos.y + dirY * 5 * px);
-      g.strokePath();
-    }
+    this.drawBow(bowPos, bowAngle, bs, vis, prevVis, p.drawProgress, p.readyTimer > 0, dirY < 0 ? -0.5 : 0.5, dt);
+
+    // Hands glow purple while he is shooting.
+    this.handGlow.forEach((img, i) => {
+      const hand = i === 0 ? armA.hand : armB.hand;
+      img
+        .setVisible(t > 0.01)
+        .setPosition(hand.x, hand.y)
+        .setScale(px * (0.32 + Math.sin(this.time * 12 + i * 2) * 0.05))
+        .setAlpha(t * f.handGlow)
+        .setDepth(screen.y + 0.4);
+    });
 
     if (p.dashing && cfg.dash.afterimages > 0) {
       this.afterimageTimer -= dt;
@@ -212,6 +224,119 @@ export class PlayerView {
     }
 
     this.drawCooldownRing(dt);
+  }
+
+  private drawBow(
+    pos: Vec2,
+    angle: number,
+    scale: number,
+    vis: number,
+    prevVis: number,
+    pull: number,
+    shooting: boolean,
+    depthOffset: number,
+    dt: number,
+  ): void {
+    const g = this.bowGfx;
+    const glow = this.bowGlow;
+    g.clear();
+    glow.clear();
+    if (vis <= 0.005) return;
+    g.setDepth(screen.y + depthOffset);
+    glow.setDepth(screen.y + depthOffset - 0.1);
+
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const place = (lx: number, ly: number): Vec2 => ({
+      x: pos.x + (lx * cos - ly * sin) * scale,
+      y: pos.y + (lx * sin + ly * cos) * scale,
+    });
+
+    // Limbs wobble and shimmer; while phasing in or out, segments flicker away.
+    const pts: Vec2[] = [];
+    const flicker = 1 + Math.sin(this.time * 31) * 0.15;
+    for (let i = 0; i < BOW_POINTS; i++) {
+      const u = (i / (BOW_POINTS - 1)) * 2 - 1;
+      const k = Math.pow(Math.abs(u), 1.5);
+      const x = -BOW_STRING * k + Math.sin(this.time * 7 + u * 9) * 0.7 * flicker + (Math.abs(u) > 0.9 ? 1.5 : 0);
+      const y = u * BOW_HALF + Math.sin(this.time * 5 + u * 6) * 0.5;
+      pts.push(place(x, y));
+    }
+    const frame = Math.floor(this.time * 30);
+    const segVisible = (i: number) => vis >= 0.99 || hash(i, frame) < vis * 1.15;
+    for (const [target, width, color, alpha] of [
+      [glow, 6 * scale, 0x7a2fd0, 0.5],
+      [g, 3.4 * scale, 0x3a0f6a, 0.95],
+      [g, 1.6 * scale, 0x07000d, 1],
+    ] as const) {
+      target.lineStyle(width, color, alpha * vis);
+      for (let i = 0; i < pts.length - 1; i++) {
+        if (segVisible(i)) target.lineBetween(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+      }
+    }
+
+    // Spearhead rest with a glowing core.
+    const tip = place(5, 0);
+    const l = place(-1, -2.2);
+    const r = place(-1, 2.2);
+    g.fillStyle(0x2a0a4a, vis);
+    g.fillTriangle(tip.x, tip.y, l.x, l.y, r.x, r.y);
+    glow.fillStyle(0xc9a0ff, 0.7 * vis);
+    glow.fillCircle(pos.x, pos.y, 1.6 * scale);
+
+    // The string, pulled by a small yellow hand.
+    const pulledX = -BOW_STRING - (shooting ? pull : 0) * cfg.feel.drawDistance;
+    const nock = place(pulledX, 0);
+    const a = pts[0];
+    const b = pts[pts.length - 1];
+    g.lineStyle(1, 0xd9b8ff, 0.9 * vis);
+    g.beginPath();
+    g.moveTo(a.x, a.y);
+    g.lineTo(nock.x, nock.y);
+    g.lineTo(b.x, b.y);
+    g.strokePath();
+    if (shooting && pull > 0.02) {
+      const head = place(5, 0);
+      g.lineStyle(Math.max(1, scale), 0xc9a0ff, vis);
+      g.beginPath();
+      g.moveTo(nock.x, nock.y);
+      g.lineTo(head.x, head.y);
+      g.strokePath();
+    }
+    glow.fillStyle(HAND_YELLOW, 0.5 * vis);
+    glow.fillCircle(nock.x, nock.y, 3.2 * scale);
+    g.fillStyle(0x8a6a10, vis);
+    g.fillCircle(nock.x, nock.y, 1.9 * scale);
+    g.fillStyle(HAND_YELLOW, vis);
+    g.fillCircle(nock.x, nock.y, 1.5 * scale);
+    for (const [fx, fy] of [[-1.2, -1.6], [-1.9, 0], [-1.2, 1.6]] as const) {
+      const f = place(pulledX + fx, fy);
+      g.fillCircle(f.x, f.y, 0.7 * scale);
+    }
+
+    // Wisps drift off the limbs, with a burst as it phases in or out.
+    this.wispTimer += dt * 25 * vis;
+    const burst = (prevVis <= 0.005 && vis > 0.005) || (prevVis >= 0.999 && vis < 0.999 && !shooting) ? 8 : 0;
+    let count = burst;
+    while (this.wispTimer >= 1) {
+      this.wispTimer -= 1;
+      count++;
+    }
+    for (let i = 0; i < count; i++) {
+      const w = pts[Math.floor(Math.random() * pts.length)];
+      this.fx.particle({
+        x: w.x,
+        y: w.y,
+        life: 0.3 + Math.random() * 0.3,
+        from: 0.25 + Math.random() * 0.2,
+        to: 0.05,
+        alpha: 0.9,
+        tint: Math.random() < 0.5 ? 0xa060ff : 0x6a20c0,
+        vx: (Math.random() - 0.5) * 30,
+        vy: -10 - Math.random() * 25,
+        depth: screen.y + 1,
+      });
+    }
   }
 
   private drawCooldownRing(dt: number): void {
@@ -238,6 +363,11 @@ export class PlayerView {
       ellipseArc(g, screen.x, screen.y, half.x * (1 + (1 - t) * 0.3), half.y * (1 + (1 - t) * 0.3), 1);
     }
   }
+}
+
+function hash(i: number, frame: number): number {
+  const h = Math.sin(i * 12.9898 + frame * 78.233) * 43758.5453;
+  return h - Math.floor(h);
 }
 
 function lerp(a: Vec2, b: Vec2, t: number): Vec2 {

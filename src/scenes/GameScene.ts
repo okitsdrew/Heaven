@@ -53,12 +53,14 @@ export class GameScene extends Phaser.Scene {
     this.abilities = new Abilities(this, this.fx, () => this.dummies.list);
     this.hud = new Hud(this, 2);
 
-    this.player.onFire = (x, y, dx, dy) => {
-      this.arrows.fire(x, y, dx, dy);
+    this.player.onFire = (_x, _y, dx, dy) => {
+      const m = this.playerView.muzzle();
+      this.arrows.fire(m.x, m.y, dx, dy);
       this.playerView.onFire();
     };
     this.player.onDashStart = () => this.playerView.onDashStart();
-    this.player.onTeleport = (x0, y0, x1, y1) => this.playerView.onTeleport(x0, y0, x1, y1);
+    this.player.onTeleport = (x0, y0, x1, y1, t) => this.playerView.onTeleport(x0, y0, x1, y1, t);
+    this.player.onTeleportArrive = (x, y) => this.playerView.onTeleportArrive(x, y);
     this.abilities.onCast = (kind) => this.fairies.flare(kind);
     this.abilities.onDamage = (target, amount, x, y) => {
       this.dummies.damage(target, amount);

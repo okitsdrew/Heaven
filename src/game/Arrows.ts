@@ -73,8 +73,8 @@ export class Arrows {
       a.active = true;
       a.dirX = Math.cos(angle);
       a.dirY = Math.sin(angle);
-      a.x = x + a.dirX * b.muzzleOffset;
-      a.y = y + a.dirY * b.muzzleOffset;
+      a.x = x;
+      a.y = y;
       a.traveled = 0;
       a.range = b.arrowRange;
       a.speed = b.arrowSpeed;
