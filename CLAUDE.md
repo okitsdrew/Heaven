@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude working in this repo (`okitsdrew/heaven`).
+Guidance for Claude working in this repo (`okitsdrew/Heaven`).
 
 ## What this is
 An incremental isometric bullet-heaven (think *20 Minutes Till Dawn*). Full design lives in [DESIGN.md](DESIGN.md). **Read it before making gameplay decisions.** All numbers in it are test values, expect them to change.
@@ -35,4 +35,17 @@ An incremental isometric bullet-heaven (think *20 Minutes Till Dawn*). Full desi
 - The boss is a grey copy of the player with a windup the player can exploit to shoot once then dash away.
 
 ## Commands
-Fill these in once the project is scaffolded (`npm install`, `npm run dev`, `npm run build`).
+- `npm install`: install dependencies.
+- `npm run dev`: dev server with hot reload.
+- `npm run build`: type-check, then build to `dist/` (this is what CI runs).
+- `npm run typecheck`: type-check only.
+- `npm run preview`: serve the built `dist/`.
+
+## Code map
+- `src/config.ts`: every tunable plus its dev menu range (`meta`). Tweaks persist to `localStorage` as overrides of the defaults.
+- `src/input.ts`: action-based input. Gameplay reads actions, never keys. Add a gamepad as another `InputSource`.
+- `src/iso.ts`: world to screen projection and back.
+- `src/dev/DevMenu.ts`: DOM overlay built from `meta`. Scene-specific buttons are passed in as actions.
+- `src/art/placeholders.ts`: code-drawn textures under the keys in `Tex`.
+- `src/game/`: simulation (`Player`, `Arrows`, `Dummies`) and rendering (`PlayerView`, `Fx`, `Ground`).
+- `src/scenes/GameScene.ts`: wires systems together and owns the camera.

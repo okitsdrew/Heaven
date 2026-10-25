@@ -8,7 +8,7 @@ An incremental isometric bullet-heaven about a robed archer holding off an endle
 - Boss fights at set times.
 
 ## Status
-Planning is complete. Implementation has not started. See [DESIGN.md](DESIGN.md) for the full spec and build order, and [CLAUDE.md](CLAUDE.md) for contributor guidance.
+Build order step 2 is in: movement, aiming, shooting, dash and the dev menu, with target dummies to shoot at. Enemies come next. See [DESIGN.md](DESIGN.md) for the full spec and build order, and [CLAUDE.md](CLAUDE.md) for contributor guidance.
 
 ## Controls
 | Input | Action |
@@ -24,9 +24,10 @@ Planning is complete. Implementation has not started. See [DESIGN.md](DESIGN.md)
 TypeScript, Phaser 3, Vite. Deployed to GitHub Pages from `main`.
 
 ## Development
-Scaffolding is not set up yet. Once it is:
-
 ```bash
 npm install
-npm run dev
+npm run dev      # local dev server
+npm run build    # type-check and build to dist/
 ```
+
+Every push to `main` builds and deploys to GitHub Pages via `.github/workflows/deploy.yml`.
