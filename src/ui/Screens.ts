@@ -51,7 +51,7 @@ const css = `
 #tree .node.owned { background: #2a2145; border-color: #9a7fe0; }
 #tree .node.maxed { border-color: #f2d7a6; box-shadow: 0 0 12px rgba(242, 215, 166, 0.45); }
 #tree .node.dragging { opacity: 0.85; border-style: dashed; z-index: 2; }
-#tree .node.dim { opacity: 0.45; }
+#tree .node.dim { filter: brightness(0.55); }
 #tree .node .name { color: #f2d7a6; font-weight: bold; font-size: 13px; }
 #tree .node .desc { color: #a79fc0; font-size: 11px; }
 #tree .node .lvl { font-size: 12px; margin-top: 2px; }

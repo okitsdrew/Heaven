@@ -68,7 +68,7 @@ In-game overlay, toggled with backtick. Must include:
 ## 7b. Skill tree pricing (current)
 - Tier 0 Dash: 1 gold. Tier 1 (Time, Damage, More Bullets): 1 gold, doubling. Tier 2 (Pickup Radius, Gold Value, Move Speed, More Range, Fire Rate, Pierce): 100 gold, doubling. Tier 3 (More Damage, More Fire Rate, more MORE Pierce, More MORE Bullets, Bigger Arrows, more MORE Range, More MORE Time, Double Gold): 1000 gold, doubling.
 - Magic: Teleport 1 skill point; Fire Fairy, Ice Fairy, Sword Slash 3 skill points each.
-- Tree structure follows the owner's drawing: Dash leads to Damage, More Bullets, Time and Teleport. Damage leads to More Range, Fire Rate and Pierce; Fire Rate to More Damage; More Damage to More Fire Rate, more MORE Pierce and More MORE Bullets; more MORE Pierce to Bigger Arrows and more MORE Range. Time leads to Gold Value, Pickup Radius and Move Speed; Gold Value to Double Gold and More MORE Time. Teleport leads to the three magic abilities.
+- Tree structure follows the owner's drawing: Dash leads to Damage, More Bullets, Time and Teleport. Damage leads to More Range and Fire Rate; More Bullets leads to Pierce; Fire Rate to More Damage; More Damage to More Fire Rate, more MORE Pierce and More MORE Bullets; more MORE Pierce to Bigger Arrows and more MORE Range. Time leads to Gold Value, Pickup Radius and Move Speed; Gold Value to Double Gold and More MORE Time. Teleport leads to the three magic abilities.
 
 ## 7. Run loop
 - Base run time: **10 seconds**. Max with all time upgrades: 10 + 25 + 100 = **135s**.

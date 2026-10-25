@@ -27,7 +27,7 @@ export const nodes: SkillNode[] = [
   { id: 'dash', name: 'Dash', desc: () => 'Unlocks the dash', parents: [], currency: 'gold', costs: [1], effect: null, x: 0, y: 0 },
 
   { id: 'fireRate', name: 'Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['damage'], currency: 'gold', costs: doubling(5, 100), effect: 'fireRate', x: -480, y: 0 },
-  { id: 'pierce', name: 'Pierce', desc: (p) => `+${p} pierce`, parents: ['damage'], currency: 'gold', costs: [100], effect: 'pierce', x: -480, y: 190 },
+  { id: 'pierce', name: 'Pierce', desc: (p) => `+${p} pierce`, parents: ['moreBullets'], currency: 'gold', costs: [100], effect: 'pierce', x: -480, y: 190 },
   { id: 'time', name: 'Time', desc: (p) => `+${p}s run time`, parents: ['dash'], currency: 'gold', costs: doubling(5, 1), effect: 'time', x: 240, y: 0 },
   { id: 'moveSpeed', name: 'Move Speed', desc: (p) => `+${pct(p)} move speed`, parents: ['time'], currency: 'gold', costs: doubling(5, 100), effect: 'moveSpeed', x: 480, y: 190 },
   { id: 'damage', name: 'Damage', desc: (p) => `+${p} damage`, parents: ['dash'], currency: 'gold', costs: doubling(5, 1), effect: 'damage', x: -240, y: -85 },
