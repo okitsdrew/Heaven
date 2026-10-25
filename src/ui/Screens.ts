@@ -155,8 +155,7 @@ export class Screens {
   private position(n: SkillNode): { x: number; y: number } {
     const saved = this.layout[n.id];
     if (saved) return saved;
-    const a = (n.angle * Math.PI) / 180;
-    return { x: Math.cos(a) * n.radius, y: Math.sin(a) * n.radius };
+    return { x: n.x, y: n.y };
   }
 
   private makeNode(n: SkillNode): HTMLDivElement {

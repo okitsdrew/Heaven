@@ -14,44 +14,43 @@ export interface SkillNode {
   currency: Currency;
   costs: number[];
   effect: Effect;
-  // Polar default position around the root, in px. Players can drag nodes; their layout is saved separately.
-  angle: number;
-  radius: number;
+  // Default position in px around the root. Players can drag nodes; their layout is saved separately.
+  x: number;
+  y: number;
 }
 
 const doubling = (n: number, base = 1) => Array.from({ length: n }, (_, i) => base * 2 ** i);
 const pct = (v: number) => `${Math.round(v * 100)}%`;
-const six = (i: number) => -90 + i * 60;
 
 // Adding a node is just a new entry here plus, for a new stat, an effect value in config and a reader below.
 export const nodes: SkillNode[] = [
-  { id: 'dash', name: 'Dash', desc: () => 'Unlocks the dash', parents: [], currency: 'gold', costs: [1], effect: null, angle: 0, radius: 0 },
+  { id: 'dash', name: 'Dash', desc: () => 'Unlocks the dash', parents: [], currency: 'gold', costs: [1], effect: null, x: 0, y: 0 },
 
-  { id: 'fireRate', name: 'Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['dash'], currency: 'gold', costs: doubling(5), effect: 'fireRate', angle: six(0), radius: 240 },
-  { id: 'pierce', name: 'Pierce', desc: (p) => `+${p} pierce`, parents: ['dash'], currency: 'gold', costs: [25], effect: 'pierce', angle: six(1), radius: 240 },
-  { id: 'time', name: 'Time', desc: (p) => `+${p}s run time`, parents: ['dash'], currency: 'gold', costs: doubling(5), effect: 'time', angle: six(2), radius: 240 },
-  { id: 'moveSpeed', name: 'Move Speed', desc: (p) => `+${pct(p)} move speed`, parents: ['dash'], currency: 'gold', costs: doubling(5), effect: 'moveSpeed', angle: six(3), radius: 240 },
-  { id: 'damage', name: 'Damage', desc: (p) => `+${p} damage`, parents: ['dash'], currency: 'gold', costs: doubling(5), effect: 'damage', angle: six(4), radius: 240 },
-  { id: 'range', name: 'More Range', desc: (p) => `+${pct(p)} arrow range`, parents: ['dash'], currency: 'gold', costs: doubling(5), effect: 'range', angle: six(5), radius: 240 },
+  { id: 'fireRate', name: 'Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['damage'], currency: 'gold', costs: doubling(5, 100), effect: 'fireRate', x: -480, y: 0 },
+  { id: 'pierce', name: 'Pierce', desc: (p) => `+${p} pierce`, parents: ['moreBullets'], currency: 'gold', costs: [100], effect: 'pierce', x: -480, y: 190 },
+  { id: 'time', name: 'Time', desc: (p) => `+${p}s run time`, parents: ['dash'], currency: 'gold', costs: doubling(5, 1), effect: 'time', x: 240, y: 0 },
+  { id: 'moveSpeed', name: 'Move Speed', desc: (p) => `+${pct(p)} move speed`, parents: ['time'], currency: 'gold', costs: doubling(5, 100), effect: 'moveSpeed', x: 480, y: 190 },
+  { id: 'damage', name: 'Damage', desc: (p) => `+${p} damage`, parents: ['dash'], currency: 'gold', costs: doubling(5, 1), effect: 'damage', x: -240, y: -85 },
+  { id: 'range', name: 'More Range', desc: (p) => `+${pct(p)} arrow range`, parents: ['damage'], currency: 'gold', costs: doubling(5, 100), effect: 'range', x: -480, y: -170 },
 
-  { id: 'moreFireRate', name: 'More Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['fireRate'], currency: 'gold', costs: doubling(5, 10), effect: 'moreFireRate', angle: six(0), radius: 450 },
-  { id: 'moreBullets', name: 'More Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['pierce'], currency: 'gold', costs: [100, 300], effect: 'moreBullets', angle: six(1), radius: 450 },
-  { id: 'moreTime', name: 'More MORE Time', desc: (p) => `+${p}s run time`, parents: ['time'], currency: 'gold', costs: doubling(5, 10), effect: 'moreTime', angle: six(2), radius: 450 },
-  { id: 'moreDamage', name: 'More Damage', desc: (p) => `+${p} damage`, parents: ['damage'], currency: 'gold', costs: doubling(5, 10), effect: 'moreDamage', angle: six(4), radius: 450 },
-  { id: 'moreMoreBullets', name: 'More MORE Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['moreBullets'], currency: 'gold', costs: [200, 500, 1000], effect: 'moreMoreBullets', angle: six(1), radius: 660 },
-  { id: 'moreMoreRange', name: 'more MORE Range', desc: (p) => `+${pct(p)} arrow range`, parents: ['range'], currency: 'gold', costs: doubling(5, 10), effect: 'moreMoreRange', angle: six(5), radius: 450 },
+  { id: 'moreFireRate', name: 'More Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['fireRate'], currency: 'gold', costs: doubling(5, 1000), effect: 'moreFireRate', x: -960, y: -170 },
+  { id: 'moreBullets', name: 'More Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['dash'], currency: 'gold', costs: doubling(2, 1), effect: 'moreBullets', x: -240, y: 110 },
+  { id: 'moreTime', name: 'More MORE Time', desc: (p) => `+${p}s run time`, parents: ['time'], currency: 'gold', costs: doubling(5, 1000), effect: 'moreTime', x: 720, y: -130 },
+  { id: 'moreDamage', name: 'More Damage', desc: (p) => `+${p} damage`, parents: ['damage'], currency: 'gold', costs: doubling(5, 1000), effect: 'moreDamage', x: -720, y: 0 },
+  { id: 'moreMoreBullets', name: 'More MORE Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['moreBullets'], currency: 'gold', costs: doubling(3, 1000), effect: 'moreMoreBullets', x: -960, y: 190 },
+  { id: 'moreMoreRange', name: 'more MORE Range', desc: (p) => `+${pct(p)} arrow range`, parents: ['range'], currency: 'gold', costs: doubling(5, 1000), effect: 'moreMoreRange', x: -1200, y: 110 },
 
-  { id: 'goldValue', name: 'Gold Value', desc: (p) => `+${p} gold per kill`, parents: ['dash'], currency: 'gold', costs: doubling(5, 10), effect: 'goldValue', angle: 60, radius: 340 },
-  { id: 'pickupRadius', name: 'Pickup Radius', desc: (p) => `+${pct(p)} pickup radius`, parents: ['goldValue'], currency: 'gold', costs: doubling(5, 10), effect: 'pickupRadius', angle: 90, radius: 520 },
-  { id: 'doubleGold', name: 'Double Gold', desc: (p) => `x${1 + p} gold per kill`, parents: ['goldValue'], currency: 'gold', costs: [250], effect: 'doubleGold', angle: 60, radius: 560 },
+  { id: 'goldValue', name: 'Gold Value', desc: (p) => `+${p} gold per kill`, parents: ['time'], currency: 'gold', costs: doubling(5, 100), effect: 'goldValue', x: 480, y: 0 },
+  { id: 'pickupRadius', name: 'Pickup Radius', desc: (p) => `+${pct(p)} pickup radius`, parents: ['time'], currency: 'gold', costs: doubling(5, 100), effect: 'pickupRadius', x: 480, y: -240 },
+  { id: 'doubleGold', name: 'Double Gold', desc: (p) => `x${1 + p} gold per kill`, parents: ['goldValue'], currency: 'gold', costs: [1000], effect: 'doubleGold', x: 720, y: 110 },
 
-  { id: 'moreMorePierce', name: 'more MORE Pierce', desc: (p) => `+${p} pierce`, parents: ['pierce'], currency: 'gold', costs: [50, 150, 400], effect: 'moreMorePierce', angle: -5, radius: 450 },
-  { id: 'biggerArrows', name: 'Bigger Arrows', desc: (p) => `+${pct(p)} arrow size and hitbox`, parents: ['range'], currency: 'gold', costs: doubling(5, 10), effect: 'biggerArrows', angle: 250, radius: 400 },
-  { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: ['dash'], currency: 'gold', costs: [10], effect: null, angle: 180, radius: 340 },
+  { id: 'moreMorePierce', name: 'more MORE Pierce', desc: (p) => `+${p} pierce`, parents: ['pierce'], currency: 'gold', costs: doubling(3, 1000), effect: 'moreMorePierce', x: -960, y: 0 },
+  { id: 'biggerArrows', name: 'Bigger Arrows', desc: (p) => `+${pct(p)} arrow size and hitbox`, parents: ['range'], currency: 'gold', costs: doubling(5, 1000), effect: 'biggerArrows', x: -1200, y: -70 },
+  { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: ['dash'], currency: 'sp', costs: [1], effect: null, x: 0, y: 190 },
 
-  { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['moreFireRate', 'moreBullets'], currency: 'sp', costs: [1], effect: null, angle: -60, radius: 640 },
-  { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['moreTime'], currency: 'sp', costs: [1], effect: null, angle: 30, radius: 650 },
-  { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['dash'], currency: 'sp', costs: [1], effect: null, angle: 120, radius: 340 },
+  { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['moreFireRate', 'moreBullets'], currency: 'sp', costs: [3], effect: null, x: -240, y: 340 },
+  { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['moreTime'], currency: 'sp', costs: [3], effect: null, x: 0, y: 340 },
+  { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['dash'], currency: 'sp', costs: [3], effect: null, x: 240, y: 340 },
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));

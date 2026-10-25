@@ -126,10 +126,10 @@ export const defaults = {
     pickupRadius: 0.2,
   },
   tree: {
-    free: true,
+    free: false,
     revealAll: true,
     nodeSize: 1,
-    showLines: false,
+    showLines: true,
   },
   spawn: {
     enabled: true,

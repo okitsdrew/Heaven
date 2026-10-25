@@ -1,7 +1,7 @@
 // Persistent player progress. Versioned so old saves can be migrated as the schema grows.
 
 const SAVE_KEY = 'heaven.save.v1';
-const LAYOUT_KEY = 'heaven.treeLayout.v1';
+const LAYOUT_KEY = 'heaven.treeLayout.v2';
 const VERSION = 1;
 
 export interface SaveData {
