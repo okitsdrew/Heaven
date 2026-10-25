@@ -37,12 +37,15 @@ export class Player {
   dashVy = 0;
   dashEndVx = 0;
   dashEndVy = 0;
+  dashCooldownMax = 0;
   readyTimer = 0;
+  shootSlowTimer = 0;
   private lastMoveX = 0;
   private lastMoveY = 0;
 
   onFire: (x: number, y: number, dirX: number, dirY: number) => void = () => {};
   onDashStart: () => void = () => {};
+  onTeleport: (fromX: number, fromY: number, toX: number, toY: number) => void = () => {};
 
   get dashing(): boolean {
     return this.dashTime > 0;
@@ -61,7 +64,7 @@ export class Player {
 
   // 0 while ready, 1 right after a dash ends.
   get dashCooldownFraction(): number {
-    return cfg.dash.cooldown > 0 ? Math.max(0, this.dashCooldown / cfg.dash.cooldown) : 0;
+    return this.dashCooldownMax > 0 ? Math.max(0, this.dashCooldown / this.dashCooldownMax) : 0;
   }
 
   update(dt: number, input: Input, aimWorld: Vec2 | null): void {
@@ -76,7 +79,11 @@ export class Player {
     }
 
     if (input.justPressed('dash')) this.dashBuffer = Math.max(cfg.dash.inputBuffer, 1e-4);
-    if (this.dashBuffer > 0 && !this.dashing && this.dashCooldown <= 0) this.startDash(input);
+    if (this.dashBuffer > 0 && !this.dashing && this.dashCooldown <= 0) {
+      this.resolveMoveDir(input);
+      if (cfg.abilities.teleport) this.teleport();
+      else this.startDash();
+    }
     this.dashBuffer -= dt;
 
     if (this.dashing) this.updateDash(dt);
@@ -88,7 +95,8 @@ export class Player {
 
   private updateMove(dt: number, input: Input): void {
     // Move input is in screen directions (W = up the screen); convert to a world direction.
-    screenToWorldVel(input.move.x, input.move.y, cfg.player.moveSpeed, tmp);
+    const speed = cfg.player.moveSpeed * (this.shootSlowTimer > 0 ? cfg.player.shootSpeedMult : 1);
+    screenToWorldVel(input.move.x, input.move.y, speed, tmp);
     const tx = tmp.x;
     const ty = tmp.y;
     const dvx = tx - this.vx;
@@ -106,8 +114,8 @@ export class Player {
     this.y += this.vy * dt;
   }
 
-  // Dashes in the direction of movement, or the last one if standing still.
-  private startDash(input: Input): void {
+  // Dash and teleport go in the direction of movement, or the last one if standing still.
+  private resolveMoveDir(input: Input): void {
     const len = Math.hypot(input.move.x, input.move.y);
     if (len > 0.01) {
       this.lastMoveX = input.move.x / len;
@@ -120,6 +128,21 @@ export class Player {
       this.lastMoveX = (to.x - from.x) / l;
       this.lastMoveY = (to.y - from.y) / l;
     }
+  }
+
+  private teleport(): void {
+    const fromX = this.x;
+    const fromY = this.y;
+    screenToWorldVel(this.lastMoveX, this.lastMoveY, cfg.teleport.distance, tmp);
+    this.x += tmp.x;
+    this.y += tmp.y;
+    this.dashBuffer = 0;
+    this.dashCooldown = cfg.teleport.cooldown;
+    this.dashCooldownMax = cfg.teleport.cooldown;
+    this.onTeleport(fromX, fromY, this.x, this.y);
+  }
+
+  private startDash(): void {
     screenToWorldVel(this.lastMoveX, this.lastMoveY, cfg.dash.distance / cfg.dash.duration, tmp);
     this.dashVx = tmp.x;
     this.dashVy = tmp.y;
@@ -140,6 +163,7 @@ export class Player {
     if (this.dashTime <= 0) {
       this.dashTime = 0;
       this.dashCooldown = cfg.dash.cooldown;
+      this.dashCooldownMax = cfg.dash.cooldown;
       this.vx = this.dashEndVx;
       this.vy = this.dashEndVy;
     }
@@ -147,8 +171,13 @@ export class Player {
 
   private updateFire(dt: number, input: Input): void {
     this.fireCooldown -= dt;
-    if (input.isDown('fire')) this.readyTimer = cfg.feel.armReadyTime;
-    else this.readyTimer = Math.max(0, this.readyTimer - dt);
+    if (input.isDown('fire')) {
+      this.readyTimer = cfg.feel.armReadyTime;
+      this.shootSlowTimer = cfg.player.shootSlowTime;
+    } else {
+      this.readyTimer = Math.max(0, this.readyTimer - dt);
+      this.shootSlowTimer = Math.max(0, this.shootSlowTimer - dt);
+    }
     const canFire = !this.dashing || cfg.bow.fireWhileDashing;
     if (input.isDown('fire') && canFire) {
       // Keep the remainder so holding fire gives an exact cadence.
