@@ -56,7 +56,7 @@ In-game overlay, toggled with backtick. Must include:
 - Arrows: if they hit an enemy they consume 1 pierce and deal damage. At 0 pierce the arrow disappears on hit. If pierce is greater than 0, the arrow continues through until it runs out of range or hits another enemy.
 - Extra arrows (More Bullets) fire in a small fan, about 8° apart, not parallel.
 - **Dash (Left Shift):** ~0.15s, ~250 units in the direction the player is moving (the last move direction if standing still), fully invincible during it, passes through enemies, 0.75s cooldown shown as a ring on the player.
-- **Teleport (Space, later unlock):** instant jump ~200 units in the movement direction, 0.1s cooldown. Shown as a dark purple line zipping between start and end. For now it is a dev toggle that runs alongside the dash; whether it eventually replaces the dash is open.
+- **Teleport (Space, later unlock):** instant jump ~200 units toward the cursor, 0.1s cooldown. Shown as a dark purple line zipping between start and end. For now it is a dev toggle that runs alongside the dash; whether it eventually replaces the dash is open.
 - **Level and XP persist across runs.** (Mechanic to be fleshed out later.) Each level-up grants 1 skill point. Start with a gentle curve like `10 x level^1.5` and tune.
 
 ## 7. Run loop

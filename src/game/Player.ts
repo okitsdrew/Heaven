@@ -88,7 +88,6 @@ export class Player {
 
     this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
     if (cfg.abilities.teleport && input.justPressed('teleport') && this.teleportCooldown <= 0) {
-      this.resolveMoveDir(input);
       this.teleport();
     }
 
@@ -120,7 +119,7 @@ export class Player {
     this.y += this.vy * dt;
   }
 
-  // Dash and teleport go in the direction of movement, or the last one if standing still.
+  // Dash goes in the direction of movement, or the last one if standing still.
   private resolveMoveDir(input: Input): void {
     const len = Math.hypot(input.move.x, input.move.y);
     if (len > 0.01) {
@@ -136,10 +135,14 @@ export class Player {
     }
   }
 
+  // Teleports toward the cursor, using its direction as seen on screen.
   private teleport(): void {
     const fromX = this.x;
     const fromY = this.y;
-    screenToWorldVel(this.lastMoveX, this.lastMoveY, cfg.teleport.distance, tmp);
+    const from = toScreen(this.x, this.y, { x: 0, y: 0 });
+    const to = toScreen(this.x + this.aimX, this.y + this.aimY, { x: 0, y: 0 });
+    const l = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+    screenToWorldVel((to.x - from.x) / l, (to.y - from.y) / l, cfg.teleport.distance, tmp);
     this.x += tmp.x;
     this.y += tmp.y;
     this.teleportCooldown = cfg.teleport.cooldown;

@@ -16,7 +16,7 @@ Build order step 2 is in: movement, aiming, shooting, dash and the dev menu, wit
 | WASD | Move |
 | Left click (hold) | Shoot toward cursor |
 | Left Shift | Dash in move direction |
-| Space | Teleport in move direction |
+| Space | Teleport toward cursor |
 | Q | Fire Wave (needs Fire Fairy; dev menu `abilities` section) |
 | E | Ice Storm (needs Ice Fairy; dev menu `abilities` section) |
 | Backtick | Dev menu |
