@@ -124,6 +124,7 @@ export const defaults = {
     moreMorePierce: 1,
     biggerArrows: 0.1,
     pickupRadius: 0.2,
+    timeWarp: 30,
   },
   tree: {
     free: false,
@@ -134,11 +135,11 @@ export const defaults = {
   spawn: {
     enabled: true,
     maxEnemies: 250,
-    startRate: 1,
-    holdTime: 20,
+    startRate: 2,
+    holdTime: 10,
     maxRate: 50,
     rampEnd: 300,
-    rateCurve: 1.5,
+    rateCurve: 2,
     hpStart: 10,
     hpMax: 2500,
     hpCurve: 3,
@@ -417,6 +418,7 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     moreMorePierce: { min: 0, max: 10, step: 1 },
     biggerArrows: { min: 0, max: 1, step: 0.05 },
     pickupRadius: { min: 0, max: 2, step: 0.05 },
+    timeWarp: { min: 0, max: 300, step: 5 },
   },
   tree: {
     free: 'bool',

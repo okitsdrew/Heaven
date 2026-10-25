@@ -35,6 +35,8 @@ export class GameScene extends Phaser.Scene {
   private chunks!: Chunks;
   private targetList: Hittable[] = [];
   private clock = 0;
+  // Where the run clock began (Time Warp starts it ahead); the run length counts from here.
+  private clockStart = 0;
   private run = { kills: 0, gold: 0, xp: 0, levels: 0 };
   private endTimer = 0;
   private endTitle = '';
@@ -152,12 +154,17 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(4e6);
 
-    const jump = (s: number) => () => (this.clock = Math.max(0, this.clock + s));
+    // Jumps move the clock and its start together, so the ramp advances without using up the run.
+    const setClock = (t: number) => {
+      this.clockStart += t - this.clock;
+      this.clock = t;
+    };
+    const jump = (s: number) => () => setClock(Math.max(0, this.clock + s));
     this.devMenu = new DevMenu([
       { label: 'Clock +30s', run: jump(30) },
       { label: 'Clock +60s', run: jump(60) },
-      { label: 'Clock to 5:00', run: () => (this.clock = 300) },
-      { label: 'Clock to 0', run: () => (this.clock = 0) },
+      { label: 'Clock to 5:00', run: () => setClock(300) },
+      { label: 'Clock to 0', run: () => setClock(0) },
       { label: 'Spawn 50 enemies', run: () => this.spawnBurst(50) },
       { label: 'Clear enemies', run: () => this.enemies.clear() },
       { label: 'Restart run', run: () => this.startRun() },
@@ -210,6 +217,9 @@ export class GameScene extends Phaser.Scene {
       { label: 'Recenter player', run: () => Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0 }) },
     ]);
 
+    this.clockStart = upgrades.timeWarp();
+    this.clock = this.clockStart;
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input2.destroy());
   }
 
@@ -242,7 +252,7 @@ export class GameScene extends Phaser.Scene {
       this.player.x = body.x;
       this.player.y = body.y;
       this.clock += dt;
-      if (this.clock >= upgrades.runTime()) this.endRun("Time's up");
+      if (this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
     }
 
     const view = { halfW: cam.width / 2, halfH: cam.height / 2, heading: this.heading() };
@@ -284,7 +294,7 @@ export class GameScene extends Phaser.Scene {
     this.enemies.render(this.player.x);
     this.gold.render(cam);
     this.runHud.update(dt, cam.width, {
-      left: upgrades.runTime() - this.clock,
+      left: upgrades.runTime() - (this.clock - this.clockStart),
       gold: profile.gold,
       level: profile.level,
       xp: profile.xp,
@@ -346,7 +356,7 @@ export class GameScene extends Phaser.Scene {
   private showSummary(): void {
     this.menu = true;
     this.screens.showSummary(
-      { title: this.endTitle, kills: this.run.kills, gold: this.run.gold, xp: this.run.xp, levelsGained: this.run.levels, time: this.clock },
+      { title: this.endTitle, kills: this.run.kills, gold: this.run.gold, xp: this.run.xp, levelsGained: this.run.levels, time: this.clock - this.clockStart },
       () => this.startRun(),
       () => this.openTree(),
     );
@@ -361,7 +371,8 @@ export class GameScene extends Phaser.Scene {
     this.screens.hide();
     this.menu = false;
     this.dead = false;
-    this.clock = 0;
+    this.clockStart = upgrades.timeWarp();
+    this.clock = this.clockStart;
     this.run = { kills: 0, gold: 0, xp: 0, levels: 0 };
     this.enemies.clear();
     this.gold.clear();
