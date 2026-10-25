@@ -58,6 +58,12 @@ export class PlayerView {
     this.ring = scene.add.graphics();
   }
 
+  setVisible(visible: boolean): void {
+    for (const o of [this.body, this.shadow, this.bowGfx, this.bowGlow, this.arms, this.ring, ...this.handGlow]) {
+      o.setVisible(visible);
+    }
+  }
+
   onFire(): void {
     this.kick = cfg.feel.bowKickTime;
   }

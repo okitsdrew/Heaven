@@ -33,9 +33,7 @@ const keyBindings: Record<string, Action> = {
   KeyS: 'moveDown',
   KeyA: 'moveLeft',
   KeyD: 'moveRight',
-  ShiftLeft: 'dash',
-  ShiftRight: 'dash',
-  Space: 'teleport',
+  Space: 'dash',
   KeyQ: 'abilityQ',
   KeyE: 'abilityE',
   KeyR: 'abilityR',
@@ -44,6 +42,7 @@ const keyBindings: Record<string, Action> = {
 
 const mouseBindings: Record<number, Action> = {
   0: 'fire',
+  2: 'teleport',
 };
 
 function isTyping(target: EventTarget | null): boolean {

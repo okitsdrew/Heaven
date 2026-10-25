@@ -7,6 +7,7 @@ import { SpatialHash } from '../util/spatialHash';
 import { Fx } from './Fx';
 
 export interface Hittable {
+  kind: 'dummy' | 'enemy';
   id: number;
   x: number;
   y: number;

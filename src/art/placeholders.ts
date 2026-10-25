@@ -10,7 +10,18 @@ export const Tex = {
   smoke: 'smoke',
   vignette: 'vignette',
   glow: 'glow',
+  barricade: 'decor_barricade',
+  soldier: 'decor_soldier',
+  siege: 'decor_siege',
+  wreck: 'decor_wreck',
+  rubble: 'obstacle_rubble',
 } as const;
+
+export const enemyFrames = {
+  wraith: ['enemy_wraith_0', 'enemy_wraith_1'],
+  shade: ['enemy_shade_0', 'enemy_shade_1'],
+  husk: ['enemy_husk_0', 'enemy_husk_1'],
+};
 
 export const walkFrames = ['player_walk0', 'player_walk1', 'player_walk2', 'player_walk3'];
 
@@ -146,6 +157,115 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
   for (const kind of ['fire', 'ice'] as const) {
     fairyWings.forEach((rows, i) => fromGrid(scene, fairyFrames[kind][i], rows, fairyColors[kind]));
   }
+
+  // Wraiths share one tattered silhouette with glowing eyes; types only differ in color for now.
+  const wraithTop = [
+    '....kkkk....',
+    '...kKKKKk...',
+    '..kKkkkkKk..',
+    '..kkEkkEkk..',
+    '..kkekkekk..',
+    '.kkKkkkkKkk.',
+    'kkKkkkkkkKkk',
+    'Kk.kkkkkk.kK',
+    'k..kKkkKk..k',
+    '...kkkkkk...',
+    '..kKkkkkKk..',
+    '..kkkkkkkk..',
+    '.kkKkkkkKkk.',
+    '.kkkkkkkkkk.',
+  ];
+  const wraithHem = [
+    ['.k.kk.kk.k..', 'k...k..k...k', '....k.....k.'],
+    ['..kk.kk.kk..', '.k..k..k..k.', '.k.....k....'],
+  ];
+  const wraithColors = {
+    wraith: { k: 0x1c1826, K: 0x3a3352, E: 0x9fe8ff, e: 0x3f8fb0 },
+    shade: { k: 0x141a2a, K: 0x2e3d5c, E: 0xc9b4ff, e: 0x6a4fb0 },
+    husk: { k: 0x221818, K: 0x4a3030, E: 0xffa040, e: 0xa04a18 },
+  };
+  for (const kind of ['wraith', 'shade', 'husk'] as const) {
+    wraithHem.forEach((hem, i) => fromGrid(scene, enemyFrames[kind][i], [...wraithTop, ...hem], wraithColors[kind]));
+  }
+
+  const charred = { b: 0x2a2018, B: 0x3d2e22, a: 0x1a1714, e: 0x8a3a1a, o: 0x342820 };
+  fromGrid(
+    scene,
+    Tex.barricade,
+    [
+      '.b.....b.....b..',
+      '.bB...bB....bB..',
+      '..bB.bB.b..bB.b.',
+      'BBBBBBBBBBBBBBBB',
+      'bbbbbbbbbbbbbbbb',
+      '...bB.bB..bB....',
+      '..bB...bB..bB...',
+      '.bB.....bB..bB..',
+      'ab.......b...b..',
+    ],
+    charred,
+  );
+  fromGrid(
+    scene,
+    Tex.siege,
+    [
+      '..........bb......',
+      '.........bB.......',
+      '........bB........',
+      '..ooo..bB.........',
+      '.o...obB..........',
+      'o..o..oBBBBBBBB...',
+      'o.ooo.obbbbbbbbbb.',
+      'o..o..o...b....b..',
+      '.o...o....b....b..',
+      '..ooo.....aaaaaaaa',
+      '.......aaaaaaa....',
+    ],
+    charred,
+  );
+  fromGrid(
+    scene,
+    Tex.wreck,
+    [
+      '.....b..b.....',
+      '....bB.bBb....',
+      '...bbeBbbeb...',
+      '..bBbbbeBbbb..',
+      '.abbebbbbbebba',
+      'aaabbbbbbbbaaa',
+      '.aaaaaaaaaaaa.',
+    ],
+    charred,
+  );
+  fromGrid(
+    scene,
+    Tex.soldier,
+    [
+      '..........ss..',
+      '.hh..rrrrrr.s.',
+      'hHHhrRRRRRrr.s',
+      '.hh.rrrrrrr...',
+      '.....ll..ll...',
+    ],
+    { h: 0x4a4a52, H: 0x6a6a74, r: 0x3a1c22, R: 0x4a2830, l: 0x1e1a20, s: 0x7a7a88 },
+  );
+  fromGrid(
+    scene,
+    Tex.rubble,
+    [
+      '.......gggg.........',
+      '.....ggGGGGgg.......',
+      '....gGGGggGGGg..gg..',
+      '...gGGgggggGGgggGGg.',
+      '..gGgggggggggGggGGGg',
+      '.gGggggggggggggggggg',
+      '.gggggggggggggggggg.',
+      'ggggggggggggggggggg.',
+      '.ggggggggggggggggg..',
+      '..dddddddddddddd....',
+    ],
+    { g: 0x2a2830, G: 0x3e3b48, d: 0x15131a },
+  );
 
   softCircle(scene, Tex.glow, 32, 0xffffff, 0.9);
   softCircle(scene, Tex.shadow, 16, 0x000000, 0.6);

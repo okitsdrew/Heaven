@@ -4,7 +4,9 @@ import { cfg } from '../config';
 import { DevMenu } from '../dev/DevMenu';
 import { Abilities } from '../game/Abilities';
 import { Arrows, Hittable } from '../game/Arrows';
+import { Chunks } from '../game/Chunks';
 import { Dummies } from '../game/Dummies';
+import { Enemies, hpAt, pushOut, spawnRateAt } from '../game/Enemies';
 import { Fairies } from '../game/Fairies';
 import { Fx } from '../game/Fx';
 import { Ground } from '../game/Ground';
@@ -24,6 +26,13 @@ export class GameScene extends Phaser.Scene {
   private playerView!: PlayerView;
   private arrows!: Arrows;
   private dummies!: Dummies;
+  private enemies!: Enemies;
+  private chunks!: Chunks;
+  private targetList: Hittable[] = [];
+  private clock = 0;
+  private kills = 0;
+  private deadTimer = 0;
+  private dead = false;
   private fx!: Fx;
   private ground!: Ground;
   private abilities!: Abilities;
@@ -52,9 +61,11 @@ export class GameScene extends Phaser.Scene {
     this.playerView.slashArms = () => this.swordSlash.flapArms();
     this.arrows = new Arrows(this, this.fx);
     this.dummies = new Dummies(this);
+    this.enemies = new Enemies(this);
+    this.chunks = new Chunks(this, this.fx);
     this.fairies = new Fairies(this, this.fx);
-    this.abilities = new Abilities(this, this.fx, () => this.dummies.list);
-    this.swordSlash = new SwordSlash(this, this.fx, () => this.dummies.list);
+    this.abilities = new Abilities(this, this.fx, () => this.targetList);
+    this.swordSlash = new SwordSlash(this, this.fx, () => this.targetList);
     this.hud = new Hud(this, 3);
 
     this.player.onFire = (_x, _y, dx, dy) => {
@@ -72,18 +83,19 @@ export class GameScene extends Phaser.Scene {
     };
     this.player.onTeleportArrive = (x, y) => this.playerView.onTeleportArrive(x, y);
     this.abilities.onCast = (kind) => this.fairies.flare(kind);
+    this.abilities.onAimStart = () => (this.swordSlash.armed = false);
     this.swordSlash.onDamage = (target, amount, x, y) => {
-      this.dummies.damage(target, amount);
+      this.damage(target, amount);
       toScreen(x, y, screen);
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
     this.abilities.onDamage = (target, amount, x, y) => {
-      this.dummies.damage(target, amount);
+      this.damage(target, amount);
       toScreen(x, y, screen);
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
     this.arrows.onHit = (target, damage, hx, hy) => {
-      this.dummies.damage(target, damage);
+      this.damage(target, damage);
       toScreen(hx, hy, screen);
       this.fx.damageNumber(screen.x, screen.y - cfg.render.arrowHeight - 8, damage);
       this.fx.addShake(cfg.camera.shakeOnHit);
@@ -91,6 +103,17 @@ export class GameScene extends Phaser.Scene {
     this.dummies.onDestroyed = (x, y) => {
       toScreen(x, y, screen);
       this.fx.smoke(screen.x, screen.y - 8 * cfg.render.pixelScale, 10, 10);
+    };
+    this.enemies.onKilled = (x, y, type) => {
+      this.kills++;
+      const px = cfg.render.pixelScale;
+      const size = cfg[type].scale;
+      toScreen(x, y, screen);
+      const cy = screen.y - 9 * px * size;
+      this.fx.smoke(screen.x, cy, Math.round(cfg.enemy.deathSmoke * size), 6 * px * size);
+      if (cfg.enemy.deathFlash > 0) {
+        this.fx.particle({ x: screen.x, y: cy, life: 0.15, from: cfg.enemy.deathFlash * size, to: 0, tint: 0xb9a4ff, depth: screen.y + 2 });
+      }
     };
 
     this.debugGfx = this.add.graphics().setDepth(2e6);
@@ -100,7 +123,15 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(4e6);
 
+    const jump = (s: number) => () => (this.clock = Math.max(0, this.clock + s));
     this.devMenu = new DevMenu([
+      { label: 'Clock +30s', run: jump(30) },
+      { label: 'Clock +60s', run: jump(60) },
+      { label: 'Clock to 5:00', run: () => (this.clock = 300) },
+      { label: 'Clock to 0', run: () => (this.clock = 0) },
+      { label: 'Spawn 50 enemies', run: () => this.spawnBurst(50) },
+      { label: 'Clear enemies', run: () => this.enemies.clear() },
+      { label: 'Restart run', run: () => this.restart() },
       { label: 'Spawn target dummies', run: () => this.dummies.spawnRing(this.player.x, this.player.y) },
       { label: 'Clear dummies', run: () => this.dummies.clear() },
       {
@@ -112,7 +143,6 @@ export class GameScene extends Phaser.Scene {
       },
       { label: 'Recenter player', run: () => Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0 }) },
     ]);
-    this.dummies.spawnRing(0, 0);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input2.destroy());
   }
@@ -134,11 +164,34 @@ export class GameScene extends Phaser.Scene {
 
     this.targets.clear();
     this.dummies.update(dt, this.targets);
-    this.player.fireBlocked = this.swordSlash.blocksFire;
-    this.player.update(dt, input, aimWorld);
-    this.arrows.update(dt, this.targets, cfg.dummy.radius);
+    this.player.fireBlocked = this.swordSlash.blocksFire || this.abilities.blocksFire;
+    if (!this.dead) {
+      this.player.update(dt, input, aimWorld);
+      const body = { x: this.player.x, y: this.player.y, radius: cfg.player.bodyRadius };
+      pushOut(body, this.chunks.obstacles);
+      this.player.x = body.x;
+      this.player.y = body.y;
+      this.clock += dt;
+    }
+
+    const view = { halfW: cam.width / 2, halfH: cam.height / 2 };
+    const slowAt = (x: number, y: number, r: number) => this.abilities.slowAt(x, y, r);
+    this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, slowAt, !this.dead);
+    this.enemies.insertInto(this.targets);
+    this.targetList.length = 0;
+    for (const d of this.dummies.list) if (d.alive) this.targetList.push(d);
+    for (const e of this.enemies.list) if (e.alive) this.targetList.push(e);
+
+    this.arrows.update(dt, this.targets, Math.max(cfg.dummy.radius, this.enemies.maxRadius));
     this.abilities.update(dt, this.player, input, cursor);
     this.swordSlash.update(dt, this.player, input);
+    if (!this.dead && !this.player.invincible && !cfg.debug.godMode) {
+      if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius)) this.die();
+    }
+    if (this.dead) {
+      this.deadTimer -= dt;
+      if (this.deadTimer <= 0) this.restart();
+    }
     this.fairies.update(dt, this.player, { fire: this.abilities.fireAttach(), ice: this.abilities.iceAttach() });
     this.fx.update(dt);
 
@@ -151,18 +204,55 @@ export class GameScene extends Phaser.Scene {
     cam.scrollY = this.camCenter.y - cam.height / 2 + this.fx.shakeOffset.y;
 
     this.ground.update(cam);
-    this.playerView.update(dt);
+    this.chunks.update(dt, cam);
+    if (!this.dead) this.playerView.update(dt);
     this.arrows.render();
     this.dummies.render();
+    this.enemies.render(this.player.x);
     this.hud.update(cam.width, cam.height, [
-      { key: 'Q', color: 0xff7a20, enabled: cfg.abilities.fireFairy, remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown },
-      { key: 'E', color: 0x7fd4ff, enabled: cfg.abilities.iceFairy, remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown },
+      { key: 'Q', color: 0xff7a20, enabled: cfg.abilities.fireFairy, remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
+      { key: 'E', color: 0x7fd4ff, enabled: cfg.abilities.iceFairy, remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown, active: this.abilities.aiming === 'ice' },
       { key: 'R', color: 0xb070ff, enabled: cfg.abilities.swordSlash, remaining: this.swordSlash.cooldown, total: cfg.swordSlash.cooldown, active: this.swordSlash.armed || this.swordSlash.active },
     ]);
     this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
     this.drawDebug();
 
     input.endFrame();
+  }
+
+  private damage(target: Hittable, amount: number): void {
+    if (target.kind === 'enemy') this.enemies.damage(target, amount, this.player.x, this.player.y);
+    else this.dummies.damage(target, amount);
+  }
+
+  private spawnBurst(n: number): void {
+    const cam = this.cameras.main;
+    const view = { halfW: cam.width / 2, halfH: cam.height / 2 };
+    for (let i = 0; i < n; i++) this.enemies.spawn(this.clock, this.player.x, this.player.y, view);
+  }
+
+  // Placeholder until the run loop and end screen exist: smoke, shake, then a fresh run in place.
+  private die(): void {
+    this.dead = true;
+    this.deadTimer = cfg.run.restartDelay;
+    this.playerView.setVisible(false);
+    this.swordSlash.interrupt();
+    toScreen(this.player.x, this.player.y, screen);
+    const px = cfg.render.pixelScale;
+    this.fx.smoke(screen.x, screen.y - 10 * px, cfg.run.deathSmoke, 8 * px);
+    this.fx.particle({ x: screen.x, y: screen.y - 10 * px, life: 0.3, from: 3, to: 0, tint: 0xffe0b0 });
+    this.fx.addShake(cfg.run.deathShake);
+  }
+
+  private restart(): void {
+    this.dead = false;
+    this.clock = 0;
+    this.kills = 0;
+    this.enemies.clear();
+    this.abilities.resetCooldowns();
+    this.swordSlash.cooldown = 0;
+    Object.assign(this.player, { vx: 0, vy: 0 });
+    this.playerView.setVisible(true);
   }
 
   private drawDebug(): void {
@@ -173,7 +263,12 @@ export class GameScene extends Phaser.Scene {
       this.stats.setText(
         [
           `fps ${this.game.loop.actualFps.toFixed(0)}`,
+          `enemies ${this.enemies.count}/${cfg.spawn.maxEnemies}`,
+          `clock ${clock(this.clock)}${cfg.debug.godMode ? '  GOD' : ''}`,
+          `spawn ${spawnRateAt(this.clock).toFixed(1)}/s  hp ${Math.round(hpAt(this.clock))}`,
+          `kills ${this.kills}`,
           `arrows ${this.arrows.activeCount}`,
+          `chunks ${this.chunks.loaded}  obstacles ${this.chunks.obstacles.length}`,
           `dummies ${this.dummies.aliveCount}/${this.dummies.list.length}`,
           `time x${cfg.time.timeScale}`,
         ].join('\n'),
@@ -188,6 +283,14 @@ export class GameScene extends Phaser.Scene {
     };
     circle(this.player.x, this.player.y, cfg.player.hitRadius, this.player.invincible ? 0x55ff99 : 0xff5566);
     for (const d of this.dummies.list) if (d.alive) circle(d.x, d.y, d.radius, 0xffcc55);
+    this.enemies.forEach((x, y, r) => circle(x, y, r, 0xff9944));
+    for (const o of this.chunks.obstacles) circle(o.x, o.y, o.radius, 0x99aaff);
     this.arrows.forEachActive((x, y, r) => circle(x, y, r, 0x66ccff));
   }
+}
+
+function clock(t: number): string {
+  const m = Math.floor(t / 60);
+  const sec = Math.floor(t % 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
 }

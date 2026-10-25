@@ -18,7 +18,7 @@ const screen = { x: 0, y: 0 };
 // Training targets for testing arrows before enemies exist. Spawned from the dev menu.
 export class Dummies {
   readonly list: Dummy[] = [];
-  private nextId = 1;
+  private nextId = 1e9;
 
   onDestroyed: (x: number, y: number) => void = () => {};
 
@@ -34,6 +34,7 @@ export class Dummies {
 
   spawn(x: number, y: number): void {
     this.list.push({
+      kind: 'dummy',
       id: this.nextId++,
       x,
       y,

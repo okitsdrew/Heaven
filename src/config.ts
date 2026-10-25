@@ -9,6 +9,7 @@ export const defaults = {
     screenSpeedMult: 1,
     accel: 4000,
     hitRadius: 6,
+    bodyRadius: 10,
   },
   bow: {
     fireRate: 1,
@@ -82,6 +83,77 @@ export const defaults = {
   world: {
     despawnRadius: 1200,
   },
+  run: {
+    restartDelay: 1.5,
+    deathShake: 10,
+    deathSmoke: 30,
+  },
+  spawn: {
+    enabled: true,
+    maxEnemies: 250,
+    startRate: 3,
+    holdTime: 20,
+    maxRate: 50,
+    rampEnd: 300,
+    rateCurve: 1.5,
+    hpStart: 10,
+    hpMax: 2500,
+    hpCurve: 3,
+    screenMargin: 60,
+    despawnMargin: 500,
+  },
+  enemy: {
+    turnRate: 6,
+    separation: 0.5,
+    separationRate: 14,
+    contactScale: 0.6,
+    knockback: 80,
+    knockbackDecay: 12,
+    avoidLookahead: 70,
+    bobHeight: 1.5,
+    bobSpeed: 3,
+    hemFlicker: 6,
+    deathSmoke: 8,
+    deathFlash: 0.6,
+  },
+  wraith: {
+    speedMult: 0.6,
+    hpMult: 1,
+    radius: 12,
+    scale: 1,
+    appearAt: 0,
+    weight: 1,
+  },
+  shade: {
+    speedMult: 0.85,
+    hpMult: 0.5,
+    radius: 10,
+    scale: 0.85,
+    appearAt: 30,
+    weight: 0.35,
+  },
+  husk: {
+    speedMult: 0.4,
+    hpMult: 3,
+    radius: 20,
+    scale: 1.6,
+    appearAt: 90,
+    weight: 0.2,
+  },
+  map: {
+    seed: 1,
+    chunkSize: 512,
+    decorPerChunk: 5,
+    burningChance: 0.2,
+    obstacleChance: 0.15,
+    obstacleMinRadius: 30,
+    obstacleMaxRadius: 60,
+    safeRadius: 300,
+    lightRadius: 140,
+    lightAlpha: 0.35,
+    lightFlicker: 0.3,
+    flameRate: 10,
+  },
   iceStorm: {
     damage: 20,
     radius: 160,
@@ -154,6 +226,7 @@ export const defaults = {
   debug: {
     showHitboxes: false,
     showStats: true,
+    godMode: false,
   },
 };
 
@@ -161,6 +234,17 @@ export type Config = typeof defaults;
 export type Section = keyof Config;
 
 export type Param = { min: number; max: number; step: number } | 'bool';
+
+function kindMeta() {
+  return {
+    speedMult: { min: 0.05, max: 2, step: 0.05 },
+    hpMult: { min: 0.05, max: 20, step: 0.05 },
+    radius: { min: 2, max: 80, step: 1 },
+    scale: { min: 0.3, max: 4, step: 0.05 },
+    appearAt: { min: 0, max: 600, step: 5 },
+    weight: { min: 0, max: 5, step: 0.05 },
+  };
+}
 
 // Ranges for the dev menu. The type forces an entry for every config value.
 export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
@@ -172,6 +256,7 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     screenSpeedMult: { min: 0.3, max: 2, step: 0.05 },
     accel: { min: 200, max: 20000, step: 100 },
     hitRadius: { min: 1, max: 30, step: 1 },
+    bodyRadius: { min: 1, max: 40, step: 1 },
   },
   bow: {
     fireRate: { min: 0.1, max: 20, step: 0.1 },
@@ -245,6 +330,56 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
   world: {
     despawnRadius: { min: 300, max: 4000, step: 50 },
   },
+  run: {
+    restartDelay: { min: 0, max: 5, step: 0.1 },
+    deathShake: { min: 0, max: 40, step: 1 },
+    deathSmoke: { min: 0, max: 100, step: 1 },
+  },
+  spawn: {
+    enabled: 'bool',
+    maxEnemies: { min: 0, max: 1000, step: 10 },
+    startRate: { min: 0, max: 50, step: 0.5 },
+    holdTime: { min: 0, max: 120, step: 1 },
+    maxRate: { min: 0, max: 200, step: 1 },
+    rampEnd: { min: 30, max: 900, step: 10 },
+    rateCurve: { min: 0.2, max: 5, step: 0.1 },
+    hpStart: { min: 1, max: 1000, step: 1 },
+    hpMax: { min: 1, max: 20000, step: 10 },
+    hpCurve: { min: 0.2, max: 8, step: 0.1 },
+    screenMargin: { min: 0, max: 400, step: 10 },
+    despawnMargin: { min: 50, max: 2000, step: 25 },
+  },
+  enemy: {
+    turnRate: { min: 0.5, max: 30, step: 0.5 },
+    separation: { min: 0, max: 1, step: 0.05 },
+    separationRate: { min: 0, max: 60, step: 1 },
+    contactScale: { min: 0.1, max: 1.5, step: 0.05 },
+    knockback: { min: 0, max: 500, step: 5 },
+    knockbackDecay: { min: 1, max: 40, step: 1 },
+    avoidLookahead: { min: 0, max: 300, step: 5 },
+    bobHeight: { min: 0, max: 8, step: 0.5 },
+    bobSpeed: { min: 0, max: 12, step: 0.5 },
+    hemFlicker: { min: 0, max: 20, step: 0.5 },
+    deathSmoke: { min: 0, max: 40, step: 1 },
+    deathFlash: { min: 0, max: 2, step: 0.05 },
+  },
+  wraith: kindMeta(),
+  shade: kindMeta(),
+  husk: kindMeta(),
+  map: {
+    seed: { min: 1, max: 9999, step: 1 },
+    chunkSize: { min: 128, max: 2048, step: 64 },
+    decorPerChunk: { min: 0, max: 40, step: 1 },
+    burningChance: { min: 0, max: 1, step: 0.05 },
+    obstacleChance: { min: 0, max: 1, step: 0.01 },
+    obstacleMinRadius: { min: 10, max: 200, step: 5 },
+    obstacleMaxRadius: { min: 10, max: 300, step: 5 },
+    safeRadius: { min: 0, max: 1500, step: 25 },
+    lightRadius: { min: 20, max: 500, step: 5 },
+    lightAlpha: { min: 0, max: 1, step: 0.05 },
+    lightFlicker: { min: 0, max: 1, step: 0.05 },
+    flameRate: { min: 0, max: 60, step: 1 },
+  },
   iceStorm: {
     damage: { min: 1, max: 1000, step: 1 },
     radius: { min: 30, max: 600, step: 5 },
@@ -317,6 +452,7 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
   debug: {
     showHitboxes: 'bool',
     showStats: 'bool',
+    godMode: 'bool',
   },
 };
 

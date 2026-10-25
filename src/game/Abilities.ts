@@ -39,9 +39,18 @@ export class Abilities {
   private waveGfx: Phaser.GameObjects.Graphics;
   private preview = { fire: false, ice: false, x: 0, y: 0, dirX: 1, dirY: 0, targetX: 0, targetY: 0 };
   private time = 0;
+  // Q or E arms a spell and shows where it will land; the next click casts it.
+  aiming: 'fire' | 'ice' | null = null;
+  // The casting click is held down; keep it from also firing the bow until it's released.
+  private swallowFire = false;
 
   onDamage: (target: Hittable, amount: number, x: number, y: number) => void = () => {};
   onCast: (kind: 'fire' | 'ice') => void = () => {};
+  onAimStart: () => void = () => {};
+
+  get blocksFire(): boolean {
+    return this.aiming !== null || this.swallowFire;
+  }
 
   constructor(scene: Phaser.Scene, private fx: Fx, private targets: () => readonly Hittable[]) {
     this.gfx = scene.add.graphics().setDepth(-5e8).setBlendMode(Phaser.BlendModes.ADD);
@@ -80,10 +89,18 @@ export class Abilities {
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
     this.iceCooldown = Math.max(0, this.iceCooldown - dt);
 
-    // Holding a spell key previews where it will land; releasing casts it.
+    // Pressing a spell key aims it (pressing it again cancels); clicking casts.
     const target = cursor ?? { x: player.x + player.aimX * 200, y: player.y + player.aimY * 200 };
-    this.preview.fire = cfg.abilities.fireFairy && input.isDown('abilityQ');
-    this.preview.ice = cfg.abilities.iceFairy && input.isDown('abilityE');
+    const was = this.aiming;
+    if (input.justPressed('abilityQ')) this.aiming = this.aiming === 'fire' ? null : 'fire';
+    if (input.justPressed('abilityE')) this.aiming = this.aiming === 'ice' ? null : 'ice';
+    if (input.justPressed('abilityR')) this.aiming = null;
+    if (this.aiming === 'fire' && !cfg.abilities.fireFairy) this.aiming = null;
+    if (this.aiming === 'ice' && !cfg.abilities.iceFairy) this.aiming = null;
+    if (this.aiming && this.aiming !== was) this.onAimStart();
+    if (this.swallowFire && !input.isDown('fire')) this.swallowFire = false;
+    this.preview.fire = this.aiming === 'fire';
+    this.preview.ice = this.aiming === 'ice';
     this.preview.x = player.x;
     this.preview.y = player.y;
     this.preview.dirX = player.aimX;
@@ -91,13 +108,18 @@ export class Abilities {
     this.preview.targetX = target.x;
     this.preview.targetY = target.y;
 
-    if (cfg.abilities.fireFairy && input.justReleased('abilityQ') && this.fireCooldown <= 0) {
-      this.fireCooldown = cfg.fireWave.cooldown;
-      this.castFireWave(player.x, player.y, player.aimX, player.aimY);
-    }
-    if (cfg.abilities.iceFairy && input.justReleased('abilityE') && this.iceCooldown <= 0) {
-      this.iceCooldown = cfg.iceStorm.cooldown;
-      this.castIceStorm(target);
+    // A click while the spell is still cooling down does nothing and keeps it aimed.
+    if (this.aiming && input.justPressed('fire')) {
+      this.swallowFire = true;
+      if (this.aiming === 'fire' && this.fireCooldown <= 0) {
+        this.aiming = null;
+        this.fireCooldown = cfg.fireWave.cooldown;
+        this.castFireWave(player.x, player.y, player.aimX, player.aimY);
+      } else if (this.aiming === 'ice' && this.iceCooldown <= 0) {
+        this.aiming = null;
+        this.iceCooldown = cfg.iceStorm.cooldown;
+        this.castIceStorm(target);
+      }
     }
 
     this.time += dt;
@@ -223,7 +245,7 @@ export class Abilities {
     for (const s of this.storms) this.drawStorm(g, s);
   }
 
-  // Outlines of where a held spell will land, dimmed while it is still on cooldown.
+  // Outlines of where an aimed spell will land, dimmed while it is still on cooldown.
   private drawPreviews(g: Phaser.GameObjects.Graphics): void {
     const pv = this.preview;
     const pulse = 0.7 + 0.3 * Math.sin(this.time * 10);
