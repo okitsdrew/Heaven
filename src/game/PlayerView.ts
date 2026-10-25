@@ -40,6 +40,9 @@ export class PlayerView {
   private raise = 0;
   private walk = 0;
   private armsUp = 0;
+  private flapAmt = [0, 0];
+  // Which screen-side arms flap for the current sword slash.
+  slashArms: () => { right: boolean; left: boolean } = () => ({ right: false, left: false });
   private dustTimer = 0;
   private time = 0;
 
@@ -161,7 +164,12 @@ export class PlayerView {
     this.walk = Phaser.Math.Clamp(this.walk + (moving ? dt : -dt) / 0.1, 0, 1);
     const walkFlap = swing * (f.walkArmFlap / 2.5);
     const shootFlap = Math.sin(this.time * f.shootFlapRate) * f.walkArmFlap * px;
-    const pose = (shoulder: Vec2, side: number, flapSign: number): Vec2 => {
+    const slash = this.slashArms();
+    const wantA = bowSide > 0 ? slash.right : slash.left;
+    const wantB = bowSide > 0 ? slash.left : slash.right;
+    this.flapAmt[0] += ((wantA ? 1 : 0) - this.flapAmt[0]) * Math.min(1, dt / 0.05);
+    this.flapAmt[1] += ((wantB ? 1 : 0) - this.flapAmt[1]) * Math.min(1, dt / 0.05);
+    const pose = (shoulder: Vec2, side: number, flapSign: number, flap: number): Vec2 => {
       const rest = { x: shoulder.x + side * 1.5 * px, y: shoulder.y + 8 * px + swing * flapSign };
       const walking = {
         x: shoulder.x + side * f.walkArmSpread * px,
@@ -171,10 +179,10 @@ export class PlayerView {
         x: shoulder.x + side * f.shootArmSpread * px,
         y: shoulder.y + f.shootArmDrop * px + shootFlap * flapSign,
       };
-      return lerp(lerp(rest, walking, this.walk), shooting, poseT);
+      return lerp(lerp(rest, walking, this.walk), shooting, Math.max(poseT, flap));
     };
-    const armA = solveArm(shoulderA, pose(shoulderA, bowSide, 1), f.armLength * px);
-    const armB = solveArm(shoulderB, pose(shoulderB, -bowSide, -1), f.armLength * px);
+    const armA = solveArm(shoulderA, pose(shoulderA, bowSide, 1, this.flapAmt[0]), f.armLength * px);
+    const armB = solveArm(shoulderB, pose(shoulderB, -bowSide, -1, this.flapAmt[1]), f.armLength * px);
 
     // The bow floats in front of him toward the cursor and phases in only while he shoots.
     const visRate = p.readyTimer > 0 ? dt / Math.max(f.bowPhaseInTime, 1e-4) : -dt / Math.max(f.bowPhaseOutTime, 1e-4);

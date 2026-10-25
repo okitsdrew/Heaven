@@ -24,6 +24,7 @@ interface Effect {
 
 const screen = { x: 0, y: 0 };
 const SLASH_LIGHT = 0xb070ff;
+const FIRE = [0x7a2fd0, 0xb070ff, 0xf0e0ff];
 const SLASH_WHITE = 0xf0e0ff;
 
 // Toggle skill: press R to arm it, and the next attack becomes three consecutive sword swings
@@ -39,8 +40,9 @@ export class SwordSlash {
   private flash: Phaser.GameObjects.Graphics;
   private swordGfx: Phaser.GameObjects.Graphics;
   private swordGlow: Phaser.GameObjects.Graphics;
-  private sword = { x: 0, y: 0, angle: 0, unsheathed: 0, placed: false };
+  private sword = { x: 0, y: 0, angle: 0, placed: false };
   private wispTimer = 0;
+  private heat = 0;
 
   onDamage: (target: Hittable, amount: number, x: number, y: number) => void = () => {};
 
@@ -49,6 +51,12 @@ export class SwordSlash {
     this.flash = scene.add.graphics().setDepth(9e5).setBlendMode(Phaser.BlendModes.ADD);
     this.swordGfx = scene.add.graphics();
     this.swordGlow = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+  }
+
+  // Which arms flap: right on the first swing, left on the second, both on the slam.
+  flapArms(): { left: boolean; right: boolean } {
+    const swing = this.slash?.swing;
+    return { right: swing === 0 || swing === 2, left: swing === 1 || swing === 2 };
   }
 
   get active(): boolean {
@@ -92,7 +100,10 @@ export class SwordSlash {
     this.ground.clear();
     this.flash.clear();
     if (this.slash?.phase === 'telegraph') this.drawTelegraph(player, this.slash);
-    for (const e of this.effects) this.drawEffect(e);
+    for (const e of this.effects) {
+      this.drawEffect(e);
+      if (e.kind === 'cone' && e.age <= cfg.swordSlash.slashTime) this.leadEmbers(e);
+    }
     this.updateSword(dt, player);
   }
 
@@ -144,33 +155,81 @@ export class SwordSlash {
       }
     }
     this.effects.push({ kind: 'slam', ox: player.x, oy: player.y, base, sign: 1, age: 0 });
-    this.fx.addShake(cfg.camera.shakeOnCast * 2);
+    this.fx.addShake(c.slamShake);
     this.slamBurst(player.x, player.y, player.aimX, player.aimY);
   }
 
   private slamBurst(x: number, y: number, dirX: number, dirY: number): void {
     const c = cfg.swordSlash;
     const px = cfg.render.pixelScale;
-    for (let i = 0; i < 40; i++) {
+    // Explosion flash at the impact end of the rectangle and along its middle.
+    for (const f of [0.55, 1]) {
+      toScreen(x + dirX * c.slamLength * f, y + dirY * c.slamLength * f, screen);
+      this.fx.particle({
+        x: screen.x,
+        y: screen.y - 6 * px,
+        life: 0.3,
+        from: 3 + 3 * f,
+        to: 7 + 4 * f,
+        alpha: 1,
+        tint: 0xe6d0ff,
+        depth: 1e6,
+      });
+    }
+    for (let i = 0; i < 70; i++) {
       const along = Math.random() * c.slamLength;
       const side = (Math.random() - 0.5) * c.slamWidth;
       toScreen(x + dirX * along - dirY * side, y + dirY * along + dirX * side, screen);
-      const smoke = Math.random() < 0.4;
+      const smoke = Math.random() < 0.3;
       this.fx.particle({
         texture: smoke ? Tex.smoke : Tex.glow,
         x: screen.x,
         y: screen.y - 4 * px,
-        life: 0.3 + Math.random() * 0.4,
-        from: smoke ? px * 0.6 : 0.5,
-        to: smoke ? px * 1.8 : 0.1,
+        life: 0.3 + Math.random() * 0.5,
+        from: smoke ? px * 0.6 : 0.4 + Math.random() * 0.4,
+        to: smoke ? px * 2 : 0.1,
         alpha: 0.9,
-        tint: smoke ? 0x3a2a55 : SLASH_LIGHT,
+        tint: smoke ? 0x3a2a55 : FIRE[Math.floor(Math.random() * 3)],
         additive: !smoke,
-        vx: (Math.random() - 0.5) * 60,
-        vy: -30 - Math.random() * 60,
+        vx: (Math.random() - 0.5) * 90,
+        vy: -50 - Math.random() * 110,
         depth: screen.y + 2,
       });
     }
+  }
+
+  // Purple fire thrown off the leading edge of a cone swing.
+  private leadEmbers(e: Effect): void {
+    const c = cfg.swordSlash;
+    const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
+    const prog = Math.min(1, e.age / c.slashTime);
+    const lead = e.base - e.sign * half + e.sign * half * 2 * Math.pow(prog, c.sweepPower);
+    for (let i = 0; i < 6; i++) {
+      const r = c.coneRange * (0.4 + Math.random() * 0.6);
+      const p = this.world(e.ox, e.oy, lead, r);
+      this.fx.particle({
+        x: p.x,
+        y: p.y - 6 * cfg.render.pixelScale,
+        life: 0.25 + Math.random() * 0.25,
+        from: 0.4 + Math.random() * 0.3,
+        to: 0.05,
+        alpha: 0.95,
+        tint: FIRE[Math.floor(Math.random() * 3)],
+        vx: (Math.random() - 0.5) * 40,
+        vy: -30 - Math.random() * 70,
+        depth: p.y + 2,
+      });
+    }
+  }
+
+  // A flickering purple flame tongue standing on a screen point.
+  private flame(g: Phaser.GameObjects.Graphics, x: number, y: number, height: number, width: number, seed: number, alpha: number): void {
+    const sway = Math.sin(this.time * 9 + seed) * width * 0.6;
+    FIRE.forEach((color, i) => {
+      const k = 1 - i * 0.28;
+      g.fillStyle(color, alpha * (0.55 + i * 0.2));
+      g.fillTriangle(x - width * k, y, x + width * k, y, x + sway * k, y - height * k);
+    });
   }
 
   private world(x: number, y: number, angle: number, r: number): Vec2 {
@@ -211,7 +270,7 @@ export class SwordSlash {
     if (e.kind === 'cone') {
       const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
       const prog = Math.min(1, e.age / c.slashTime);
-      const eased = 1 - (1 - prog) * (1 - prog);
+      const eased = Math.pow(prog, c.sweepPower);
       const start = e.base - e.sign * half;
       const span = e.sign * half * 2 * eased;
       const r0 = c.coneRange * 0.4;
@@ -229,8 +288,22 @@ export class SwordSlash {
       const lead = start + span;
       const a = this.world(e.ox, e.oy, lead, r0);
       const b = this.world(e.ox, e.oy, lead, r1);
-      g.lineStyle(3, SLASH_WHITE, fade);
+      g.lineStyle(4, SLASH_WHITE, fade);
       g.lineBetween(a.x, a.y, b.x, b.y);
+
+      // Purple fire erupting across the swept area, tallest at the leading edge.
+      const px = cfg.render.pixelScale;
+      const cols = 12;
+      for (let k = 0; k <= cols; k++) {
+        const f = k / cols;
+        const ang = start + span * f;
+        for (let j = 0; j < 4; j++) {
+          const r = r0 + (r1 - r0) * ((j + 0.5) / 4);
+          const p = this.world(e.ox, e.oy, ang, r);
+          const flick = 0.6 + 0.4 * Math.sin(this.time * 18 + k * 2.1 + j * 1.3);
+          this.flame(g, p.x, p.y, px * (6 + 16 * f * f) * flick, px * 3, k * 3 + j, fade * (0.3 + 0.7 * f));
+        }
+      }
       return;
     }
 
@@ -251,6 +324,23 @@ export class SwordSlash {
     g.lineStyle(3, SLASH_WHITE, fade * (1 - wave * 0.5));
     g.strokeEllipse(ring.x, ring.y, c.slamWidth * 1.6 * (0.4 + wave), c.slamWidth * 0.8 * (0.4 + wave));
 
+    const flash = Math.max(0, 1 - e.age / 0.12);
+    if (flash > 0) {
+      g.fillStyle(SLASH_WHITE, 0.8 * flash);
+      g.fillPoints(poly, true);
+    }
+    const px = cfg.render.pixelScale;
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 9; j++) {
+        const p = toScreen(
+          e.ox + dirX * c.slamLength * ((j + 0.5) / 9) - dirY * hw * (((i + 0.5) / 6) * 2 - 1),
+          e.oy + dirY * c.slamLength * ((j + 0.5) / 9) + dirX * hw * (((i + 0.5) / 6) * 2 - 1),
+        );
+        const flick = 0.6 + 0.4 * Math.sin(this.time * 16 + i * 1.7 + j * 2.3);
+        this.flame(g, p.x, p.y, px * (10 + 14 * flick) * fade, px * 3.5, i * 9 + j, fade * 0.8);
+      }
+    }
+
     g.lineStyle(2, SLASH_WHITE, fade);
     let prev = corner(0, 0);
     for (let i = 1; i <= 8; i++) {
@@ -262,8 +352,8 @@ export class SwordSlash {
     }
   }
 
-  // The sheathed sword circles the player like the fairies, on a wider ring. It unsheathes when armed
-  // and flies to each swing's start while the combo plays out.
+  // The sword circles the player like the fairies, on a wider ring, blade out. It flies to each swing's start
+  // and winds up slowly during the telegraph, then whips through the strike.
   private updateSword(dt: number, player: Player): void {
     const gfx = this.swordGfx;
     const glow = this.swordGlow;
@@ -279,7 +369,6 @@ export class SwordSlash {
     let tx: number;
     let ty: number;
     let tAngle: number;
-    let unsheathed = 0;
     let rate = 10;
     let depth: number;
 
@@ -288,16 +377,19 @@ export class SwordSlash {
       tx = P.x + Math.cos(this.orbit) * c.orbitRadius;
       ty = P.y - c.height * px + Math.sin(this.orbit) * c.orbitRadius * 0.5;
       tAngle = this.orbit + Math.PI / 2;
-      unsheathed = this.armed ? 1 : 0;
       depth = P.y + (Math.sin(this.orbit) < 0 ? -0.6 : 0.6);
     } else {
-      rate = 28;
-      unsheathed = 1;
+      const wind = s.phase === 'telegraph' ? Math.min(1, s.t / c.telegraphTime) : 1;
+      const windEase = wind * wind * (3 - 2 * wind);
+      const strike = s.phase === 'strike' ? Math.min(1, s.t / c.slashTime) : 0;
+      const fast = Math.pow(strike, c.sweepPower);
+      rate = s.phase === 'strike' ? 70 : 12;
       if (s.swing < 2) {
         const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
         const sign = s.swing === 0 ? -1 : 1;
-        const sweep = s.phase === 'strike' ? Math.min(1, s.t / c.slashTime) : 0;
-        const a = base - sign * half + sign * half * 2 * sweep;
+        const back = Phaser.Math.DegToRad(c.windupAngle) * windEase;
+        const from = base - sign * (half + back);
+        const a = from + sign * (half * 2 + back) * fast;
         const pos = this.world(player.x, player.y, a, c.coneRange * 0.65);
         const out = toScreen(Math.cos(a), Math.sin(a));
         tx = pos.x;
@@ -305,13 +397,13 @@ export class SwordSlash {
         tAngle = Math.atan2(out.y, out.x);
       } else if (s.phase === 'telegraph') {
         tx = P.x;
-        ty = P.y - 38 * px;
+        ty = P.y - (30 + 14 * windEase) * px;
         tAngle = -Math.PI / 2;
       } else {
-        const pos = this.world(player.x, player.y, base, c.slamLength * 0.55);
+        const pos = this.world(player.x, player.y, base, c.slamLength * 0.55 * Math.max(0.15, fast));
         const out = toScreen(player.aimX, player.aimY);
         tx = pos.x;
-        ty = pos.y - 6 * px;
+        ty = pos.y - (6 + 32 * (1 - fast)) * px;
         tAngle = Math.atan2(out.y, out.x);
       }
       depth = ty + 1;
@@ -328,14 +420,18 @@ export class SwordSlash {
     sw.x += (tx - sw.x) * follow;
     sw.y += (ty - sw.y) * follow;
     sw.angle += Phaser.Math.Angle.Wrap(tAngle - sw.angle) * follow;
-    sw.unsheathed += (unsheathed - sw.unsheathed) * Math.min(1, dt * 15);
-    const u = sw.unsheathed;
+    const lit = this.armed || this.active ? 1 : 0;
+    this.heat += (lit - this.heat) * Math.min(1, dt * 6);
+    const heat = this.heat;
 
     gfx.setDepth(depth);
     glow.setDepth(depth - 0.1);
     const cos = Math.cos(sw.angle);
     const sin = Math.sin(sw.angle);
-    const at = (d: number): Vec2 => ({ x: sw.x + cos * d * px, y: sw.y + sin * d * px });
+    const at = (d: number, w = 0): Vec2 => ({
+      x: sw.x + cos * d * px - sin * w * px,
+      y: sw.y + sin * d * px + cos * w * px,
+    });
     const pulse = 0.8 + 0.2 * Math.sin(this.time * 14);
 
     // Grip and cross guard.
@@ -345,48 +441,53 @@ export class SwordSlash {
     gfx.lineBetween(g0.x, g0.y, g1.x, g1.y);
     gfx.lineStyle(1.4 * px, 0x4a1a7a, 1);
     gfx.lineBetween(g0.x, g0.y, g1.x, g1.y);
-    const gl = { x: g1.x - sin * 3.5 * px, y: g1.y + cos * 3.5 * px };
-    const gr = { x: g1.x + sin * 3.5 * px, y: g1.y - cos * 3.5 * px };
+    const gl = at(4, -3.5);
+    const gr = at(4, 3.5);
     gfx.lineStyle(1.6 * px, 0x7a2fd0, 1);
     gfx.lineBetween(gl.x, gl.y, gr.x, gr.y);
 
-    // Scabbard fades out as the blade slides into view.
-    const sheathEnd = at(20);
-    if (u < 0.99) {
-      gfx.lineStyle(3.6 * px, 0x07000d, 1 - u);
-      gfx.lineBetween(g1.x, g1.y, sheathEnd.x, sheathEnd.y);
-      gfx.lineStyle(2.4 * px, 0x2a0a4a, 1 - u);
-      gfx.lineBetween(g1.x, g1.y, sheathEnd.x, sheathEnd.y);
-      glow.lineStyle(6 * px, 0x7a2fd0, 0.3 * (1 - u));
-      glow.lineBetween(g1.x, g1.y, sheathEnd.x, sheathEnd.y);
-    }
-    if (u > 0.01) {
-      const bladeEnd = at(4 + 18 * u);
-      glow.lineStyle(7 * px, 0xa060ff, 0.5 * u * pulse);
-      glow.lineBetween(g1.x, g1.y, bladeEnd.x, bladeEnd.y);
-      gfx.lineStyle(2.2 * px, 0xe0c8ff, u);
-      gfx.lineBetween(g1.x, g1.y, bladeEnd.x, bladeEnd.y);
-      gfx.lineStyle(1 * px, 0xffffff, u);
-      gfx.lineBetween(g1.x, g1.y, bladeEnd.x, bladeEnd.y);
+    // Sharp tapered blade with a bright edge.
+    const tip = at(27);
+    const blade = [at(4, -2.2), at(4, 2.2), at(23, 1.6), tip, at(23, -1.6)];
+    glow.lineStyle(7 * px, 0xa060ff, (0.35 + 0.35 * heat) * pulse);
+    glow.lineBetween(g1.x, g1.y, tip.x, tip.y);
+    gfx.fillStyle(0xcfb0ff, 1);
+    gfx.fillPoints(blade, true);
+    gfx.fillStyle(0xffffff, 1);
+    gfx.fillTriangle(at(4, 0).x, at(4, 0).y, at(23, 0.6).x, at(23, 0.6).y, tip.x, tip.y);
+    gfx.lineStyle(1, 0x5a1aa0, 1);
+    gfx.strokePoints(blade, true);
 
-      this.wispTimer += dt * 22 * u;
+    // Purple fire radiating off the blade while the skill is on.
+    if (heat > 0.02) {
+      for (let i = 0; i < 6; i++) {
+        const d = 7 + i * 3.6;
+        const p = at(d, Math.sin(this.time * 7 + i * 1.7) * 1.2);
+        const h = px * (7 + 6 * Math.sin(this.time * 11 + i * 2.3) ** 2) * heat * (1 - i * 0.07);
+        this.flame(glow, p.x, p.y, h, px * 2.2, i * 5 + 1, heat * 0.85);
+      }
+      glow.fillStyle(0xa060ff, 0.25 * heat);
+      glow.fillCircle(at(16).x, at(16).y, 14 * px * pulse);
+
+      this.wispTimer += dt * 40 * heat;
       while (this.wispTimer >= 1) {
         this.wispTimer -= 1;
+        const p = at(5 + Math.random() * 22, (Math.random() - 0.5) * 3);
         this.fx.particle({
-          x: bladeEnd.x + (Math.random() - 0.5) * 4,
-          y: bladeEnd.y + (Math.random() - 0.5) * 4,
-          life: 0.25 + Math.random() * 0.25,
-          from: 0.25,
+          x: p.x,
+          y: p.y,
+          life: 0.3 + Math.random() * 0.3,
+          from: 0.3,
           to: 0.05,
           alpha: 0.9,
-          tint: Math.random() < 0.5 ? 0xa060ff : 0x6a20c0,
-          vx: (Math.random() - 0.5) * 20,
-          vy: -10 - Math.random() * 20,
+          tint: FIRE[Math.floor(Math.random() * FIRE.length)],
+          vx: (Math.random() - 0.5) * 24,
+          vy: -25 - Math.random() * 35,
           depth: depth + 1,
         });
       }
     }
-    glow.fillStyle(0xa060ff, 0.35 + 0.25 * u);
+    glow.fillStyle(0xa060ff, 0.35 + 0.25 * heat);
     glow.fillCircle(g1.x, g1.y, 2.2 * px);
   }
 }
