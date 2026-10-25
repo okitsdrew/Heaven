@@ -9,7 +9,6 @@ import { Player } from './Player';
 const SHOULDER_X = 4;
 const SHOULDER_Y = 12;
 const CHEST_Y = 10;
-const BACK_Y = 13;
 
 const screen = { x: 0, y: 0 };
 const ahead = { x: 0, y: 0 };
@@ -31,6 +30,7 @@ export class PlayerView {
   private phase = 0;
   private raise = 0;
   private walk = 0;
+  private time = 0;
 
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
     this.shadow = scene.add.image(0, 0, Tex.shadow);
@@ -101,10 +101,11 @@ export class PlayerView {
       .setAlpha(p.dashing ? 0.55 : 1);
     this.shadow.setPosition(screen.x, screen.y).setScale(px * 0.9, px * 0.35).setDepth(screen.y - 1000);
 
-    // The bow lives on his back and is grabbed very fast when he shoots, then stowed more slowly.
-    const rate = p.readyTimer > 0 ? dt / Math.max(f.bowGrabTime, 1e-4) : -dt / Math.max(f.bowStowTime, 1e-4);
+    // While shooting he holds his arms up as if steering the bow with magic, and flaps them.
+    const rate = p.readyTimer > 0 ? dt / Math.max(f.shootPoseTime, 1e-4) : -dt / Math.max(f.shootPoseTime, 1e-4);
     this.raise = Phaser.Math.Clamp(this.raise + rate, 0, 1);
     const t = this.raise * this.raise * (3 - 2 * this.raise);
+    this.time += dt;
 
     this.kick = Math.max(0, this.kick - dt);
     const kickT = f.bowKickTime > 0 ? this.kick / f.bowKickTime : 0;
@@ -117,35 +118,40 @@ export class PlayerView {
     const bs = px * cfg.render.bowScale;
     const stringDist = (bowArt.gripX - bowArt.stringX) * bs;
 
-    const shoulderBow = { x: cx + bowSide * SHOULDER_X * px, y: cy - SHOULDER_Y * px };
-    const shoulderDraw = { x: cx - bowSide * SHOULDER_X * px, y: cy - SHOULDER_Y * px };
-    const reach = (4 - kickT * 2) * px;
-    const grip = { x: cx + dirX * reach, y: cy - CHEST_Y * px + dirY * reach };
-    const stringRest = { x: grip.x - dirX * stringDist, y: grip.y - dirY * stringDist };
-    const pull = p.drawProgress;
-    const nock = { x: stringRest.x - dirX * pull * f.drawDistance * px, y: stringRest.y - dirY * pull * f.drawDistance * px };
+    const shoulderA = { x: cx + bowSide * SHOULDER_X * px, y: cy - SHOULDER_Y * px };
+    const shoulderB = { x: cx - bowSide * SHOULDER_X * px, y: cy - SHOULDER_Y * px };
 
     // Walking holds the arms out to the sides (< I >) and wiggles them; standing they hang down.
     this.walk = Phaser.Math.Clamp(this.walk + (moving ? dt : -dt) / 0.1, 0, 1);
-    const flap = swing * (f.walkArmFlap / 2.5);
-    const restBow = { x: shoulderBow.x + bowSide * 1.5 * px, y: shoulderBow.y + 8 * px + swing };
-    const restDraw = { x: shoulderDraw.x - bowSide * 1.5 * px, y: shoulderDraw.y + 8 * px - swing };
-    const wideBow = { x: shoulderBow.x + bowSide * f.walkArmSpread * px, y: shoulderBow.y + f.walkArmDrop * px + flap };
-    const wideDraw = { x: shoulderDraw.x - bowSide * f.walkArmSpread * px, y: shoulderDraw.y + f.walkArmDrop * px - flap };
+    const walkFlap = swing * (f.walkArmFlap / 2.5);
+    const shootFlap = Math.sin(this.time * f.shootFlapRate) * f.walkArmFlap * px;
+    const pose = (shoulder: Vec2, side: number, flapSign: number): Vec2 => {
+      const rest = { x: shoulder.x + side * 1.5 * px, y: shoulder.y + 8 * px + swing * flapSign };
+      const walking = {
+        x: shoulder.x + side * f.walkArmSpread * px,
+        y: shoulder.y + f.walkArmDrop * px + walkFlap * flapSign,
+      };
+      const shooting = {
+        x: shoulder.x + side * f.shootArmSpread * px,
+        y: shoulder.y + f.shootArmDrop * px + shootFlap * flapSign,
+      };
+      return lerp(lerp(rest, walking, this.walk), shooting, t);
+    };
+    const armA = solveArm(shoulderA, pose(shoulderA, bowSide, 1), f.armLength * px);
+    const armB = solveArm(shoulderB, pose(shoulderB, -bowSide, -1), f.armLength * px);
 
-    const armA = solveArm(shoulderBow, lerp(lerp(restBow, wideBow, this.walk), grip, t), f.armLength * px);
-    const armB = solveArm(shoulderDraw, lerp(lerp(restDraw, wideDraw, this.walk), nock, t), f.armLength * px);
-
-    // The bow follows the bow hand, so short arms keep it close to the body.
-    const backPos = { x: cx - bowSide * 2 * px, y: cy - BACK_Y * px };
-    const backAngle = bowSide > 0 ? Math.PI + f.bowBackTilt : -f.bowBackTilt;
-    const bowPos = lerp(backPos, armA.hand, t);
-    const bowAngle = lerpAngle(backAngle, aimAngle, t);
+    // The bow floats in front of him toward the cursor, shooting or not.
+    const dist = (f.bowFloatDistance - kickT * 3) * px;
+    const bowPos = {
+      x: cx + dirX * dist,
+      y: cy - CHEST_Y * px + dirY * dist + Math.sin(this.time * 3) * f.bowFloatBob * px,
+    };
+    const bowAngle = aimAngle;
     this.bow
       .setPosition(bowPos.x, bowPos.y)
       .setRotation(bowAngle)
       .setScale(bs)
-      .setDepth(screen.y + (t > 0.5 ? (dirY < 0 ? -0.5 : 0.5) : -0.5))
+      .setDepth(screen.y + (dirY < 0 ? -0.5 : 0.5))
       .setAlpha(this.body.alpha);
 
     const g = this.arms;
@@ -167,7 +173,7 @@ export class PlayerView {
     g.fillCircle(armA.hand.x, armA.hand.y, 1.2 * px);
     g.fillCircle(armB.hand.x, armB.hand.y, 1.2 * px);
 
-    // The string is drawn between the limb tips, pulled toward the drawing hand while drawing.
+    // The string is drawn between the limb tips and pulls back toward him as the next shot nears.
     const cos = Math.cos(bowAngle);
     const sin = Math.sin(bowAngle);
     const tip = (side: number): Vec2 => {
@@ -177,9 +183,12 @@ export class PlayerView {
     };
     const a = tip(-1);
     const b = tip(1);
-    const drawing = t > 0.5 && pull > 0.02;
-    const rest = { x: bowPos.x + (bowArt.stringX - bowArt.gripX) * bs * cos, y: bowPos.y + (bowArt.stringX - bowArt.gripX) * bs * sin };
-    const pulled = drawing ? lerp(rest, armB.hand, pull) : rest;
+    const pull = p.drawProgress;
+    const drawing = p.readyTimer > 0 && pull > 0.02;
+    const rest = { x: bowPos.x - dirX * stringDist, y: bowPos.y - dirY * stringDist };
+    const pulled = drawing
+      ? { x: rest.x - dirX * pull * f.drawDistance * px, y: rest.y - dirY * pull * f.drawDistance * px }
+      : rest;
     g.lineStyle(1, 0xd8d0c0, 0.9);
     g.beginPath();
     g.moveTo(a.x, a.y);
@@ -233,10 +242,6 @@ export class PlayerView {
 
 function lerp(a: Vec2, b: Vec2, t: number): Vec2 {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-}
-
-function lerpAngle(a: number, b: number, t: number): number {
-  return a + Phaser.Math.Angle.Wrap(b - a) * t;
 }
 
 // Two-bone arm. The elbow bends downward, and the hand stops short if the target is out of reach.
