@@ -121,6 +121,8 @@ export const defaults = {
     doubleGold: 1,
     moreMoreBullets: 1,
     moreMoreRange: 0.1,
+    moreMorePierce: 1,
+    biggerArrows: 0.1,
   },
   tree: {
     free: true,
@@ -408,6 +410,8 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     doubleGold: { min: 0, max: 5, step: 0.5 },
     moreMoreBullets: { min: 0, max: 10, step: 1 },
     moreMoreRange: { min: 0, max: 2, step: 0.05 },
+    moreMorePierce: { min: 0, max: 10, step: 1 },
+    biggerArrows: { min: 0, max: 1, step: 0.05 },
   },
   tree: {
     free: 'bool',

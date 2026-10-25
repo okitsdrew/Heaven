@@ -60,7 +60,7 @@ In-game overlay, toggled with backtick. Must include:
 - **Level and XP persist across runs.** (Mechanic to be fleshed out later.) Each level-up grants 1 skill point. Start with a gentle curve like `10 x level^1.5` and tune.
 
 ## 7a. Current build notes (phase 3)
-- Skills (Fire Fairy, Ice Fairy, Sword Slash) are unlocked from a **Skills** page next to the tree rather than as tree nodes. Prerequisites from section 10 are shown but not enforced while everything is free (`tree.free`).
+- Fire Fairy, Ice Fairy, Sword Slash and Teleport are tree nodes (skill points for the abilities, gold for teleport). Dash, teleport and the abilities start locked and are bought in the tree; all nodes are free while `tree.free` is on.
 - Tree node positions are draggable and saved to `localStorage` separately from progress; `tree.revealAll` shows hidden nodes so they can be arranged.
 - Obstacles stop arrows and fire waves. Dash and teleport each grant 0.2s of invincibility afterwards (`player.invulnAfter`). Right-click a tree node or skill card to refund it.
 - Gold and XP persist in the versioned save (`heaven.save.v1`). Uncollected gold from a run is lost when a new run starts.

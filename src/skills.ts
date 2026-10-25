@@ -43,28 +43,19 @@ export const nodes: SkillNode[] = [
 
   { id: 'goldValue', name: 'Gold Value', desc: (p) => `+${p} gold per kill`, parents: ['dash'], currency: 'gold', costs: doubling(5, 10), effect: 'goldValue', angle: 60, radius: 340 },
   { id: 'doubleGold', name: 'Double Gold', desc: (p) => `x${1 + p} gold per kill`, parents: ['goldValue'], currency: 'gold', costs: [250], effect: 'doubleGold', angle: 60, radius: 560 },
+
+  { id: 'moreMorePierce', name: 'more MORE Pierce', desc: (p) => `+${p} pierce`, parents: ['pierce'], currency: 'gold', costs: [50, 150, 400], effect: 'moreMorePierce', angle: -5, radius: 450 },
+  { id: 'biggerArrows', name: 'Bigger Arrows', desc: (p) => `+${pct(p)} arrow size and hitbox`, parents: ['range'], currency: 'gold', costs: doubling(5, 10), effect: 'biggerArrows', angle: 250, radius: 400 },
+  { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: ['dash'], currency: 'gold', costs: [10], effect: null, angle: 180, radius: 340 },
+
+  { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['moreFireRate', 'moreBullets'], currency: 'sp', costs: [1], effect: null, angle: -60, radius: 640 },
+  { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['moreTime'], currency: 'sp', costs: [1], effect: null, angle: 30, radius: 650 },
+  { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['dash'], currency: 'sp', costs: [1], effect: null, angle: 120, radius: 340 },
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
 export type SkillId = 'fireFairy' | 'iceFairy' | 'swordSlash';
-
-export interface SkillDef {
-  id: SkillId;
-  name: string;
-  key: string;
-  desc: string;
-  requires: string[];
-  cost: number;
-  color: string;
-}
-
-// Unlocked from the Skills page. Prerequisites are shown but not enforced while everything is free.
-export const skills: SkillDef[] = [
-  { id: 'fireFairy', name: 'Fire Fairy', key: 'Q', desc: 'Fire Wave: a rectangle of fire that sweeps out to the edge, hitting everything once.', requires: ['moreFireRate', 'moreBullets'], cost: 1, color: '#ff7a20' },
-  { id: 'iceFairy', name: 'Ice Fairy', key: 'E', desc: 'Ice Storm: a freezing circle at the cursor that damages and slows enemies.', requires: ['moreTime'], cost: 1, color: '#7fd4ff' },
-  { id: 'swordSlash', name: 'Sword Slash', key: 'R', desc: 'Toggle, then attack for a three-swing combo with a slam finisher.', requires: [], cost: 1, color: '#b070ff' },
-];
 
 export function level(id: string): number {
   return profile.nodes[id] ?? 0;
@@ -115,26 +106,8 @@ export function refund(n: SkillNode): boolean {
   return true;
 }
 
-export function refundSkill(s: SkillDef): boolean {
-  if (!profile.skills[s.id]) return false;
-  if (!cfg.tree.free) profile.skillPoints += s.cost;
-  delete profile.skills[s.id];
-  return true;
-}
-
-export function unlockSkill(s: SkillDef): boolean {
-  if (profile.skills[s.id]) return false;
-  if (!cfg.tree.free) {
-    if (profile.skillPoints < s.cost) return false;
-    profile.skillPoints -= s.cost;
-  }
-  profile.skills[s.id] = true;
-  return true;
-}
-
 export function unlockEverything(): void {
   for (const n of nodes) profile.nodes[n.id] = maxLevel(n);
-  for (const s of skills) profile.skills[s.id] = true;
 }
 
 // Additive total of every purchased level for one effect, so +5 x 10% is +50% rather than compounding.
@@ -151,14 +124,15 @@ export type Gated = 'dash' | 'teleport' | SkillId;
 // Dev toggles in `cfg.abilities` can force an ability off; otherwise it must be unlocked in the profile.
 export function canUse(a: Gated): boolean {
   if (!cfg.abilities[a]) return false;
-  if (a === 'teleport' || cfg.debug.unlockAll) return true;
-  return a === 'dash' ? level('dash') >= 1 : !!profile.skills[a];
+  if (cfg.debug.unlockAll) return true;
+  return level(a) >= 1;
 }
 
 export const stats = {
   fireRate: () => cfg.bow.fireRate * (1 + sum(['fireRate', 'moreFireRate'])),
   damage: () => cfg.bow.damage + sum(['damage', 'moreDamage']),
-  pierce: () => Math.round(cfg.bow.pierce + sum(['pierce'])),
+  pierce: () => Math.round(cfg.bow.pierce + sum(['pierce', 'moreMorePierce'])),
+  arrowSize: () => 1 + sum(['biggerArrows']),
   arrows: () => Math.max(1, Math.round(cfg.bow.arrowsPerShot + sum(['moreBullets', 'moreMoreBullets']))),
   range: () => cfg.bow.arrowRange * (1 + sum(['range', 'moreMoreRange'])),
   goldValue: () => Math.max(0, cfg.gold.perKill + sum(['goldValue'])) * (1 + sum(['doubleGold'])),

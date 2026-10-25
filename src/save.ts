@@ -11,11 +11,10 @@ export interface SaveData {
   level: number;
   xp: number;
   nodes: Record<string, number>;
-  skills: Record<string, boolean>;
 }
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, skills: {} };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {} };
 }
 
 function storageGet(key: string): string | null {
@@ -49,8 +48,10 @@ function sanitize(src: unknown): SaveData {
   if (s.nodes && typeof s.nodes === 'object') {
     for (const [k, v] of Object.entries(s.nodes)) if (typeof v === 'number' && v > 0) out.nodes[k] = Math.floor(v);
   }
-  if (s.skills && typeof s.skills === 'object') {
-    for (const [k, v] of Object.entries(s.skills)) if (v === true) out.skills[k] = true;
+  // Abilities used to be unlocked from a separate list; they are tree nodes now.
+  const old = (src as { skills?: Record<string, unknown> }).skills;
+  if (old && typeof old === 'object') {
+    for (const [k, v] of Object.entries(old)) if (v === true) out.nodes[k] = Math.max(1, out.nodes[k] ?? 0);
   }
   return out;
 }

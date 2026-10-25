@@ -8,12 +8,9 @@ import {
   maxLevel,
   nextCost,
   refund,
-  refundSkill,
   nodeById,
   nodes,
   SkillNode,
-  skills,
-  unlockSkill,
 } from '../skills';
 import { xpToNext } from '../xp';
 
@@ -68,15 +65,6 @@ const css = `
 #tree .tools button { padding: 3px 8px; font-size: 12px; }
 #tree .bottom { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 12px; z-index: 3; }
 #tree .hint { position: absolute; left: 16px; bottom: 16px; color: #6f6788; font-size: 11px; z-index: 3; }
-#tree .skillspage { position: absolute; inset: 52px 0 70px; display: none; overflow-y: auto; padding: 24px;
-  z-index: 2; background: rgba(8, 6, 14, 0.96); }
-#tree.skillsview .skillspage { display: flex; gap: 16px; flex-wrap: wrap; align-content: flex-start; justify-content: center; }
-#tree.skillsview .stage { visibility: hidden; }
-.skillcard { width: 260px; background: #14111d; border: 2px solid var(--c); padding: 16px; display: flex;
-  flex-direction: column; gap: 8px; }
-.skillcard h2 { margin: 0; color: var(--c); font-size: 18px; }
-.skillcard .req { color: #8a83a0; font-size: 11px; }
-.skillcard.unlocked { box-shadow: 0 0 14px var(--c); }
 `;
 
 export class Screens {
@@ -86,8 +74,6 @@ export class Screens {
   private world: HTMLDivElement;
   private lines: SVGSVGElement;
   private topInfo: HTMLDivElement;
-  private skillsPage: HTMLDivElement;
-  private skillsBtn: HTMLButtonElement;
   private els = new Map<string, HTMLDivElement>();
   private layout: Layout = loadLayout();
   private view = { x: 0, y: 0, scale: 1 };
@@ -106,13 +92,11 @@ export class Screens {
     this.lines = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.world.appendChild(this.lines);
     this.topInfo = this.div('top', undefined, this.tree);
-    this.skillsPage = this.div('skillspage', undefined, this.tree);
 
     for (const n of nodes) this.els.set(n.id, this.makeNode(n));
 
     const bottom = this.div('bottom', undefined, this.tree);
-    this.skillsBtn = this.button('Skills', () => this.toggleSkills(), 'big');
-    bottom.append(this.skillsBtn, this.button('Battle', () => this.onBattle(), 'big go'));
+    bottom.append(this.button('Battle', () => this.onBattle(), 'big go'));
     this.div('hint', undefined, this.tree).textContent =
       'Drag background to pan, wheel to zoom, drag a node to move it, click a node to buy, right-click to refund.';
 
@@ -160,20 +144,11 @@ export class Screens {
   showTree(onBattle: () => void): void {
     this.hide();
     this.onBattle = onBattle;
-    this.tree.classList.remove('skillsview');
-    this.skillsBtn.textContent = 'Skills';
     this.tree.classList.add('open');
     if (!this.viewReady) {
       this.view = { x: window.innerWidth / 2, y: window.innerHeight / 2, scale: 0.9 };
       this.viewReady = true;
     }
-    this.refresh();
-  }
-
-  private toggleSkills(): void {
-    const on = !this.tree.classList.contains('skillsview');
-    this.tree.classList.toggle('skillsview', on);
-    this.skillsBtn.textContent = on ? 'Skill Tree' : 'Skills';
     this.refresh();
   }
 
@@ -319,7 +294,6 @@ export class Screens {
         `<div class="lvl">${lvl}/${max}</div><div class="cost">${costText}</div>`;
     }
     this.layoutNodes();
-    this.renderSkills();
   }
 
   private renderTop(): void {
@@ -351,41 +325,6 @@ export class Screens {
     const out: Layout = {};
     for (const n of nodes) out[n.id] = this.position(n);
     return out;
-  }
-
-  private renderSkills(): void {
-    this.skillsPage.innerHTML = '';
-    for (const s of skills) {
-      const card = this.div('skillcard', undefined, this.skillsPage);
-      card.style.setProperty('--c', s.color);
-      const owned = !!profile.skills[s.id];
-      card.classList.toggle('unlocked', owned);
-      const title = document.createElement('h2');
-      title.textContent = `${s.name} [${s.key}]`;
-      const desc = document.createElement('div');
-      desc.textContent = s.desc;
-      const req = document.createElement('div');
-      req.className = 'req';
-      req.textContent = s.requires.length
-        ? `Needs: ${s.requires.map((r) => nodeById.get(r)?.name ?? r).join(' + ')} (not enforced yet)`
-        : 'No prerequisites';
-      const cost = cfg.tree.free ? 'free' : `${s.cost} skill point`;
-      const btn = this.button(owned ? 'Unlocked' : `Unlock (${cost})`, () => {
-        if (unlockSkill(s)) {
-          persist();
-          this.refresh();
-        }
-      });
-      btn.disabled = owned;
-      card.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        if (refundSkill(s)) {
-          persist();
-          this.refresh();
-        }
-      });
-      card.append(title, desc, req, btn);
-    }
   }
 
   private div(cls: string, id?: string, parent: HTMLElement = document.body): HTMLDivElement {

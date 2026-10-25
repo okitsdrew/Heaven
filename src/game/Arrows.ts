@@ -30,6 +30,7 @@ interface Arrow {
   damage: number;
   pierce: number;
   hitRadius: number;
+  size: number;
   hits: Set<number>;
   sprite: Phaser.GameObjects.Image;
   glow: Phaser.GameObjects.Image;
@@ -61,6 +62,7 @@ export class Arrows {
       damage: 0,
       pierce: 0,
       hitRadius: 0,
+      size: 1,
       hits: new Set(),
       sprite: scene.add.image(0, 0, Tex.arrow).setVisible(false),
       glow: scene.add
@@ -99,7 +101,8 @@ export class Arrows {
       a.speed = b.arrowSpeed;
       a.damage = stats.damage();
       a.pierce = stats.pierce();
-      a.hitRadius = b.arrowHitRadius;
+      a.size = stats.arrowSize();
+      a.hitRadius = b.arrowHitRadius * a.size;
       a.hits.clear();
       a.trail = 0;
       a.sprite.setVisible(true).setAlpha(1);
@@ -178,12 +181,12 @@ export class Arrows {
       a.sprite
         .setPosition(screen.x, screen.y - height)
         .setRotation(Math.atan2(ahead.y - screen.y, ahead.x - screen.x))
-        .setScale(cfg.render.arrowScale)
+        .setScale(cfg.render.arrowScale * a.size)
         .setAlpha(Math.min(1, remaining * 6))
         .setDepth(screen.y);
       a.glow
         .setPosition(screen.x, screen.y - height)
-        .setScale(cfg.render.arrowScale * 0.3)
+        .setScale(cfg.render.arrowScale * 0.3 * a.size)
         .setAlpha(Math.min(1, remaining * 6) * 0.7)
         .setDepth(screen.y - 0.1);
 
