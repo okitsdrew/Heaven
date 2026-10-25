@@ -147,6 +147,7 @@ export const defaults = {
     despawnMargin: 500,
   },
   enemy: {
+    uniformScreenSpeed: true,
     turnRate: 6,
     separation: 0.5,
     separationRate: 14,
@@ -439,6 +440,7 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     despawnMargin: { min: 50, max: 2000, step: 25 },
   },
   enemy: {
+    uniformScreenSpeed: 'bool',
     turnRate: { min: 0.5, max: 30, step: 0.5 },
     separation: { min: 0, max: 1, step: 0.05 },
     separationRate: { min: 0, max: 60, step: 1 },

@@ -267,7 +267,12 @@ export class Enemies {
       }
       if (!blocked) e.avoid = null;
 
-      const speed = c.speedMult * cfg.player.moveSpeed * slowAt(e.x, e.y, e.radius);
+      let speed = c.speedMult * cfg.player.moveSpeed * slowAt(e.x, e.y, e.radius);
+      // The iso projection squashes vertical screen travel, so equalise on-screen speed the way the player's is.
+      if (ec.uniformScreenSpeed) {
+        toScreen(dx, dy, off);
+        speed *= (cfg.render.isoScale * Math.SQRT2) / (Math.hypot(off.x, off.y) || 1);
+      }
       e.vx += (dx * speed - e.vx) * turn;
       e.vy += (dy * speed - e.vy) * turn;
       e.kx *= kdecay;
