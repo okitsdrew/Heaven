@@ -38,6 +38,7 @@ export class Player {
   dashEndVx = 0;
   dashEndVy = 0;
   dashCooldownMax = 0;
+  teleportCooldown = 0;
   readyTimer = 0;
   shootSlowTimer = 0;
   private lastMoveX = 0;
@@ -78,13 +79,18 @@ export class Player {
       }
     }
 
-    if (input.justPressed('dash')) this.dashBuffer = Math.max(cfg.dash.inputBuffer, 1e-4);
+    if (cfg.abilities.dash && input.justPressed('dash')) this.dashBuffer = Math.max(cfg.dash.inputBuffer, 1e-4);
     if (this.dashBuffer > 0 && !this.dashing && this.dashCooldown <= 0) {
       this.resolveMoveDir(input);
-      if (cfg.abilities.teleport) this.teleport();
-      else this.startDash();
+      this.startDash();
     }
     this.dashBuffer -= dt;
+
+    this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
+    if (cfg.abilities.teleport && input.justPressed('teleport') && this.teleportCooldown <= 0) {
+      this.resolveMoveDir(input);
+      this.teleport();
+    }
 
     if (this.dashing) this.updateDash(dt);
     else this.updateMove(dt, input);
@@ -136,9 +142,7 @@ export class Player {
     screenToWorldVel(this.lastMoveX, this.lastMoveY, cfg.teleport.distance, tmp);
     this.x += tmp.x;
     this.y += tmp.y;
-    this.dashBuffer = 0;
-    this.dashCooldown = cfg.teleport.cooldown;
-    this.dashCooldownMax = cfg.teleport.cooldown;
+    this.teleportCooldown = cfg.teleport.cooldown;
     this.onTeleport(fromX, fromY, this.x, this.y);
   }
 

@@ -7,6 +7,7 @@ export type Action =
   | 'moveRight'
   | 'fire'
   | 'dash'
+  | 'teleport'
   | 'abilityQ'
   | 'abilityE'
   | 'devMenu';
@@ -29,7 +30,9 @@ const keyBindings: Record<string, Action> = {
   KeyS: 'moveDown',
   KeyA: 'moveLeft',
   KeyD: 'moveRight',
-  Space: 'dash',
+  ShiftLeft: 'dash',
+  ShiftRight: 'dash',
+  Space: 'teleport',
   KeyQ: 'abilityQ',
   KeyE: 'abilityE',
   Backquote: 'devMenu',
