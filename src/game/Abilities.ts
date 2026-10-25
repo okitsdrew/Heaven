@@ -15,28 +15,56 @@ interface Storm {
   snowTimer: number;
 }
 
+interface Wave {
+  ox: number;
+  oy: number;
+  dirX: number;
+  dirY: number;
+  dist: number;
+  hits: Set<number>;
+  emberTimer: number;
+}
+
 const screen = { x: 0, y: 0 };
 const screen2 = { x: 0, y: 0 };
-const flameColors = [0xff5a10, 0xff8a28, 0xffb347, 0xffd98a];
+const emberColors = [0xff5a10, 0xff8a28, 0xffb347, 0xffd98a];
 
-// Q: Fire Cone and E: Ice Storm. Damages anything Hittable; `slowAt` is for enemy movement to read later.
+// Q: Fire Wave and E: Ice Storm. Damages anything Hittable; `slowAt` is for enemy movement to read later.
 export class Abilities {
   fireCooldown = 0;
   iceCooldown = 0;
   private storms: Storm[] = [];
   private gfx: Phaser.GameObjects.Graphics;
-  private cone = { t: 0, x: 0, y: 0, dirX: 1, dirY: 0 };
+  private waves: Wave[] = [];
+  private waveGfx: Phaser.GameObjects.Graphics;
+  private time = 0;
 
   onDamage: (target: Hittable, amount: number, x: number, y: number) => void = () => {};
   onCast: (kind: 'fire' | 'ice') => void = () => {};
 
   constructor(scene: Phaser.Scene, private fx: Fx, private targets: () => readonly Hittable[]) {
     this.gfx = scene.add.graphics().setDepth(-5e8).setBlendMode(Phaser.BlendModes.ADD);
+    this.waveGfx = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
   }
 
   resetCooldowns(): void {
     this.fireCooldown = 0;
     this.iceCooldown = 0;
+  }
+
+  // Where each fairy should go while its attack is active, or null.
+  fireAttach(): Vec2 | null {
+    const w = this.waves[this.waves.length - 1];
+    return w ? this.waveCenter(w) : null;
+  }
+
+  iceAttach(): Vec2 | null {
+    const s = this.storms[0];
+    return s ? { x: s.x, y: s.y } : null;
+  }
+
+  private waveCenter(w: Wave): Vec2 {
+    return { x: w.ox + w.dirX * w.dist, y: w.oy + w.dirY * w.dist };
   }
 
   // Strongest slow multiplier (1 = none) from any storm covering a circle. Slows never stack.
@@ -52,15 +80,16 @@ export class Abilities {
     this.iceCooldown = Math.max(0, this.iceCooldown - dt);
 
     if (cfg.abilities.fireFairy && input.justPressed('abilityQ') && this.fireCooldown <= 0) {
-      this.fireCooldown = cfg.fireCone.cooldown;
-      this.castFireCone(player.x, player.y, player.aimX, player.aimY);
+      this.fireCooldown = cfg.fireWave.cooldown;
+      this.castFireWave(player.x, player.y, player.aimX, player.aimY);
     }
     if (cfg.abilities.iceFairy && input.justPressed('abilityE') && this.iceCooldown <= 0) {
       this.iceCooldown = cfg.iceStorm.cooldown;
       this.castIceStorm(cursor ?? { x: player.x + player.aimX * 200, y: player.y + player.aimY * 200 });
     }
 
-    this.cone.t = Math.max(0, this.cone.t - dt);
+    this.time += dt;
+    this.updateWaves(dt, player);
     for (let i = this.storms.length - 1; i >= 0; i--) {
       const s = this.storms[i];
       s.age += dt;
@@ -74,45 +103,64 @@ export class Abilities {
     this.draw();
   }
 
-  private castFireCone(x: number, y: number, dirX: number, dirY: number): void {
-    const c = cfg.fireCone;
-    const half = Phaser.Math.DegToRad(c.angleDeg) / 2;
-    for (const t of this.targets()) {
-      if (!t.alive) continue;
-      const dx = t.x - x;
-      const dy = t.y - y;
-      const d = Math.hypot(dx, dy);
-      if (d > c.range + t.radius) continue;
-      // Pad the angle by the target's size so grazing its edge counts.
-      const pad = d > t.radius ? Math.asin(t.radius / d) : Math.PI;
-      const angle = d > 1e-3 ? Math.acos(Phaser.Math.Clamp((dx * dirX + dy * dirY) / d, -1, 1)) : 0;
-      if (angle <= half + pad) this.onDamage(t, c.damage, t.x, t.y);
-    }
-
-    this.cone = { t: c.flashTime, x, y, dirX, dirY };
-    const base = Math.atan2(dirY, dirX);
-    toScreen(x, y, screen);
-    const px = cfg.render.pixelScale;
-    for (let i = 0; i < c.flames; i++) {
-      const angle = base + (Math.random() * 2 - 1) * half;
-      const dist = c.range * (0.25 + Math.random() * 0.75);
-      toScreen(x + Math.cos(angle) * dist, y + Math.sin(angle) * dist, screen2);
-      const life = 0.25 + Math.random() * 0.3;
-      this.fx.particle({
-        x: screen.x,
-        y: screen.y - 10 * px,
-        life,
-        from: 0.5 + Math.random() * 0.5,
-        to: 1.6 + Math.random(),
-        alpha: 0.9,
-        tint: flameColors[Math.floor(Math.random() * flameColors.length)],
-        vx: (screen2.x - screen.x) / life,
-        vy: (screen2.y - screen.y) / life,
-        depth: 1e6,
-      });
-    }
+  private castFireWave(x: number, y: number, dirX: number, dirY: number): void {
+    this.waves.push({ ox: x, oy: y, dirX, dirY, dist: 0, hits: new Set(), emberTimer: 0 });
     this.fx.addShake(cfg.camera.shakeOnCast);
     this.onCast('fire');
+  }
+
+  // Waves travel until they reach the despawn ring around the player, hitting each target once.
+  private updateWaves(dt: number, player: Player): void {
+    const c = cfg.fireWave;
+    for (let i = this.waves.length - 1; i >= 0; i--) {
+      const w = this.waves[i];
+      const prev = w.dist;
+      w.dist += c.speed * dt;
+      const lo = prev - c.length / 2;
+      const hi = w.dist + c.length / 2;
+      for (const t of this.targets()) {
+        if (!t.alive || w.hits.has(t.id)) continue;
+        const rx = t.x - w.ox;
+        const ry = t.y - w.oy;
+        const along = rx * w.dirX + ry * w.dirY;
+        const side = -rx * w.dirY + ry * w.dirX;
+        if (Math.abs(side) <= c.width / 2 + t.radius && along >= lo - t.radius && along <= hi + t.radius) {
+          w.hits.add(t.id);
+          this.onDamage(t, c.damage, t.x, t.y);
+        }
+      }
+
+      const center = this.waveCenter(w);
+      if (Math.hypot(center.x - player.x, center.y - player.y) > cfg.world.despawnRadius) {
+        this.waves.splice(i, 1);
+        continue;
+      }
+
+      w.emberTimer += dt * c.embers;
+      while (w.emberTimer >= 1) {
+        w.emberTimer -= 1;
+        const side = (Math.random() - 0.5) * c.width;
+        const along = (Math.random() - 0.5) * c.length;
+        toScreen(
+          center.x - w.dirY * side + w.dirX * along,
+          center.y + w.dirX * side + w.dirY * along,
+          screen,
+        );
+        const life = 0.4 + Math.random() * 0.4;
+        this.fx.particle({
+          x: screen.x,
+          y: screen.y - 6 * cfg.render.pixelScale,
+          life,
+          from: 0.4,
+          to: 0.1,
+          alpha: 0.9,
+          tint: emberColors[Math.floor(Math.random() * emberColors.length)],
+          vx: (Math.random() - 0.5) * 20,
+          vy: -40 - Math.random() * 50,
+          depth: screen.y + 3,
+        });
+      }
+    }
   }
 
   private castIceStorm(at: Vec2): void {
@@ -157,27 +205,60 @@ export class Abilities {
   private draw(): void {
     const g = this.gfx;
     g.clear();
-
-    if (this.cone.t > 0) {
-      const c = cfg.fireCone;
-      const t = this.cone.t / c.flashTime;
-      const base = Math.atan2(this.cone.dirY, this.cone.dirX);
-      const half = Phaser.Math.DegToRad(c.angleDeg) / 2;
-      const steps = 16;
-      toScreen(this.cone.x, this.cone.y, screen);
-      const points: Vec2[] = [{ x: screen.x, y: screen.y }];
-      for (let i = 0; i <= steps; i++) {
-        const a = base - half + (i / steps) * half * 2;
-        const p = toScreen(this.cone.x + Math.cos(a) * c.range, this.cone.y + Math.sin(a) * c.range);
-        points.push(p);
-      }
-      g.fillStyle(0xff6a1a, 0.35 * t);
-      g.fillPoints(points, true);
-      g.lineStyle(2, 0xffc060, 0.8 * t);
-      g.strokePoints(points, true);
-    }
-
+    this.waveGfx.clear();
+    for (const w of this.waves) this.drawWave(g, w);
     for (const s of this.storms) this.drawStorm(g, s);
+  }
+
+  // A rectangle of fire: a glowing slab on the ground with flame tongues licking up from it.
+  private drawWave(ground: Phaser.GameObjects.Graphics, w: Wave): void {
+    const c = cfg.fireWave;
+    const px = cfg.render.pixelScale;
+    const center = this.waveCenter(w);
+    const perpX = -w.dirY;
+    const perpY = w.dirX;
+    const hw = c.width / 2;
+    const hl = c.length / 2;
+    const corner = (s: number, l: number) =>
+      toScreen(center.x + perpX * hw * s + w.dirX * hl * l, center.y + perpY * hw * s + w.dirY * hl * l);
+    ground.fillStyle(0xff5a10, 0.22);
+    ground.fillPoints([corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)], true);
+
+    const count = Math.max(1, Math.round(c.width / c.tongueSpacing));
+    const tongues: { x: number; y: number; i: number; row: number }[] = [];
+    for (let row = 0; row < 2; row++) {
+      for (let i = 0; i < count; i++) {
+        const side = -hw + ((i + 0.5) * c.width) / count;
+        const along = (row === 0 ? -0.5 : 0.5) * hl;
+        const p = toScreen(center.x + perpX * side + w.dirX * along, center.y + perpY * side + w.dirY * along);
+        tongues.push({ x: p.x, y: p.y, i, row });
+      }
+    }
+    tongues.sort((a, b) => a.y - b.y);
+
+    const g = this.waveGfx;
+    g.setDepth(toScreen(center.x, center.y, screen).y + 1);
+    for (const t of tongues) {
+      const flick = 0.5 + 0.5 * Math.sin(this.time * 14 + t.i * 1.9 + t.row * 2.3);
+      const height = px * (6 + 9 * flick + 3 * Math.sin(this.time * 9 + t.i));
+      const sway = Math.sin(this.time * 8 + t.i * 0.7) * 2.5 * px;
+      const half = 6 * px;
+      for (const [scale, color, alpha] of [
+        [1, 0xff4a10, 0.85],
+        [0.68, 0xff9a30, 0.9],
+        [0.38, 0xffe0a0, 0.95],
+      ] as const) {
+        g.fillStyle(color, alpha);
+        g.fillTriangle(
+          t.x - half * (0.4 + 0.6 * scale),
+          t.y,
+          t.x + half * (0.4 + 0.6 * scale),
+          t.y,
+          t.x + sway * scale,
+          t.y - height * scale,
+        );
+      }
+    }
   }
 
   private drawStorm(g: Phaser.GameObjects.Graphics, s: Storm): void {

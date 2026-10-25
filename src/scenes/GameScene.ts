@@ -114,7 +114,7 @@ export class GameScene extends Phaser.Scene {
     this.player.update(dt, input, aimWorld);
     this.arrows.update(dt, this.targets, cfg.dummy.radius);
     this.abilities.update(dt, this.player, input, cursor);
-    this.fairies.update(dt, this.player);
+    this.fairies.update(dt, this.player, { fire: this.abilities.fireAttach(), ice: this.abilities.iceAttach() });
     this.fx.update(dt);
 
     // Camera follows the player's projected position, with screen shake on top.
@@ -130,7 +130,7 @@ export class GameScene extends Phaser.Scene {
     this.arrows.render();
     this.dummies.render();
     this.hud.update(cam.width, cam.height, [
-      { key: 'Q', color: 0xff7a20, enabled: cfg.abilities.fireFairy, remaining: this.abilities.fireCooldown, total: cfg.fireCone.cooldown },
+      { key: 'Q', color: 0xff7a20, enabled: cfg.abilities.fireFairy, remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown },
       { key: 'E', color: 0x7fd4ff, enabled: cfg.abilities.iceFairy, remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown },
     ]);
     this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);

@@ -55,8 +55,8 @@ In-game overlay, toggled with backtick. Must include:
 - **One-hit death**, with a small forgiving hitbox (about the torso only).
 - Arrows: if they hit an enemy they consume 1 pierce and deal damage. At 0 pierce the arrow disappears on hit. If pierce is greater than 0, the arrow continues through until it runs out of range or hits another enemy.
 - Extra arrows (More Bullets) fire in a small fan, about 8° apart, not parallel.
-- **Dash (Space):** ~0.15s, ~250 units in the direction the player is moving (the last move direction if standing still), fully invincible during it, passes through enemies, 0.75s cooldown shown as a ring on the player.
-- **Teleport (later unlock):** replaces the dash. Instant jump a set distance in the movement direction, no cooldown.
+- **Dash (Left Shift):** ~0.15s, ~250 units in the direction the player is moving (the last move direction if standing still), fully invincible during it, passes through enemies, 0.75s cooldown shown as a ring on the player.
+- **Teleport (Space, later unlock):** instant jump ~200 units in the movement direction, 0.1s cooldown. Shown as a dark purple line zipping between start and end. For now it is a dev toggle that runs alongside the dash; whether it eventually replaces the dash is open.
 - **Level and XP persist across runs.** (Mechanic to be fleshed out later.) Each level-up grants 1 skill point. Start with a gentle curve like `10 x level^1.5` and tune.
 
 ## 7. Run loop
@@ -115,9 +115,9 @@ Radial graph on a pannable canvas. Nodes are **completely hidden** until their p
 | More Damage | Damage | +5 base damage | 5 | 10, 20, 40, 80, 160 |
 
 **Tier 3: fairies** (1 skill point each)
-- **Fire Fairy** (requires More Fire Rate and More Bullets, each bought at least once). A fire fairy hovers around the player. Unlocks **Q: Fire Cone**: 100 damage once to every enemy in a ~70° cone, ~300 units long, aimed at the cursor. 5s cooldown.
+- **Fire Fairy** (requires More Fire Rate and More Bullets, each bought at least once). A fire fairy hovers around the player. Unlocks **Q: Fire Wave**: a rectangle of fire launched in the aim direction that travels until it reaches the despawn ring, hitting every enemy it passes once for 100 damage. 5s cooldown. The fairy rides inside the wave, then returns (teleporting to the player if it reaches the despawn zone).
 - **Ice Fairy** (requires More MORE Time and More MORE Speed, each bought at least once). An ice fairy hovers around the player. Unlocks **E: Ice Storm**: a ~160-unit circle placed at the cursor on cast and fixed there for 5s. 5 ticks/s at 20 damage each. 50% slow on enemies inside (slows do not stack). 10s cooldown.
-- Fairies are visual companions that gate the abilities. They do not attack on their own yet. A cooldown HUD shows Q and E.
+- The ice fairy flies to the storm centre and stays until it ends, then returns. Fairies are visual companions that gate the abilities. They do not attack on their own yet. A cooldown HUD shows Q and E.
 
 ## 11. Boss 1 (spawns at 120s)
 - Spawns only if the run clock reaches 120s (a maxed time tree reaches 135s).
