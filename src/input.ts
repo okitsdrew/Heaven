@@ -17,6 +17,8 @@ export interface InputSource {
   readonly held: Set<Action>;
   // Actions pressed since the last frame, so taps shorter than a frame aren't lost.
   readonly pressed: Set<Action>;
+  // Actions released since the last frame.
+  readonly released: Set<Action>;
   // Analog move in screen space (x right, y down), length <= 1. Null if this source has no stick.
   moveAxis(): { x: number; y: number } | null;
   // Aim point in canvas pixels, or null if this source doesn't aim with a pointer.
@@ -51,6 +53,7 @@ function isTyping(target: EventTarget | null): boolean {
 export class KeyboardMouseSource implements InputSource {
   readonly held = new Set<Action>();
   readonly pressed = new Set<Action>();
+  readonly released = new Set<Action>();
   private pointer: { x: number; y: number } | null = null;
   private cleanup: (() => void)[] = [];
 
@@ -63,7 +66,7 @@ export class KeyboardMouseSource implements InputSource {
     });
     this.listen(window, 'keyup', (e: KeyboardEvent) => {
       const action = keyBindings[e.code];
-      if (action) this.held.delete(action);
+      if (action) this.release(action);
     });
     this.listen(canvas, 'mousedown', (e: MouseEvent) => {
       const action = mouseBindings[e.button];
@@ -71,7 +74,7 @@ export class KeyboardMouseSource implements InputSource {
     });
     this.listen(window, 'mouseup', (e: MouseEvent) => {
       const action = mouseBindings[e.button];
-      if (action) this.held.delete(action);
+      if (action) this.release(action);
     });
     this.listen(window, 'mousemove', (e: MouseEvent) => {
       const rect = this.canvas.getBoundingClientRect();
@@ -85,6 +88,10 @@ export class KeyboardMouseSource implements InputSource {
     const handler = fn as EventListener;
     target.addEventListener(type, handler);
     this.cleanup.push(() => target.removeEventListener(type, handler));
+  }
+
+  private release(action: Action): void {
+    if (this.held.delete(action)) this.released.add(action);
   }
 
   private press(action: Action): void {
@@ -102,6 +109,7 @@ export class KeyboardMouseSource implements InputSource {
 
   endFrame(): void {
     this.pressed.clear();
+    this.released.clear();
   }
 
   destroy(): void {
@@ -147,6 +155,10 @@ export class Input {
 
   justPressed(action: Action): boolean {
     return this.sources.some((s) => s.pressed.has(action));
+  }
+
+  justReleased(action: Action): boolean {
+    return this.sources.some((s) => s.released.has(action));
   }
 
   destroy(): void {

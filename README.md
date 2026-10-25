@@ -17,8 +17,8 @@ Build order step 2 is in: movement, aiming, shooting, dash and the dev menu, wit
 | Left click (hold) | Shoot toward cursor |
 | Left Shift | Dash in move direction |
 | Space | Teleport toward cursor |
-| Q | Fire Wave (needs Fire Fairy; dev menu `abilities` section) |
-| E | Ice Storm (needs Ice Fairy; dev menu `abilities` section) |
+| Q (hold, release) | Fire Wave: hold to preview the path, release to cast (needs Fire Fairy; dev menu `abilities` section) |
+| E (hold, release) | Ice Storm: hold to preview the circle at the cursor, release to cast (needs Ice Fairy) |
 | Backtick | Dev menu |
 
 ## Tech

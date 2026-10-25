@@ -37,6 +37,7 @@ export class Abilities {
   private gfx: Phaser.GameObjects.Graphics;
   private waves: Wave[] = [];
   private waveGfx: Phaser.GameObjects.Graphics;
+  private preview = { fire: false, ice: false, x: 0, y: 0, dirX: 1, dirY: 0, targetX: 0, targetY: 0 };
   private time = 0;
 
   onDamage: (target: Hittable, amount: number, x: number, y: number) => void = () => {};
@@ -79,13 +80,24 @@ export class Abilities {
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
     this.iceCooldown = Math.max(0, this.iceCooldown - dt);
 
-    if (cfg.abilities.fireFairy && input.justPressed('abilityQ') && this.fireCooldown <= 0) {
+    // Holding a spell key previews where it will land; releasing casts it.
+    const target = cursor ?? { x: player.x + player.aimX * 200, y: player.y + player.aimY * 200 };
+    this.preview.fire = cfg.abilities.fireFairy && input.isDown('abilityQ');
+    this.preview.ice = cfg.abilities.iceFairy && input.isDown('abilityE');
+    this.preview.x = player.x;
+    this.preview.y = player.y;
+    this.preview.dirX = player.aimX;
+    this.preview.dirY = player.aimY;
+    this.preview.targetX = target.x;
+    this.preview.targetY = target.y;
+
+    if (cfg.abilities.fireFairy && input.justReleased('abilityQ') && this.fireCooldown <= 0) {
       this.fireCooldown = cfg.fireWave.cooldown;
       this.castFireWave(player.x, player.y, player.aimX, player.aimY);
     }
-    if (cfg.abilities.iceFairy && input.justPressed('abilityE') && this.iceCooldown <= 0) {
+    if (cfg.abilities.iceFairy && input.justReleased('abilityE') && this.iceCooldown <= 0) {
       this.iceCooldown = cfg.iceStorm.cooldown;
-      this.castIceStorm(cursor ?? { x: player.x + player.aimX * 200, y: player.y + player.aimY * 200 });
+      this.castIceStorm(target);
     }
 
     this.time += dt;
@@ -206,8 +218,40 @@ export class Abilities {
     const g = this.gfx;
     g.clear();
     this.waveGfx.clear();
+    this.drawPreviews(g);
     for (const w of this.waves) this.drawWave(g, w);
     for (const s of this.storms) this.drawStorm(g, s);
+  }
+
+  // Outlines of where a held spell will land, dimmed while it is still on cooldown.
+  private drawPreviews(g: Phaser.GameObjects.Graphics): void {
+    const pv = this.preview;
+    const pulse = 0.7 + 0.3 * Math.sin(this.time * 10);
+    if (pv.fire) {
+      const c = cfg.fireWave;
+      const ready = this.fireCooldown <= 0;
+      const hw = c.width / 2;
+      const len = cfg.world.despawnRadius;
+      const perpX = -pv.dirY;
+      const perpY = pv.dirX;
+      const corner = (s: number, l: number) =>
+        toScreen(pv.x + perpX * hw * s + pv.dirX * l, pv.y + perpY * hw * s + pv.dirY * l);
+      const poly = [corner(-1, 0), corner(1, 0), corner(1, len), corner(-1, len)];
+      g.fillStyle(0xff7a20, (ready ? 0.1 : 0.04) * pulse);
+      g.fillPoints(poly, true);
+      g.lineStyle(2, 0xff9a40, (ready ? 0.9 : 0.3) * pulse);
+      g.strokePoints(poly, true);
+    }
+    if (pv.ice) {
+      const c = cfg.iceStorm;
+      const ready = this.iceCooldown <= 0;
+      toScreen(pv.targetX, pv.targetY, screen);
+      const h = ellipseHalfSize(c.radius);
+      g.fillStyle(0x7fd4ff, (ready ? 0.1 : 0.04) * pulse);
+      g.fillEllipse(screen.x, screen.y, h.x * 2, h.y * 2);
+      g.lineStyle(2, 0xbfeaff, (ready ? 0.9 : 0.3) * pulse);
+      g.strokeEllipse(screen.x, screen.y, h.x * 2, h.y * 2);
+    }
   }
 
   // A rectangle of fire: a glowing slab on the ground with flame tongues licking up from it.
