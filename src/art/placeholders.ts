@@ -36,21 +36,70 @@ function fromGrid(scene: Phaser.Scene, key: string, rows: string[], palette: Pal
   g.destroy();
 }
 
+// Ornate silver recurve bow drawn aiming along +x. The string is not part of the texture: PlayerView
+// draws it between the tips so it can be pulled. Measurements are in texture pixels.
+export const bowArt = { width: 20, height: 36, gripX: 13.5, stringX: 2, halfHeight: 17.5 };
+
 function bow(scene: Phaser.Scene): void {
-  // Drawn pointing right (rotation 0 = aiming along +x), limbs bulging toward the aim.
-  const h = 26;
+  const { width, height } = bowArt;
+  const dark = 0x3c3850;
+  const mid = 0x8a869a;
+  const light = 0xc9c6d6;
+  const bright = 0xf0ecfa;
   const g = scene.make.graphics({}, false);
-  for (let i = 0; i < h; i++) {
-    const t = i / (h - 1);
-    const bulge = Math.round(Math.sin(Math.PI * t) * 4);
-    g.fillStyle(i === 0 || i === h - 1 ? 0xc9a36a : 0x7a5434, 1);
-    g.fillRect(1 + bulge, i, 2, 1);
+  const px = (x: number, y: number, color: number) => {
+    g.fillStyle(color, 1);
+    g.fillRect(Math.round(x), Math.round(y), 1, 1);
+  };
+  const center = (t: number) => {
+    const k = Math.pow(t, 1.6);
+    let x = 13 * (1 - k) + 4 * k;
+    if (t > 0.88) x -= (t - 0.88) * 18;
+    return x;
+  };
+
+  for (let y = 0; y < height; y++) {
+    const t = Math.abs((y - 17.5) / 17.5);
+    const w = Math.max(1, Math.round(1 + 3 * Math.pow(1 - t, 0.8)));
+    const x0 = Math.round(center(t) - w / 2);
+    for (let i = 0; i < w; i++) px(x0 + i, y, w === 1 ? mid : i === 0 ? dark : i === w - 1 ? mid : light);
   }
-  g.fillStyle(0xd8d0c0, 0.8);
-  g.fillRect(1, 1, 1, h - 2);
-  g.fillStyle(0xa07850, 1);
-  g.fillRect(4, Math.floor(h / 2) - 2, 2, 4);
-  g.generateTexture(Tex.bow, 7, h);
+
+  // Swept barbs on each limb, like the wings on the reference.
+  for (const side of [-1, 1]) {
+    for (const [t, len] of [
+      [0.28, 4],
+      [0.52, 3],
+      [0.72, 2],
+    ] as const) {
+      const y = 17.5 + side * t * 17.5;
+      const x = center(t) + 2;
+      for (let i = 0; i < len; i++) px(x + i, y, i === len - 1 ? bright : light);
+      px(x + len - 1, y - side, mid);
+    }
+  }
+
+  // Riser band with a gem, and the spearhead arrow rest pointing along the aim.
+  for (let y = 14; y <= 21; y++) {
+    px(11, y, dark);
+    px(12, y, y === 14 || y === 21 ? mid : light);
+    px(14, y, mid);
+    px(15, y, dark);
+  }
+  px(13, 17, 0xa070ff);
+  px(13, 18, 0x6a40c0);
+  for (let x = 15; x <= 19; x++) {
+    px(x, 17, x === 19 ? bright : light);
+    px(x, 18, x === 19 ? mid : mid);
+  }
+  px(15, 16, mid);
+  px(16, 16, light);
+  px(15, 19, dark);
+  px(16, 19, mid);
+  px(17, 16, mid);
+  px(17, 19, dark);
+
+  g.generateTexture(Tex.bow, width, height);
   g.destroy();
 }
 

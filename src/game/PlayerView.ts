@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Tex, walkFrames } from '../art/placeholders';
+import { bowArt, Tex, walkFrames } from '../art/placeholders';
 import { cfg } from '../config';
 import { ellipseHalfSize, toScreen, Vec2 } from '../iso';
 import { Fx } from './Fx';
@@ -9,8 +9,7 @@ import { Player } from './Player';
 const SHOULDER_X = 4;
 const SHOULDER_Y = 12;
 const CHEST_Y = 10;
-const BOW_TIP_X = -1.1;
-const BOW_TIP_Y = 12.5;
+const BACK_Y = 13;
 
 const screen = { x: 0, y: 0 };
 const ahead = { x: 0, y: 0 };
@@ -36,7 +35,7 @@ export class PlayerView {
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
     this.shadow = scene.add.image(0, 0, Tex.shadow);
     this.body = scene.add.image(0, 0, Tex.player).setOrigin(0.5, 1);
-    this.bow = scene.add.image(0, 0, Tex.bow).setOrigin(0.3, 0.5);
+    this.bow = scene.add.image(0, 0, Tex.bow).setOrigin(bowArt.gripX / bowArt.width, 0.5);
     this.arms = scene.add.graphics();
     this.ring = scene.add.graphics();
   }
@@ -49,43 +48,39 @@ export class PlayerView {
     this.afterimageTimer = 0;
   }
 
-  // Fire-fox style: light copies of the player along the path, plus a flame streak.
+  // A dark purple line zips between the two points, with a puff of void at each end.
   onTeleport(fromX: number, fromY: number, toX: number, toY: number): void {
     const px = cfg.render.pixelScale;
-    const t = cfg.teleport;
-    const flip = this.body.flipX;
-    const key = this.body.texture.key;
     const a = toScreen(fromX, fromY);
     const b = toScreen(toX, toY);
-    for (let i = 0; i < t.afterimages; i++) {
-      const f = (i + 0.5) / t.afterimages;
-      const x = a.x + (b.x - a.x) * f;
-      const y = a.y + (b.y - a.y) * f;
-      // Copies nearest the start fade last, like a trail left behind.
-      this.fx.afterimage(key, x, y, flip, px, y, 0xff8a30, t.afterimageFade * (1.2 - f * 0.7), 0.55);
+    const lift = 10 * px;
+    this.fx.streak(a.x, a.y - lift, b.x, b.y - lift);
+    for (const end of [a, b]) {
+      for (let i = 0; i < cfg.teleport.puffs; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const life = 0.3 + Math.random() * 0.3;
+        this.fx.particle({
+          texture: Math.random() < 0.5 ? Tex.smoke : Tex.glow,
+          x: end.x,
+          y: end.y - lift,
+          life,
+          from: 0.5 + Math.random() * 0.5,
+          to: 1.5 + Math.random(),
+          alpha: 0.9,
+          tint: [0x07000d, 0x2a0a4a, 0x5a1a9a][Math.floor(Math.random() * 3)],
+          additive: false,
+          vx: Math.cos(angle) * 50,
+          vy: Math.sin(angle) * 30,
+        });
+      }
     }
-    for (let i = 0; i < t.flames; i++) {
-      const f = Math.random();
-      const life = 0.3 + Math.random() * 0.3;
-      this.fx.particle({
-        x: a.x + (b.x - a.x) * f + (Math.random() - 0.5) * 8 * px,
-        y: a.y + (b.y - a.y) * f - (4 + Math.random() * 12) * px,
-        life,
-        from: 0.6 + Math.random() * 0.5,
-        to: 0.1,
-        alpha: 0.9,
-        tint: [0xff5a10, 0xff8a28, 0xffd98a][Math.floor(Math.random() * 3)],
-        vx: (Math.random() - 0.5) * 30,
-        vy: -20 - Math.random() * 30,
-      });
-    }
-    this.fx.smoke(a.x, a.y - 8 * px, 5, 8);
     this.fx.addShake(cfg.camera.shakeOnCast * 0.5);
   }
 
   update(dt: number): void {
     const p = this.player;
     const px = cfg.render.pixelScale;
+    const f = cfg.feel;
     toScreen(p.x, p.y, screen);
     toScreen(p.x + p.aimX, p.y + p.aimY, ahead);
     const aimAngle = Math.atan2(ahead.y - screen.y, ahead.x - screen.x);
@@ -93,8 +88,8 @@ export class PlayerView {
 
     const speed = Math.hypot(p.vx, p.vy);
     const moving = !p.dashing && speed > cfg.player.moveSpeed * 0.1;
-    this.phase = moving ? (this.phase + (speed * dt) / cfg.feel.strideLength) % 1 : 0;
-    const bob = moving ? Math.abs(Math.sin(this.phase * Math.PI * 2)) * cfg.feel.walkBob * px : 0;
+    this.phase = moving ? (this.phase + (speed * dt) / f.strideLength) % 1 : 0;
+    const bob = moving ? Math.abs(Math.sin(this.phase * Math.PI * 2)) * f.walkBob * px : 0;
     const swing = moving ? Math.sin(this.phase * Math.PI * 2) * 2.5 * px : 0;
 
     this.body
@@ -106,51 +101,55 @@ export class PlayerView {
       .setAlpha(p.dashing ? 0.55 : 1);
     this.shadow.setPosition(screen.x, screen.y).setScale(px * 0.9, px * 0.35).setDepth(screen.y - 1000);
 
-    // Arms ease up to the bow while firing and drop back to the sides afterwards.
-    const step = cfg.feel.armRaiseTime > 0 ? dt / cfg.feel.armRaiseTime : 1;
-    this.raise = Phaser.Math.Clamp(this.raise + (p.readyTimer > 0 ? step : -step), 0, 1);
+    // The bow lives on his back and is grabbed very fast when he shoots, then stowed more slowly.
+    const rate = p.readyTimer > 0 ? dt / Math.max(f.bowGrabTime, 1e-4) : -dt / Math.max(f.bowStowTime, 1e-4);
+    this.raise = Phaser.Math.Clamp(this.raise + rate, 0, 1);
     const t = this.raise * this.raise * (3 - 2 * this.raise);
 
     this.kick = Math.max(0, this.kick - dt);
-    const kickT = cfg.feel.bowKickTime > 0 ? this.kick / cfg.feel.bowKickTime : 0;
+    const kickT = f.bowKickTime > 0 ? this.kick / f.bowKickTime : 0;
 
     const cx = screen.x;
     const cy = screen.y - bob;
     const bowSide = facingLeft ? -1 : 1;
     const dirX = Math.cos(aimAngle);
     const dirY = Math.sin(aimAngle);
+    const bs = px * cfg.render.bowScale;
+    const stringDist = (bowArt.gripX - bowArt.stringX) * bs;
 
     const shoulderBow = { x: cx + bowSide * SHOULDER_X * px, y: cy - SHOULDER_Y * px };
     const shoulderDraw = { x: cx - bowSide * SHOULDER_X * px, y: cy - SHOULDER_Y * px };
     const reach = (4 - kickT * 2) * px;
     const grip = { x: cx + dirX * reach, y: cy - CHEST_Y * px + dirY * reach };
-    const pull = (1 + p.drawProgress * cfg.feel.drawDistance) * px;
-    const nock = { x: grip.x - dirX * pull, y: grip.y - dirY * pull };
+    const stringRest = { x: grip.x - dirX * stringDist, y: grip.y - dirY * stringDist };
+    const pull = p.drawProgress;
+    const nock = { x: stringRest.x - dirX * pull * f.drawDistance * px, y: stringRest.y - dirY * pull * f.drawDistance * px };
 
-    // Walking holds the arms straight out to the sides (< I >); standing they hang down.
+    // Walking holds the arms out to the sides (< I >) and wiggles them; standing they hang down.
     this.walk = Phaser.Math.Clamp(this.walk + (moving ? dt : -dt) / 0.1, 0, 1);
-    const f = cfg.feel;
     const flap = swing * (f.walkArmFlap / 2.5);
     const restBow = { x: shoulderBow.x + bowSide * 1.5 * px, y: shoulderBow.y + 8 * px + swing };
     const restDraw = { x: shoulderDraw.x - bowSide * 1.5 * px, y: shoulderDraw.y + 8 * px - swing };
     const wideBow = { x: shoulderBow.x + bowSide * f.walkArmSpread * px, y: shoulderBow.y + f.walkArmDrop * px + flap };
     const wideDraw = { x: shoulderDraw.x - bowSide * f.walkArmSpread * px, y: shoulderDraw.y + f.walkArmDrop * px - flap };
 
-    const handBow = lerp(lerp(restBow, wideBow, this.walk), grip, t);
-    const handDraw = lerp(lerp(restDraw, wideDraw, this.walk), nock, t);
+    const armA = solveArm(shoulderBow, lerp(lerp(restBow, wideBow, this.walk), grip, t), f.armLength * px);
+    const armB = solveArm(shoulderDraw, lerp(lerp(restDraw, wideDraw, this.walk), nock, t), f.armLength * px);
 
-    const bowAngle = lerpAngle(bowSide > 0 ? 0 : Math.PI, aimAngle, t);
+    // The bow follows the bow hand, so short arms keep it close to the body.
+    const backPos = { x: cx - bowSide * 2 * px, y: cy - BACK_Y * px };
+    const backAngle = bowSide > 0 ? Math.PI + f.bowBackTilt : -f.bowBackTilt;
+    const bowPos = lerp(backPos, armA.hand, t);
+    const bowAngle = lerpAngle(backAngle, aimAngle, t);
     this.bow
-      .setPosition(handBow.x, handBow.y)
+      .setPosition(bowPos.x, bowPos.y)
       .setRotation(bowAngle)
-      .setScale(px)
-      .setDepth(screen.y + (t > 0.5 && dirY < 0 ? -0.5 : 0.5))
+      .setScale(bs)
+      .setDepth(screen.y + (t > 0.5 ? (dirY < 0 ? -0.5 : 0.5) : -0.5))
       .setAlpha(this.body.alpha);
 
     const g = this.arms;
     g.clear().setDepth(screen.y + 0.3).setAlpha(this.body.alpha);
-    const armA = solveArm(shoulderBow, handBow, f.armLength * px);
-    const armB = solveArm(shoulderDraw, handDraw, f.armLength * px);
     for (const [width, color] of [
       [3 * px, SLEEVE_EDGE],
       [2 * px, SLEEVE],
@@ -168,29 +167,31 @@ export class PlayerView {
     g.fillCircle(armA.hand.x, armA.hand.y, 1.2 * px);
     g.fillCircle(armB.hand.x, armB.hand.y, 1.2 * px);
 
-    if (t > 0.5) {
-      // String through the drawing hand, and the nocked arrow while it is pulled.
-      const cos = Math.cos(bowAngle);
-      const sin = Math.sin(bowAngle);
-      const tip = (side: number): Vec2 => ({
-        x: handBow.x + (BOW_TIP_X * cos - side * BOW_TIP_Y * sin) * px,
-        y: handBow.y + (BOW_TIP_X * sin + side * BOW_TIP_Y * cos) * px,
-      });
-      const a = tip(-1);
-      const b = tip(1);
-      g.lineStyle(1, 0xd8d0c0, 0.9);
+    // The string is drawn between the limb tips, pulled toward the drawing hand while drawing.
+    const cos = Math.cos(bowAngle);
+    const sin = Math.sin(bowAngle);
+    const tip = (side: number): Vec2 => {
+      const u = (bowArt.stringX - bowArt.gripX) * bs;
+      const v = side * bowArt.halfHeight * bs;
+      return { x: bowPos.x + u * cos - v * sin, y: bowPos.y + u * sin + v * cos };
+    };
+    const a = tip(-1);
+    const b = tip(1);
+    const drawing = t > 0.5 && pull > 0.02;
+    const rest = { x: bowPos.x + (bowArt.stringX - bowArt.gripX) * bs * cos, y: bowPos.y + (bowArt.stringX - bowArt.gripX) * bs * sin };
+    const pulled = drawing ? lerp(rest, armB.hand, pull) : rest;
+    g.lineStyle(1, 0xd8d0c0, 0.9);
+    g.beginPath();
+    g.moveTo(a.x, a.y);
+    g.lineTo(pulled.x, pulled.y);
+    g.lineTo(b.x, b.y);
+    g.strokePath();
+    if (drawing) {
+      g.lineStyle(Math.max(1, px), 0x8a6a48, 1);
       g.beginPath();
-      g.moveTo(a.x, a.y);
-      if (p.drawProgress > 0.02) g.lineTo(armB.hand.x, armB.hand.y);
-      g.lineTo(b.x, b.y);
+      g.moveTo(pulled.x, pulled.y);
+      g.lineTo(bowPos.x + dirX * 5 * px, bowPos.y + dirY * 5 * px);
       g.strokePath();
-      if (p.drawProgress > 0.02) {
-        g.lineStyle(Math.max(1, px), 0x8a6a48, 1);
-        g.beginPath();
-        g.moveTo(armB.hand.x, armB.hand.y);
-        g.lineTo(handBow.x + dirX * 5 * px, handBow.y + dirY * 5 * px);
-        g.strokePath();
-      }
     }
 
     if (p.dashing && cfg.dash.afterimages > 0) {
@@ -263,7 +264,7 @@ function ellipseArc(g: Phaser.GameObjects.Graphics, cx: number, cy: number, rx: 
   const segments = Math.max(2, Math.ceil(40 * fraction));
   const start = -Math.PI / 2;
   g.beginPath();
-  for (let i = 0; i <= segments; i++) {
+  for (let i = 0; i < segments + 1; i++) {
     const a = start + (i / segments) * fraction * Math.PI * 2;
     const x = cx + Math.cos(a) * rx;
     const y = cy + Math.sin(a) * ry;

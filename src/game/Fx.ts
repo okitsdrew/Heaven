@@ -19,10 +19,13 @@ interface Fading {
 export class Fx {
   private images: Pool<Fading>;
   private texts: Pool<Fading>;
+  private streakGfx: Phaser.GameObjects.Graphics;
+  private streaks: { x0: number; y0: number; x1: number; y1: number; age: number; zip: number; fade: number; width: number }[] = [];
   private shake = 0;
   readonly shakeOffset = { x: 0, y: 0 };
 
   constructor(scene: Phaser.Scene) {
+    this.streakGfx = scene.add.graphics().setDepth(1e6 - 1);
     const fading = (obj: Fading['obj']): Fading => ({
       active: false,
       age: 0,
@@ -98,6 +101,12 @@ export class Fx {
     f.vy = o.vy ?? 0;
   }
 
+  // A line that zips from start to end, then its tail catches up and it fades.
+  streak(x0: number, y0: number, x1: number, y1: number): void {
+    const t = cfg.teleport;
+    this.streaks.push({ x0, y0, x1, y1, age: 0, zip: t.zipTime, fade: t.lineFade, width: t.lineWidth });
+  }
+
   smoke(x: number, y: number, count: number, spread: number): void {
     const px = cfg.render.pixelScale;
     for (let i = 0; i < count; i++) {
@@ -141,10 +150,39 @@ export class Fx {
         f.obj.setAlpha(f.startAlpha * (1 - t));
       }
     }
+    this.drawStreaks(dt);
     this.shake *= Math.exp(-cfg.camera.shakeDecay * dt);
     if (this.shake < 0.05) this.shake = 0;
     this.shakeOffset.x = (Math.random() * 2 - 1) * this.shake;
     this.shakeOffset.y = (Math.random() * 2 - 1) * this.shake;
+  }
+
+  private drawStreaks(dt: number): void {
+    const g = this.streakGfx;
+    g.clear();
+    for (let i = this.streaks.length - 1; i >= 0; i--) {
+      const s = this.streaks[i];
+      s.age += dt;
+      if (s.age >= s.zip + s.fade) {
+        this.streaks.splice(i, 1);
+        continue;
+      }
+      const head = Math.min(1, s.age / s.zip);
+      const tail = s.age <= s.zip ? 0 : (s.age - s.zip) / s.fade;
+      const ax = s.x0 + (s.x1 - s.x0) * tail;
+      const ay = s.y0 + (s.y1 - s.y0) * tail;
+      const bx = s.x0 + (s.x1 - s.x0) * head;
+      const by = s.y0 + (s.y1 - s.y0) * head;
+      const alpha = 1 - tail * tail;
+      for (const [w, color, a] of [
+        [s.width * 3.2, 0x7a2fd0, 0.45],
+        [s.width * 2, 0x3a0f6a, 0.9],
+        [s.width, 0x07000d, 1],
+      ] as const) {
+        g.lineStyle(w, color, a * alpha);
+        g.lineBetween(ax, ay, bx, by);
+      }
+    }
   }
 
   private spawn(pool: Pool<Fading>, life: number, startScale: number, endScale: number, alpha: number): Fading {
