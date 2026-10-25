@@ -245,7 +245,7 @@ export class GameScene extends Phaser.Scene {
       if (this.clock >= upgrades.runTime()) this.endRun("Time's up");
     }
 
-    const view = { halfW: cam.width / 2, halfH: cam.height / 2 };
+    const view = { halfW: cam.width / 2, halfH: cam.height / 2, heading: this.heading() };
     const slowAt = (x: number, y: number, r: number) => this.abilities.slowAt(x, y, r);
     this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, slowAt, !this.dead);
     this.gold.update(dt, this.player.x, this.player.y, !this.dead);
@@ -306,9 +306,18 @@ export class GameScene extends Phaser.Scene {
     else this.dummies.damage(target, amount);
   }
 
+  // Screen-space direction of travel, unit length, or zero while (nearly) still.
+  private heading(): { x: number; y: number } {
+    const p = this.player;
+    toScreen(p.vx, p.vy, screen);
+    const len = Math.hypot(screen.x, screen.y);
+    if (len < cfg.player.moveSpeed * 0.1) return { x: 0, y: 0 };
+    return { x: screen.x / len, y: screen.y / len };
+  }
+
   private spawnBurst(n: number): void {
     const cam = this.cameras.main;
-    const view = { halfW: cam.width / 2, halfH: cam.height / 2 };
+    const view = { halfW: cam.width / 2, halfH: cam.height / 2, heading: this.heading() };
     for (let i = 0; i < n; i++) this.enemies.spawn(this.clock, this.player.x, this.player.y, view);
   }
 

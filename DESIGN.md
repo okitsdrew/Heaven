@@ -78,7 +78,7 @@ In-game overlay, toggled with backtick. Must include:
 - Saves go to browser `localStorage`, with JSON export/import. The dev menu can fully reset it.
 
 ## 8. Enemies and spawning
-- Spawn in a ring just off-screen, all around the player, so enemies come from every side wherever the player moves.
+- Spawn in a ring just off-screen, all around the player, weighted toward the direction the player is walking (`spawn.directionBias`), so walking one way meets more enemies. Standing still spawns evenly.
 - Enemies beyond a larger ring are **despawned**: no drops and no XP.
 - Max **250** live enemies. At the cap, spawning pauses.
 - Spawn rate: 3/s during the first 20s, then ramping to the max of **50/s at 5:00**. After 5:00 it holds at 50/s.

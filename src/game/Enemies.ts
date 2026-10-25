@@ -32,6 +32,8 @@ interface Enemy extends Hittable {
 export interface View {
   halfW: number;
   halfH: number;
+  // Unit direction the player is heading on screen, or zero when standing still.
+  heading?: { x: number; y: number };
 }
 
 const screen = { x: 0, y: 0 };
@@ -122,16 +124,24 @@ export class Enemies {
     // A random point on the perimeter of the screen rectangle, pushed just past the edge.
     const w = view.halfW + cfg.spawn.screenMargin;
     const h = view.halfH + cfg.spawn.screenMargin;
-    let r = Math.random() * (w + h) * 2;
-    let sx: number;
-    let sy: number;
-    if (r < w * 2) {
-      sx = r - w;
-      sy = Math.random() < 0.5 ? -h : h;
-    } else {
-      r -= w * 2;
-      sx = Math.random() < 0.5 ? -w : w;
-      sy = r - h;
+    // Points ahead of the player's heading are kept more often than points behind, so walking one way meets more enemies.
+    const bias = cfg.spawn.directionBias;
+    const hd = view.heading;
+    let sx = 0;
+    let sy = 0;
+    for (let tries = 0; tries < 8; tries++) {
+      let r = Math.random() * (w + h) * 2;
+      if (r < w * 2) {
+        sx = r - w;
+        sy = Math.random() < 0.5 ? -h : h;
+      } else {
+        r -= w * 2;
+        sx = Math.random() < 0.5 ? -w : w;
+        sy = r - h;
+      }
+      if (!hd || bias <= 0 || (hd.x === 0 && hd.y === 0)) break;
+      const cos = (sx * hd.x + sy * hd.y) / (Math.hypot(sx, sy) || 1);
+      if (Math.random() < 1 - bias * (1 - (1 + cos) / 2)) break;
     }
     toWorld(sx, sy, off);
 
