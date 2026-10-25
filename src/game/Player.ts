@@ -41,6 +41,10 @@ export class Player {
   teleportCooldown = 0;
   teleportTime = 0;
   lockTime = 0;
+  armsUpTimer = 0;
+  private lockTotal = 0;
+  private lockStartMult = 1;
+  private lockEndMult = 1;
   private tpVx = 0;
   private tpVy = 0;
   private tpEndVx = 0;
@@ -63,6 +67,11 @@ export class Player {
 
   get teleporting(): boolean {
     return this.teleportTime > 0;
+  }
+
+  // True while the post-teleport lock is decelerating him into a slide.
+  get sliding(): boolean {
+    return this.lockTime > 0 && this.lockStartMult !== this.lockEndMult;
   }
 
   get invincible(): boolean {
@@ -98,6 +107,7 @@ export class Player {
       this.startDash();
     }
     this.dashBuffer -= dt;
+    this.armsUpTimer = Math.max(0, this.armsUpTimer - dt);
 
     this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
     if (cfg.abilities.teleport && input.justPressed('teleport') && this.teleportCooldown <= 0) {
@@ -199,20 +209,27 @@ export class Player {
   private endTeleport(): void {
     this.vx = this.tpEndVx;
     this.vy = this.tpEndVy;
-    this.startLock(cfg.teleport.lockTime, this.tpEndVx, this.tpEndVy);
+    this.armsUpTimer = cfg.teleport.armsUpTime;
+    this.startLock(cfg.teleport.lockTime, this.tpEndVx, this.tpEndVy, cfg.teleport.slideStartMult, cfg.teleport.slideEndMult);
     this.onTeleportArrive(this.x, this.y);
   }
 
-  private startLock(time: number, vx: number, vy: number): void {
+  private startLock(time: number, vx: number, vy: number, startMult: number, endMult: number): void {
     this.lockTime = time;
+    this.lockTotal = time;
     this.lockVx = vx;
     this.lockVy = vy;
+    this.lockStartMult = startMult;
+    this.lockEndMult = endMult;
   }
 
+  // Locked input: he keeps going the way he went, easing from the start speed to the end speed.
   private updateLock(dt: number): void {
     this.lockTime = Math.max(0, this.lockTime - dt);
-    this.vx = this.lockVx;
-    this.vy = this.lockVy;
+    const f = this.lockTotal > 0 ? 1 - this.lockTime / this.lockTotal : 1;
+    const mult = this.lockStartMult + (this.lockEndMult - this.lockStartMult) * f;
+    this.vx = this.lockVx * mult;
+    this.vy = this.lockVy * mult;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
   }
@@ -242,7 +259,7 @@ export class Player {
       this.dashCooldownMax = cfg.dash.cooldown;
       this.vx = this.dashEndVx;
       this.vy = this.dashEndVy;
-      this.startLock(cfg.dash.lockTime, this.dashEndVx, this.dashEndVy);
+      this.startLock(cfg.dash.lockTime, this.dashEndVx, this.dashEndVy, cfg.dash.slideStartMult, cfg.dash.slideEndMult);
     }
   }
 

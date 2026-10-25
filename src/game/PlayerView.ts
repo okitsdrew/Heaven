@@ -39,6 +39,8 @@ export class PlayerView {
   private phase = 0;
   private raise = 0;
   private walk = 0;
+  private armsUp = 0;
+  private dustTimer = 0;
   private time = 0;
 
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
@@ -119,7 +121,8 @@ export class PlayerView {
     const facingLeft = ahead.x < screen.x;
 
     const speed = Math.hypot(p.vx, p.vy);
-    const moving = !p.dashing && speed > cfg.player.moveSpeed * 0.1;
+    const sliding = p.sliding;
+    const moving = !p.dashing && !sliding && speed > cfg.player.moveSpeed * 0.1;
     this.phase = moving ? (this.phase + (speed * dt) / f.strideLength) % 1 : 0;
     const bob = moving ? Math.abs(Math.sin(this.phase * Math.PI * 2)) * f.walkBob * px : 0;
     const swing = moving ? Math.sin(this.phase * Math.PI * 2) * 2.5 * px : 0;
@@ -138,6 +141,8 @@ export class PlayerView {
     this.raise = Phaser.Math.Clamp(this.raise + rate, 0, 1);
     const t = this.raise * this.raise * (3 - 2 * this.raise);
     this.time += dt;
+    this.armsUp = Phaser.Math.Clamp(this.armsUp + (p.armsUpTimer > 0 ? dt : -dt) / 0.06, 0, 1);
+    const poseT = Math.max(t, this.armsUp * this.armsUp * (3 - 2 * this.armsUp));
 
     this.kick = Math.max(0, this.kick - dt);
     const kickT = f.bowKickTime > 0 ? this.kick / f.bowKickTime : 0;
@@ -166,7 +171,7 @@ export class PlayerView {
         x: shoulder.x + side * f.shootArmSpread * px,
         y: shoulder.y + f.shootArmDrop * px + shootFlap * flapSign,
       };
-      return lerp(lerp(rest, walking, this.walk), shooting, t);
+      return lerp(lerp(rest, walking, this.walk), shooting, poseT);
     };
     const armA = solveArm(shoulderA, pose(shoulderA, bowSide, 1), f.armLength * px);
     const armB = solveArm(shoulderB, pose(shoulderB, -bowSide, -1), f.armLength * px);
@@ -202,6 +207,7 @@ export class PlayerView {
     g.fillCircle(armA.hand.x, armA.hand.y, 1.2 * px);
     g.fillCircle(armB.hand.x, armB.hand.y, 1.2 * px);
 
+    if (sliding) this.slideDust(dt);
     this.drawBow(bowPos, bowAngle, bs, vis, prevVis, p.drawProgress, p.readyTimer > 0, dirY < 0 ? -0.5 : 0.5, dt);
 
     // Hands glow purple while he is shooting.
@@ -224,6 +230,47 @@ export class PlayerView {
     }
 
     this.drawCooldownRing(dt);
+  }
+
+  // Dust kicked up at his feet while he drifts out of a teleport.
+  private slideDust(dt: number): void {
+    const p = this.player;
+    const px = cfg.render.pixelScale;
+    const v = toScreen(p.vx, p.vy);
+    const len = Math.hypot(v.x, v.y) || 1;
+    this.dustTimer += dt * 70;
+    while (this.dustTimer >= 1) {
+      this.dustTimer -= 1;
+      const life = 0.25 + Math.random() * 0.25;
+      this.fx.particle({
+        texture: Tex.smoke,
+        x: screen.x + (Math.random() - 0.5) * 8 * px,
+        y: screen.y - Math.random() * 2 * px,
+        life,
+        from: px * 0.3,
+        to: px * (0.7 + Math.random() * 0.5),
+        alpha: 0.55,
+        tint: Math.random() < 0.5 ? 0x4a3a66 : 0x2a1f40,
+        additive: false,
+        vx: (-v.x / len) * 40 + (Math.random() - 0.5) * 30,
+        vy: (-v.y / len) * 20 + (Math.random() - 0.5) * 10,
+        depth: screen.y - 0.5,
+      });
+      if (Math.random() < 0.25) {
+        this.fx.particle({
+          x: screen.x + (Math.random() - 0.5) * 6 * px,
+          y: screen.y,
+          life: 0.2,
+          from: 0.25,
+          to: 0.05,
+          alpha: 0.9,
+          tint: 0xa060ff,
+          vx: (-v.x / len) * 80,
+          vy: (-v.y / len) * 40,
+          depth: screen.y + 0.5,
+        });
+      }
+    }
   }
 
   private drawBow(
