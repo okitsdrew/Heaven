@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { toScreen, toWorld } from '../iso';
+import { stats } from '../skills';
 
 interface Pile {
   x: number;
@@ -117,7 +118,7 @@ export class Gold {
   update(dt: number, px: number, py: number, collecting: boolean): void {
     const g = cfg.gold;
     if (collecting) {
-      const r = g.pickupRadius;
+      const r = stats.pickupRadius();
       for (const p of this.query(px - r, py - r, px + r, py + r)) {
         if (Math.hypot(p.x - px, p.y - py) > r) continue;
         this.flying.push({ x: p.x, y: p.y, value: p.value, speed: g.pullSpeed });

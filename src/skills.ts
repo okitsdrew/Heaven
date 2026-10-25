@@ -42,6 +42,7 @@ export const nodes: SkillNode[] = [
   { id: 'moreMoreRange', name: 'more MORE Range', desc: (p) => `+${pct(p)} arrow range`, parents: ['range'], currency: 'gold', costs: doubling(5, 10), effect: 'moreMoreRange', angle: six(5), radius: 450 },
 
   { id: 'goldValue', name: 'Gold Value', desc: (p) => `+${p} gold per kill`, parents: ['dash'], currency: 'gold', costs: doubling(5, 10), effect: 'goldValue', angle: 60, radius: 340 },
+  { id: 'pickupRadius', name: 'Pickup Radius', desc: (p) => `+${pct(p)} pickup radius`, parents: ['goldValue'], currency: 'gold', costs: doubling(5, 10), effect: 'pickupRadius', angle: 90, radius: 520 },
   { id: 'doubleGold', name: 'Double Gold', desc: (p) => `x${1 + p} gold per kill`, parents: ['goldValue'], currency: 'gold', costs: [250], effect: 'doubleGold', angle: 60, radius: 560 },
 
   { id: 'moreMorePierce', name: 'more MORE Pierce', desc: (p) => `+${p} pierce`, parents: ['pierce'], currency: 'gold', costs: [50, 150, 400], effect: 'moreMorePierce', angle: -5, radius: 450 },
@@ -132,6 +133,7 @@ export const stats = {
   fireRate: () => cfg.bow.fireRate * (1 + sum(['fireRate', 'moreFireRate'])),
   damage: () => cfg.bow.damage + sum(['damage', 'moreDamage']),
   pierce: () => Math.round(cfg.bow.pierce + sum(['pierce', 'moreMorePierce'])),
+  pickupRadius: () => cfg.gold.pickupRadius * (1 + sum(['pickupRadius'])),
   arrowSize: () => 1 + sum(['biggerArrows']),
   arrows: () => Math.max(1, Math.round(cfg.bow.arrowsPerShot + sum(['moreBullets', 'moreMoreBullets']))),
   range: () => cfg.bow.arrowRange * (1 + sum(['range', 'moreMoreRange'])),

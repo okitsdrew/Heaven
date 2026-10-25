@@ -123,16 +123,18 @@ export const defaults = {
     moreMoreRange: 0.1,
     moreMorePierce: 1,
     biggerArrows: 0.1,
+    pickupRadius: 0.2,
   },
   tree: {
     free: true,
     revealAll: true,
     nodeSize: 1,
+    showLines: false,
   },
   spawn: {
     enabled: true,
     maxEnemies: 250,
-    startRate: 3,
+    startRate: 1,
     holdTime: 20,
     maxRate: 50,
     rampEnd: 300,
@@ -160,7 +162,7 @@ export const defaults = {
   wraith: {
     speedMult: 0.6,
     hpMult: 1,
-    radius: 12,
+    radius: 20,
     scale: 1,
     appearAt: 0,
     weight: 1,
@@ -168,7 +170,7 @@ export const defaults = {
   shade: {
     speedMult: 0.85,
     hpMult: 0.5,
-    radius: 10,
+    radius: 20,
     scale: 0.85,
     appearAt: 30,
     weight: 0.35,
@@ -412,11 +414,13 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     moreMoreRange: { min: 0, max: 2, step: 0.05 },
     moreMorePierce: { min: 0, max: 10, step: 1 },
     biggerArrows: { min: 0, max: 1, step: 0.05 },
+    pickupRadius: { min: 0, max: 2, step: 0.05 },
   },
   tree: {
     free: 'bool',
     revealAll: 'bool',
     nodeSize: { min: 0.4, max: 2, step: 0.05 },
+    showLines: 'bool',
   },
   spawn: {
     enabled: 'bool',

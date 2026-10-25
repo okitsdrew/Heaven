@@ -257,6 +257,7 @@ export class Screens {
       el.style.transform = `translate(-50%, -50%) scale(${ns})`;
     }
     this.lines.innerHTML = '';
+    if (!cfg.tree.showLines) return;
     for (const n of nodes) {
       if (!isVisible(n)) continue;
       for (const parentId of n.parents) {
