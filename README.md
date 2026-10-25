@@ -8,17 +8,17 @@ An incremental isometric bullet-heaven about a robed archer holding off an endle
 - Boss fights at set times.
 
 ## Status
-Build order step 2 is in: movement, aiming, shooting, dash and the dev menu, with target dummies to shoot at. Enemies come next. See [DESIGN.md](DESIGN.md) for the full spec and build order, and [CLAUDE.md](CLAUDE.md) for contributor guidance.
+Build order steps 2 and 3 are in: movement, aiming, shooting, dash, abilities and the dev menu, plus enemies (Wraith, Shade, Husk), the spawn ramp and an infinite chunked battlefield. Gold, XP and the run loop come next. See [DESIGN.md](DESIGN.md) for the full spec and build order, and [CLAUDE.md](CLAUDE.md) for contributor guidance.
 
 ## Controls
 | Input | Action |
 |---|---|
 | WASD | Move |
 | Left click (hold) | Shoot toward cursor |
-| Left Shift | Dash in move direction |
-| Space | Teleport toward cursor |
-| Q (hold, release) | Fire Wave: hold to preview the path, release to cast (needs Fire Fairy; dev menu `abilities` section) |
-| E (hold, release) | Ice Storm: hold to preview the circle at the cursor, release to cast (needs Ice Fairy) |
+| Space | Dash in move direction |
+| Right click | Teleport toward cursor |
+| Q, then left click | Fire Wave: Q shows the path (Q again cancels), click casts (needs Fire Fairy; dev menu `abilities` section) |
+| E, then left click | Ice Storm: E shows the circle at the cursor, click casts (needs Ice Fairy) |
 | R (toggle) | Sword Slash: arms it, and the next attack becomes a 3-swing combo (dash or teleport cancels) |
 | Backtick | Dev menu |
 
