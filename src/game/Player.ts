@@ -39,6 +39,14 @@ export class Player {
   dashEndVy = 0;
   dashCooldownMax = 0;
   teleportCooldown = 0;
+  teleportTime = 0;
+  lockTime = 0;
+  private tpVx = 0;
+  private tpVy = 0;
+  private tpEndVx = 0;
+  private tpEndVy = 0;
+  private lockVx = 0;
+  private lockVy = 0;
   readyTimer = 0;
   shootSlowTimer = 0;
   private lastMoveX = 0;
@@ -46,14 +54,19 @@ export class Player {
 
   onFire: (x: number, y: number, dirX: number, dirY: number) => void = () => {};
   onDashStart: () => void = () => {};
-  onTeleport: (fromX: number, fromY: number, toX: number, toY: number) => void = () => {};
+  onTeleport: (fromX: number, fromY: number, toX: number, toY: number, travelTime: number) => void = () => {};
+  onTeleportArrive: (x: number, y: number) => void = () => {};
 
   get dashing(): boolean {
     return this.dashTime > 0;
   }
 
+  get teleporting(): boolean {
+    return this.teleportTime > 0;
+  }
+
   get invincible(): boolean {
-    return this.dashing;
+    return this.dashing || this.teleporting;
   }
 
   // 0 right after a shot, rising to 1 as the next shot is about to release.
@@ -92,7 +105,11 @@ export class Player {
     }
 
     if (this.dashing) this.updateDash(dt);
-    else this.updateMove(dt, input);
+    if (this.teleporting) this.updateTeleport(dt);
+    if (!this.dashing && !this.teleporting) {
+      if (this.lockTime > 0) this.updateLock(dt);
+      else this.updateMove(dt, input);
+    }
 
     if (!this.dashing) this.dashCooldown = Math.max(0, this.dashCooldown - dt);
     this.updateFire(dt, input);
@@ -135,18 +152,69 @@ export class Player {
     }
   }
 
-  // Teleports toward the cursor, using its direction as seen on screen.
+  // Teleports toward the cursor, using its direction as seen on screen. Optionally travels at dash speed.
   private teleport(): void {
     const fromX = this.x;
     const fromY = this.y;
     const from = toScreen(this.x, this.y, { x: 0, y: 0 });
     const to = toScreen(this.x + this.aimX, this.y + this.aimY, { x: 0, y: 0 });
     const l = Math.hypot(to.x - from.x, to.y - from.y) || 1;
-    screenToWorldVel((to.x - from.x) / l, (to.y - from.y) / l, cfg.teleport.distance, tmp);
-    this.x += tmp.x;
-    this.y += tmp.y;
+    const dx = (to.x - from.x) / l;
+    const dy = (to.y - from.y) / l;
+    screenToWorldVel(dx, dy, cfg.teleport.distance, tmp);
+    const jumpX = tmp.x;
+    const jumpY = tmp.y;
+    screenToWorldVel(dx, dy, cfg.player.moveSpeed, tmp);
+    this.tpEndVx = tmp.x;
+    this.tpEndVy = tmp.y;
+
+    const dashSpeed = cfg.dash.distance / cfg.dash.duration;
+    const travel = cfg.teleport.matchDashSpeed && dashSpeed > 0 ? cfg.teleport.distance / dashSpeed : 0;
     this.teleportCooldown = cfg.teleport.cooldown;
-    this.onTeleport(fromX, fromY, this.x, this.y);
+    this.lockTime = 0;
+    this.onTeleport(fromX, fromY, fromX + jumpX, fromY + jumpY, travel);
+    if (travel > 1e-3) {
+      this.teleportTime = travel;
+      this.tpVx = jumpX / travel;
+      this.tpVy = jumpY / travel;
+    } else {
+      this.x += jumpX;
+      this.y += jumpY;
+      this.endTeleport();
+    }
+  }
+
+  private updateTeleport(dt: number): void {
+    const step = Math.min(dt, this.teleportTime);
+    this.x += this.tpVx * step;
+    this.y += this.tpVy * step;
+    this.teleportTime -= dt;
+    if (this.teleportTime <= 0) {
+      this.teleportTime = 0;
+      this.endTeleport();
+    }
+  }
+
+  // After a teleport (or dash) input is locked briefly and he keeps walking the way he was going.
+  private endTeleport(): void {
+    this.vx = this.tpEndVx;
+    this.vy = this.tpEndVy;
+    this.startLock(cfg.teleport.lockTime, this.tpEndVx, this.tpEndVy);
+    this.onTeleportArrive(this.x, this.y);
+  }
+
+  private startLock(time: number, vx: number, vy: number): void {
+    this.lockTime = time;
+    this.lockVx = vx;
+    this.lockVy = vy;
+  }
+
+  private updateLock(dt: number): void {
+    this.lockTime = Math.max(0, this.lockTime - dt);
+    this.vx = this.lockVx;
+    this.vy = this.lockVy;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
   }
 
   private startDash(): void {
@@ -158,6 +226,7 @@ export class Player {
     this.dashEndVx = tmp.x;
     this.dashEndVy = tmp.y;
     this.dashBuffer = 0;
+    this.lockTime = 0;
     this.dashTime = cfg.dash.duration;
     this.onDashStart();
   }
@@ -173,6 +242,7 @@ export class Player {
       this.dashCooldownMax = cfg.dash.cooldown;
       this.vx = this.dashEndVx;
       this.vy = this.dashEndVy;
+      this.startLock(cfg.dash.lockTime, this.dashEndVx, this.dashEndVy);
     }
   }
 
