@@ -7,6 +7,8 @@ import {
   level,
   maxLevel,
   nextCost,
+  refund,
+  refundSkill,
   nodeById,
   nodes,
   SkillNode,
@@ -112,7 +114,7 @@ export class Screens {
     this.skillsBtn = this.button('Skills', () => this.toggleSkills(), 'big');
     bottom.append(this.skillsBtn, this.button('Battle', () => this.onBattle(), 'big go'));
     this.div('hint', undefined, this.tree).textContent =
-      'Drag background to pan, wheel to zoom, drag a node to move it, click a node to buy.';
+      'Drag background to pan, wheel to zoom, drag a node to move it, click a node to buy, right-click to refund.';
 
     for (const el of [this.summary, this.tree]) {
       el.addEventListener('click', (e) => {
@@ -186,8 +188,16 @@ export class Screens {
     const el = this.div('node', undefined, this.world);
     let start: { px: number; py: number; x: number; y: number } | null = null;
     let dragged = false;
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (refund(n)) {
+        persist();
+        this.refresh();
+      }
+    });
     el.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
+      if (e.button !== 0) return;
       el.setPointerCapture(e.pointerId);
       const p = this.position(n);
       start = { px: e.clientX, py: e.clientY, x: p.x, y: p.y };
@@ -223,7 +233,9 @@ export class Screens {
 
   private bindStage(): void {
     let pan: { px: number; py: number; x: number; y: number } | null = null;
+    this.stage.addEventListener('contextmenu', (e) => e.preventDefault());
     this.stage.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
       this.stage.setPointerCapture(e.pointerId);
       pan = { px: e.clientX, py: e.clientY, x: this.view.x, y: this.view.y };
       this.stage.classList.add('panning');
@@ -365,6 +377,13 @@ export class Screens {
         }
       });
       btn.disabled = owned;
+      card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (refundSkill(s)) {
+          persist();
+          this.refresh();
+        }
+      });
       card.append(title, desc, req, btn);
     }
   }

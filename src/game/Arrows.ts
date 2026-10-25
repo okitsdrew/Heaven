@@ -6,6 +6,7 @@ import { Pool } from '../util/pool';
 import { SpatialHash } from '../util/spatialHash';
 import { stats } from '../skills';
 import { Fx } from './Fx';
+import type { Obstacle } from './Chunks';
 
 export interface Hittable {
   kind: 'dummy' | 'enemy';
@@ -43,6 +44,7 @@ export class Arrows {
   private candidates: Hittable[] = [];
   private contacts: { t: number; target: Hittable }[] = [];
 
+  onBlocked: (x: number, y: number) => void = () => {};
   onHit: (target: Hittable, damage: number, arrowX: number, arrowY: number) => void = () => {};
 
   constructor(scene: Phaser.Scene, private fx: Fx) {
@@ -105,7 +107,7 @@ export class Arrows {
     }
   }
 
-  update(dt: number, targets: SpatialHash<Hittable>, maxTargetRadius: number): void {
+  update(dt: number, targets: SpatialHash<Hittable>, maxTargetRadius: number, obstacles: readonly Obstacle[]): void {
     for (const a of this.pool.items) {
       if (!a.active) continue;
       const stepPx = Math.min(a.speed * dt, a.range - a.traveled);
@@ -122,11 +124,19 @@ export class Arrows {
         Math.max(a.y, y1) + pad,
         this.candidates,
       );
+      // Terrain stops the arrow where it first touches an obstacle; anything behind that point is safe.
+      let wall = -1;
+      for (const o of obstacles) {
+        if (o.x + o.radius < Math.min(a.x, x1) || o.x - o.radius > Math.max(a.x, x1)) continue;
+        if (o.y + o.radius < Math.min(a.y, y1) || o.y - o.radius > Math.max(a.y, y1)) continue;
+        const t = segmentCircle(a.x, a.y, a.dirX, a.dirY, step, o.x, o.y, o.radius);
+        if (t >= 0 && (wall < 0 || t < wall)) wall = t;
+      }
       this.contacts.length = 0;
       for (const target of this.candidates) {
         if (!target.alive || a.hits.has(target.id)) continue;
         const t = segmentCircle(a.x, a.y, a.dirX, a.dirY, step, target.x, target.y, target.radius + a.hitRadius);
-        if (t >= 0) this.contacts.push({ t, target });
+        if (t >= 0 && (wall < 0 || t <= wall)) this.contacts.push({ t, target });
       }
       this.contacts.sort((p, q) => p.t - q.t);
 
@@ -143,6 +153,11 @@ export class Arrows {
       }
 
       if (stopAt >= 0) {
+        this.release(a);
+        continue;
+      }
+      if (wall >= 0) {
+        this.onBlocked(a.x + a.dirX * wall, a.y + a.dirY * wall);
         this.release(a);
         continue;
       }

@@ -3,17 +3,18 @@
 export const defaults = {
   player: {
     moveSpeed: 200,
-    shootSpeedMult: 0.75,
+    shootSpeedMult: 0.5,
     shootSlowTime: 0.25,
     uniformScreenSpeed: true,
     screenSpeedMult: 1,
     accel: 4000,
     hitRadius: 6,
     bodyRadius: 10,
+    invulnAfter: 0.2,
   },
   bow: {
     fireRate: 1,
-    damage: 10,
+    damage: 5,
     pierce: 0,
     arrowsPerShot: 1,
     spreadDeg: 3.5,
@@ -81,7 +82,7 @@ export const defaults = {
     height: 14,
   },
   world: {
-    despawnRadius: 1200,
+    despawnRadius: 3000,
   },
   run: {
     baseTime: 10,
@@ -111,12 +112,15 @@ export const defaults = {
     time: 5,
     moveSpeed: 0.1,
     damage: 1,
-    range: 0.1,
+    range: 0.05,
     moreFireRate: 0.2,
     moreBullets: 1,
     moreTime: 20,
-    moreSpeed: 0.2,
     moreDamage: 5,
+    goldValue: 1,
+    doubleGold: 1,
+    moreMoreBullets: 1,
+    moreMoreRange: 0.1,
   },
   tree: {
     free: true,
@@ -292,6 +296,7 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     screenSpeedMult: { min: 0.3, max: 2, step: 0.05 },
     accel: { min: 200, max: 20000, step: 100 },
     hitRadius: { min: 1, max: 30, step: 1 },
+    invulnAfter: { min: 0, max: 2, step: 0.05 },
     bodyRadius: { min: 1, max: 40, step: 1 },
   },
   bow: {
@@ -398,8 +403,11 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     moreFireRate: { min: 0, max: 2, step: 0.05 },
     moreBullets: { min: 0, max: 10, step: 1 },
     moreTime: { min: 0, max: 120, step: 1 },
-    moreSpeed: { min: 0, max: 2, step: 0.05 },
     moreDamage: { min: 0, max: 200, step: 1 },
+    goldValue: { min: 0, max: 20, step: 1 },
+    doubleGold: { min: 0, max: 5, step: 0.5 },
+    moreMoreBullets: { min: 0, max: 10, step: 1 },
+    moreMoreRange: { min: 0, max: 2, step: 0.05 },
   },
   tree: {
     free: 'bool',

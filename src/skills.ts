@@ -37,8 +37,12 @@ export const nodes: SkillNode[] = [
   { id: 'moreFireRate', name: 'More Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['fireRate'], currency: 'gold', costs: doubling(5, 10), effect: 'moreFireRate', angle: six(0), radius: 450 },
   { id: 'moreBullets', name: 'More Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['pierce'], currency: 'gold', costs: [100, 300], effect: 'moreBullets', angle: six(1), radius: 450 },
   { id: 'moreTime', name: 'More MORE Time', desc: (p) => `+${p}s run time`, parents: ['time'], currency: 'gold', costs: doubling(5, 10), effect: 'moreTime', angle: six(2), radius: 450 },
-  { id: 'moreSpeed', name: 'More MORE Speed', desc: (p) => `+${pct(p)} move speed`, parents: ['moveSpeed'], currency: 'gold', costs: doubling(5, 10), effect: 'moreSpeed', angle: six(3), radius: 450 },
   { id: 'moreDamage', name: 'More Damage', desc: (p) => `+${p} damage`, parents: ['damage'], currency: 'gold', costs: doubling(5, 10), effect: 'moreDamage', angle: six(4), radius: 450 },
+  { id: 'moreMoreBullets', name: 'More MORE Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['moreBullets'], currency: 'gold', costs: [200, 500, 1000], effect: 'moreMoreBullets', angle: six(1), radius: 660 },
+  { id: 'moreMoreRange', name: 'more MORE Range', desc: (p) => `+${pct(p)} arrow range`, parents: ['range'], currency: 'gold', costs: doubling(5, 10), effect: 'moreMoreRange', angle: six(5), radius: 450 },
+
+  { id: 'goldValue', name: 'Gold Value', desc: (p) => `+${p} gold per kill`, parents: ['dash'], currency: 'gold', costs: doubling(5, 10), effect: 'goldValue', angle: 60, radius: 340 },
+  { id: 'doubleGold', name: 'Double Gold', desc: (p) => `x${1 + p} gold per kill`, parents: ['goldValue'], currency: 'gold', costs: [250], effect: 'doubleGold', angle: 60, radius: 560 },
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -58,7 +62,7 @@ export interface SkillDef {
 // Unlocked from the Skills page. Prerequisites are shown but not enforced while everything is free.
 export const skills: SkillDef[] = [
   { id: 'fireFairy', name: 'Fire Fairy', key: 'Q', desc: 'Fire Wave: a rectangle of fire that sweeps out to the edge, hitting everything once.', requires: ['moreFireRate', 'moreBullets'], cost: 1, color: '#ff7a20' },
-  { id: 'iceFairy', name: 'Ice Fairy', key: 'E', desc: 'Ice Storm: a freezing circle at the cursor that damages and slows enemies.', requires: ['moreTime', 'moreSpeed'], cost: 1, color: '#7fd4ff' },
+  { id: 'iceFairy', name: 'Ice Fairy', key: 'E', desc: 'Ice Storm: a freezing circle at the cursor that damages and slows enemies.', requires: ['moreTime'], cost: 1, color: '#7fd4ff' },
   { id: 'swordSlash', name: 'Sword Slash', key: 'R', desc: 'Toggle, then attack for a three-swing combo with a slam finisher.', requires: [], cost: 1, color: '#b070ff' },
 ];
 
@@ -94,6 +98,27 @@ export function buy(n: SkillNode): boolean {
     else profile.skillPoints -= cost;
   }
   profile.nodes[n.id] = level(n.id) + 1;
+  return true;
+}
+
+// Gives back the most recent level. Blocked if it would orphan a purchased child node.
+export function refund(n: SkillNode): boolean {
+  const lvl = level(n.id);
+  if (lvl <= 0) return false;
+  if (lvl === 1 && nodes.some((c) => c.parents.includes(n.id) && level(c.id) > 0)) return false;
+  if (!cfg.tree.free) {
+    if (n.currency === 'gold') profile.gold += n.costs[lvl - 1];
+    else profile.skillPoints += n.costs[lvl - 1];
+  }
+  if (lvl === 1) delete profile.nodes[n.id];
+  else profile.nodes[n.id] = lvl - 1;
+  return true;
+}
+
+export function refundSkill(s: SkillDef): boolean {
+  if (!profile.skills[s.id]) return false;
+  if (!cfg.tree.free) profile.skillPoints += s.cost;
+  delete profile.skills[s.id];
   return true;
 }
 
@@ -134,8 +159,9 @@ export const stats = {
   fireRate: () => cfg.bow.fireRate * (1 + sum(['fireRate', 'moreFireRate'])),
   damage: () => cfg.bow.damage + sum(['damage', 'moreDamage']),
   pierce: () => Math.round(cfg.bow.pierce + sum(['pierce'])),
-  arrows: () => Math.max(1, Math.round(cfg.bow.arrowsPerShot + sum(['moreBullets']))),
-  range: () => cfg.bow.arrowRange * (1 + sum(['range'])),
-  moveSpeed: () => cfg.player.moveSpeed * (1 + sum(['moveSpeed', 'moreSpeed'])),
+  arrows: () => Math.max(1, Math.round(cfg.bow.arrowsPerShot + sum(['moreBullets', 'moreMoreBullets']))),
+  range: () => cfg.bow.arrowRange * (1 + sum(['range', 'moreMoreRange'])),
+  goldValue: () => Math.max(0, cfg.gold.perKill + sum(['goldValue'])) * (1 + sum(['doubleGold'])),
+  moveSpeed: () => cfg.player.moveSpeed * (1 + sum(['moveSpeed'])),
   runTime: () => (cfg.run.lengthOverride > 0 ? cfg.run.lengthOverride : cfg.run.baseTime + sum(['time', 'moreTime'])),
 };

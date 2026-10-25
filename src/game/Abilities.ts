@@ -5,6 +5,7 @@ import { ellipseHalfSize, toScreen, Vec2 } from '../iso';
 import { Hittable } from './Arrows';
 import { Fx } from './Fx';
 import { canUse } from '../skills';
+import type { Obstacle } from './Chunks';
 import { Player } from './Player';
 
 interface Storm {
@@ -42,6 +43,8 @@ export class Abilities {
   private time = 0;
   // Q or E arms a spell and shows where it will land; the next click casts it.
   aiming: 'fire' | 'ice' | null = null;
+  // Terrain that stops fire waves; set each frame by the scene.
+  obstacles: readonly Obstacle[] = [];
   // The casting click is held down; keep it from also firing the bow until it's released.
   private swallowFire = false;
 
@@ -160,7 +163,21 @@ export class Abilities {
       const prev = w.dist;
       w.dist += c.speed * dt;
       const lo = prev - c.length / 2;
-      const hi = w.dist + c.length / 2;
+      let hi = w.dist + c.length / 2;
+      // The wave's front stops where it first meets an obstacle.
+      let blocked = false;
+      for (const o of this.obstacles) {
+        const rx = o.x - w.ox;
+        const ry = o.y - w.oy;
+        const along = rx * w.dirX + ry * w.dirY;
+        const side = Math.abs(-rx * w.dirY + ry * w.dirX);
+        const lateral = Math.max(0, side - c.width / 2);
+        if (lateral >= o.radius) continue;
+        const front = along - Math.sqrt(o.radius * o.radius - lateral * lateral);
+        if (front > hi || along + o.radius < lo) continue;
+        hi = Math.min(hi, front);
+        blocked = true;
+      }
       for (const t of this.targets()) {
         if (!t.alive || w.hits.has(t.id)) continue;
         const rx = t.x - w.ox;
@@ -171,6 +188,12 @@ export class Abilities {
           w.hits.add(t.id);
           this.onDamage(t, c.damage, t.x, t.y);
         }
+      }
+
+      if (blocked) {
+        this.waveSplash(w, hi);
+        this.waves.splice(i, 1);
+        continue;
       }
 
       const center = this.waveCenter(w);
@@ -203,6 +226,26 @@ export class Abilities {
           depth: screen.y + 3,
         });
       }
+    }
+  }
+
+  // Embers scatter where a wave hits terrain.
+  private waveSplash(w: Wave, along: number): void {
+    const c = cfg.fireWave;
+    for (let k = 0; k < 14; k++) {
+      const side = (Math.random() - 0.5) * c.width;
+      toScreen(w.ox + w.dirX * along - w.dirY * side, w.oy + w.dirY * along + w.dirX * side, screen);
+      this.fx.particle({
+        x: screen.x,
+        y: screen.y - 6 * cfg.render.pixelScale,
+        life: 0.3 + Math.random() * 0.3,
+        from: 0.4,
+        to: 0.05,
+        tint: emberColors[Math.floor(Math.random() * emberColors.length)],
+        vx: (Math.random() - 0.5) * 80,
+        vy: -30 - Math.random() * 70,
+        depth: screen.y + 3,
+      });
     }
   }
 

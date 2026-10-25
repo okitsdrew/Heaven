@@ -20,6 +20,9 @@ interface Enemy extends Hittable {
   ky: number;
   flash: number;
   phase: number;
+  // Which way round the current obstacle this enemy committed to, so it doesn't dither head-on.
+  avoid: Obstacle | null;
+  side: number;
   sprite: Phaser.GameObjects.Image;
   shadow: Phaser.GameObjects.Image;
 }
@@ -76,6 +79,8 @@ export class Enemies {
       ky: 0,
       flash: 0,
       phase: 0,
+      avoid: null,
+      side: 1,
       sprite: scene.add.image(0, 0, enemyFrames.wraith[0]).setOrigin(0.5, 1).setVisible(false),
       shadow: scene.add.image(0, 0, Tex.shadow).setVisible(false),
     }));
@@ -146,6 +151,7 @@ export class Enemies {
     e.ky = 0;
     e.flash = 0;
     e.phase = Math.random() * Math.PI * 2;
+    e.avoid = null;
     e.sprite.setTexture(enemyFrames[type][0]).setVisible(true);
     e.shadow.setVisible(true);
     this.live.push(e);
@@ -224,24 +230,32 @@ export class Enemies {
       dx /= dist;
       dy /= dist;
 
-      // Steer around obstacles ahead by sliding along their tangent on the side nearer the player.
+      // Steer round obstacles in the way. The first time one blocks the path the enemy picks the side nearer its
+      // heading and keeps it until clear, and a close obstacle gets a full sideways push so nothing stalls head-on.
+      let blocked: Obstacle | null = null;
       for (const o of obstacles) {
         const ox = e.x - o.x;
         const oy = e.y - o.y;
         const od = Math.hypot(ox, oy) || 1;
-        const reach = o.radius + e.radius + ec.avoidLookahead;
-        if (od > reach || ox * dx + oy * dy > 0) continue;
-        const side = -ox * dy + oy * dx >= 0 ? 1 : -1;
-        const tx = (-oy / od) * side;
-        const ty = (ox / od) * side;
-        const w = 1 - (od - o.radius - e.radius) / Math.max(ec.avoidLookahead, 1e-3);
-        const a = Phaser.Math.Clamp(w, 0, 1);
+        const gap = od - o.radius - e.radius;
+        if (gap > ec.avoidLookahead || ox * dx + oy * dy > 0.3 * od) continue;
+        blocked = o;
+        if (e.avoid !== o) {
+          const cross = -ox * dy + oy * dx;
+          e.side = Math.abs(cross) < 1e-3 ? (e.id % 2 ? 1 : -1) : cross > 0 ? 1 : -1;
+          e.avoid = o;
+        }
+        const tx = (-oy / od) * e.side;
+        const ty = (ox / od) * e.side;
+        const a = Phaser.Math.Clamp(1.4 - gap / Math.max(ec.avoidLookahead, 1e-3), 0.35, 1);
         dx = dx * (1 - a) + tx * a;
         dy = dy * (1 - a) + ty * a;
         const l = Math.hypot(dx, dy) || 1;
         dx /= l;
         dy /= l;
+        break;
       }
+      if (!blocked) e.avoid = null;
 
       const speed = c.speedMult * cfg.player.moveSpeed * slowAt(e.x, e.y, e.radius);
       e.vx += (dx * speed - e.vx) * turn;
@@ -275,7 +289,7 @@ export class Enemies {
 
       e.x += (e.vx + e.kx) * dt + sx * sepK;
       e.y += (e.vy + e.ky) * dt + sy * sepK;
-      pushOut(e, obstacles);
+      slideOut(e, obstacles);
     }
   }
 
@@ -349,5 +363,31 @@ export function pushOut(c: { x: number; y: number; radius: number }, obstacles: 
     }
     c.x = o.x + (dx / d) * min;
     c.y = o.y + (dy / d) * min;
+  }
+}
+
+// Like pushOut, but also strips the velocity driving the enemy into the obstacle so it slides instead of sticking.
+function slideOut(e: Enemy, obstacles: readonly Obstacle[]): void {
+  for (const o of obstacles) {
+    const dx = e.x - o.x;
+    const dy = e.y - o.y;
+    const min = o.radius + e.radius;
+    const d2 = dx * dx + dy * dy;
+    if (d2 >= min * min) continue;
+    const d = Math.sqrt(d2) || 1e-3;
+    const nx = dx / d;
+    const ny = dy / d;
+    e.x = o.x + nx * min;
+    e.y = o.y + ny * min;
+    const into = e.vx * nx + e.vy * ny;
+    if (into < 0) {
+      e.vx -= into * nx;
+      e.vy -= into * ny;
+    }
+    const kInto = e.kx * nx + e.ky * ny;
+    if (kInto < 0) {
+      e.kx -= kInto * nx;
+      e.ky -= kInto * ny;
+    }
   }
 }

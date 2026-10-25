@@ -45,7 +45,7 @@ In-game overlay, toggled with backtick. Must include:
 |---|---|
 | Move | WASD (base speed tunable) |
 | Fire | Left click, hold to fire at max rate. 1 arrow/sec |
-| Arrow damage | 10 |
+| Arrow damage | 5 |
 | Pierce | 0 |
 | Arrow speed | ~900 units/s |
 | Arrow range | ~400 units |
@@ -62,6 +62,7 @@ In-game overlay, toggled with backtick. Must include:
 ## 7a. Current build notes (phase 3)
 - Skills (Fire Fairy, Ice Fairy, Sword Slash) are unlocked from a **Skills** page next to the tree rather than as tree nodes. Prerequisites from section 10 are shown but not enforced while everything is free (`tree.free`).
 - Tree node positions are draggable and saved to `localStorage` separately from progress; `tree.revealAll` shows hidden nodes so they can be arranged.
+- Obstacles stop arrows and fire waves. Dash and teleport each grant 0.2s of invincibility afterwards (`player.invulnAfter`). Right-click a tree node or skill card to refund it.
 - Gold and XP persist in the versioned save (`heaven.save.v1`). Uncollected gold from a run is lost when a new run starts.
 
 ## 7. Run loop

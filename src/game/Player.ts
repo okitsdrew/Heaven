@@ -53,6 +53,8 @@ export class Player {
   private lockVx = 0;
   private lockVy = 0;
   readyTimer = 0;
+  // Grace period after a dash or teleport ends.
+  graceTime = 0;
   fireBlocked = false;
   shootSlowTimer = 0;
   private lastMoveX = 0;
@@ -78,6 +80,11 @@ export class Player {
 
   get invincible(): boolean {
     return this.dashing || this.teleporting;
+  }
+
+  // Cannot be killed: mid-dash or teleport, or in the short grace afterwards.
+  get safe(): boolean {
+    return this.invincible || this.graceTime > 0;
   }
 
   // 0 right after a shot, rising to 1 as the next shot is about to release.
@@ -110,6 +117,7 @@ export class Player {
     }
     this.dashBuffer -= dt;
     this.armsUpTimer = Math.max(0, this.armsUpTimer - dt);
+    this.graceTime = Math.max(0, this.graceTime - dt);
 
     this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
     if (canUse('teleport') && input.justPressed('teleport') && this.teleportCooldown <= 0) {
@@ -208,6 +216,7 @@ export class Player {
 
   // After a teleport (or dash) input is locked briefly and he keeps walking the way he was going.
   private endTeleport(): void {
+    this.graceTime = cfg.player.invulnAfter;
     this.vx = this.tpEndVx;
     this.vy = this.tpEndVy;
     this.armsUpTimer = cfg.teleport.armsUpTime;
@@ -256,6 +265,7 @@ export class Player {
     this.dashTime -= dt;
     if (this.dashTime <= 0) {
       this.dashTime = 0;
+      this.graceTime = cfg.player.invulnAfter;
       this.dashCooldown = cfg.dash.cooldown;
       this.dashCooldownMax = cfg.dash.cooldown;
       this.vx = this.dashEndVx;

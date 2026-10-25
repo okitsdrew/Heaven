@@ -47,6 +47,27 @@ function fromGrid(scene: Phaser.Scene, key: string, rows: string[], palette: Pal
   g.destroy();
 }
 
+// Pads a grid by one cell and fills every empty cell touching a filled one with `ch`, giving sprites a 1px border.
+function outlined(rows: string[], ch: string): string[] {
+  const w = rows[0].length + 2;
+  const filled = (x: number, y: number) => (rows[y - 1]?.[x - 1] ?? '.') !== '.' && rows[y - 1]?.[x - 1] !== undefined;
+  const out: string[] = [];
+  for (let y = 0; y < rows.length + 2; y++) {
+    let line = '';
+    for (let x = 0; x < w; x++) {
+      if (filled(x, y)) {
+        line += rows[y - 1][x - 1];
+        continue;
+      }
+      let near = false;
+      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) if (filled(x + dx, y + dy)) near = true;
+      line += near ? ch : '.';
+    }
+    out.push(line);
+  }
+  return out;
+}
+
 function softCircle(scene: Phaser.Scene, key: string, size: number, color: number, alpha: number): void {
   const g = scene.make.graphics({}, false);
   const r = size / 2;
@@ -181,12 +202,12 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
     ['..kk.kk.kk..', '.k..k..k..k.', '.k.....k....'],
   ];
   const wraithColors = {
-    wraith: { k: 0x1c1826, K: 0x3a3352, E: 0x9fe8ff, e: 0x3f8fb0 },
-    shade: { k: 0x141a2a, K: 0x2e3d5c, E: 0xc9b4ff, e: 0x6a4fb0 },
-    husk: { k: 0x221818, K: 0x4a3030, E: 0xffa040, e: 0xa04a18 },
+    wraith: { k: 0x1c1826, K: 0x3a3352, E: 0x9fe8ff, e: 0x3f8fb0, O: 0x8a8a98 },
+    shade: { k: 0x141a2a, K: 0x2e3d5c, E: 0xc9b4ff, e: 0x6a4fb0, O: 0x8a8a98 },
+    husk: { k: 0x221818, K: 0x4a3030, E: 0xffa040, e: 0xa04a18, O: 0x8a8a98 },
   };
   for (const kind of ['wraith', 'shade', 'husk'] as const) {
-    wraithHem.forEach((hem, i) => fromGrid(scene, enemyFrames[kind][i], [...wraithTop, ...hem], wraithColors[kind]));
+    wraithHem.forEach((hem, i) => fromGrid(scene, enemyFrames[kind][i], outlined([...wraithTop, ...hem], 'O'), wraithColors[kind]));
   }
 
   const charred = { b: 0x2a2018, B: 0x3d2e22, a: 0x1a1714, e: 0x8a3a1a, o: 0x342820 };

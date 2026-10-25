@@ -118,6 +118,10 @@ export class GameScene extends Phaser.Scene {
       this.fx.damageNumber(screen.x, screen.y - cfg.render.arrowHeight - 8, damage);
       this.fx.addShake(cfg.camera.shakeOnHit);
     };
+    this.arrows.onBlocked = (x, y) => {
+      toScreen(x, y, screen);
+      this.fx.smoke(screen.x, screen.y - cfg.render.arrowHeight, 3, 3);
+    };
     this.dummies.onDestroyed = (x, y) => {
       toScreen(x, y, screen);
       this.fx.smoke(screen.x, screen.y - 8 * cfg.render.pixelScale, 10, 10);
@@ -130,7 +134,7 @@ export class GameScene extends Phaser.Scene {
         this.run.levels += gained;
         this.runHud.announce(`LEVEL ${profile.level}!`);
       }
-      this.gold.drop(x, y, cfg.gold.perKill);
+      this.gold.drop(x, y, upgrades.goldValue());
       const px = cfg.render.pixelScale;
       const size = cfg[type].scale;
       toScreen(x, y, screen);
@@ -250,10 +254,11 @@ export class GameScene extends Phaser.Scene {
     for (const d of this.dummies.list) if (d.alive) this.targetList.push(d);
     for (const e of this.enemies.list) if (e.alive) this.targetList.push(e);
 
-    this.arrows.update(dt, this.targets, Math.max(cfg.dummy.radius, this.enemies.maxRadius));
+    this.abilities.obstacles = this.chunks.obstacles;
+    this.arrows.update(dt, this.targets, Math.max(cfg.dummy.radius, this.enemies.maxRadius), this.chunks.obstacles);
     this.abilities.update(dt, this.player, input, cursor);
     this.swordSlash.update(dt, this.player, input);
-    if (!this.dead && !this.player.invincible && !cfg.debug.godMode) {
+    if (!this.dead && !this.player.safe && !cfg.debug.godMode) {
       if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius)) this.endRun('You died', true);
     }
     if (this.dead) {
@@ -385,7 +390,7 @@ export class GameScene extends Phaser.Scene {
       g.lineStyle(1, color, 0.9);
       g.strokeEllipse(screen.x, screen.y, h.x * 2, h.y * 2);
     };
-    circle(this.player.x, this.player.y, cfg.player.hitRadius, this.player.invincible ? 0x55ff99 : 0xff5566);
+    circle(this.player.x, this.player.y, cfg.player.hitRadius, this.player.safe ? 0x55ff99 : 0xff5566);
     for (const d of this.dummies.list) if (d.alive) circle(d.x, d.y, d.radius, 0xffcc55);
     this.enemies.forEach((x, y, r) => circle(x, y, r, 0xff9944));
     for (const o of this.chunks.obstacles) circle(o.x, o.y, o.radius, 0x99aaff);
