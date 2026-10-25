@@ -107,8 +107,8 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
   fromGrid(
     scene,
     Tex.arrow,
-    ['fw........h.', 'ffwwwwwwwhhh', 'fw........h.'],
-    { f: 0xb9a9d6, w: 0x8a6a48, h: 0xd8d2c4 },
+    ['..wdd.......', '.wddkkkdpp..', 'wddkkkkkdpPP', '.wddkkkdpp..', '..wdd.......'],
+    { w: 0x4a1a7a, d: 0x2a0a4a, k: 0x07000d, p: 0x7a2fd0, P: 0xe0c8ff },
   );
 
   fromGrid(

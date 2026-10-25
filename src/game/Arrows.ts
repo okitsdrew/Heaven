@@ -4,6 +4,7 @@ import { cfg } from '../config';
 import { toScreen } from '../iso';
 import { Pool } from '../util/pool';
 import { SpatialHash } from '../util/spatialHash';
+import { Fx } from './Fx';
 
 export interface Hittable {
   id: number;
@@ -27,6 +28,8 @@ interface Arrow {
   hitRadius: number;
   hits: Set<number>;
   sprite: Phaser.GameObjects.Image;
+  glow: Phaser.GameObjects.Image;
+  trail: number;
 }
 
 const screen = { x: 0, y: 0 };
@@ -39,7 +42,7 @@ export class Arrows {
 
   onHit: (target: Hittable, damage: number, arrowX: number, arrowY: number) => void = () => {};
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, private fx: Fx) {
     this.pool = new Pool(() => ({
       active: false,
       x: 0,
@@ -54,6 +57,12 @@ export class Arrows {
       hitRadius: 0,
       hits: new Set(),
       sprite: scene.add.image(0, 0, Tex.arrow).setVisible(false),
+      glow: scene.add
+        .image(0, 0, Tex.glow)
+        .setTint(0x8a3fe0)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setVisible(false),
+      trail: 0,
     }));
   }
 
@@ -82,7 +91,9 @@ export class Arrows {
       a.pierce = Math.round(b.pierce);
       a.hitRadius = b.arrowHitRadius;
       a.hits.clear();
+      a.trail = 0;
       a.sprite.setVisible(true).setAlpha(1);
+      a.glow.setVisible(true);
     }
   }
 
@@ -146,6 +157,28 @@ export class Arrows {
         .setScale(cfg.render.arrowScale)
         .setAlpha(Math.min(1, remaining * 6))
         .setDepth(screen.y);
+      a.glow
+        .setPosition(screen.x, screen.y - height)
+        .setScale(cfg.render.arrowScale * 0.3)
+        .setAlpha(Math.min(1, remaining * 6) * 0.7)
+        .setDepth(screen.y - 0.1);
+
+      // Shadowy wisps shed behind the bolt.
+      while (a.traveled - a.trail >= 14) {
+        a.trail += 14;
+        this.fx.particle({
+          x: screen.x - (ahead.x - screen.x) * 12 + (Math.random() - 0.5) * 6,
+          y: screen.y - height - (ahead.y - screen.y) * 12 + (Math.random() - 0.5) * 6,
+          life: 0.25 + Math.random() * 0.2,
+          from: 0.3,
+          to: 0.05,
+          alpha: 0.8,
+          tint: Math.random() < 0.5 ? 0x7a2fd0 : 0x3a0f6a,
+          vx: (Math.random() - 0.5) * 20,
+          vy: (Math.random() - 0.5) * 20,
+          depth: screen.y - 0.2,
+        });
+      }
     }
   }
 
@@ -156,6 +189,7 @@ export class Arrows {
   private release(a: Arrow): void {
     a.active = false;
     a.sprite.setVisible(false);
+    a.glow.setVisible(false);
   }
 }
 
