@@ -10,9 +10,15 @@ export const Tex = {
   dummy: 'dummy',
   smoke: 'smoke',
   vignette: 'vignette',
+  glow: 'glow',
 } as const;
 
 export const walkFrames = ['player_walk0', 'player_walk1', 'player_walk2', 'player_walk3'];
+
+export const fairyFrames = {
+  fire: ['fairy_fire_0', 'fairy_fire_1'],
+  ice: ['fairy_ice_0', 'fairy_ice_1'],
+};
 
 type Palette = Record<string, number>;
 
@@ -148,6 +154,19 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
     { t: 0x6e5a3c, T: 0x8f7650, p: 0x3e3226 },
   );
 
+  const fairyWings = [
+    ['w.....w', 'ww.o.ww', '.wwoww.', '..OoO..', '...O...'],
+    ['.......', '.w.o.w.', 'ww.o.ww', '.wOoOw.', '...O...'],
+  ];
+  const fairyColors = {
+    fire: { o: 0xffe9a8, O: 0xff7a20, w: 0xffb060 },
+    ice: { o: 0xf2fdff, O: 0x7fd4ff, w: 0xbfeaff },
+  };
+  for (const kind of ['fire', 'ice'] as const) {
+    fairyWings.forEach((rows, i) => fromGrid(scene, fairyFrames[kind][i], rows, fairyColors[kind]));
+  }
+
+  softCircle(scene, Tex.glow, 32, 0xffffff, 0.9);
   softCircle(scene, Tex.shadow, 16, 0x000000, 0.6);
   softCircle(scene, Tex.smoke, 12, 0x8a8698, 0.9);
   bow(scene);

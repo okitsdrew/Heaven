@@ -52,11 +52,50 @@ export class Fx {
     );
   }
 
-  afterimage(texture: string, x: number, y: number, flipX: boolean, scale: number, depth: number): void {
-    const f = this.spawn(this.images, cfg.dash.afterimageFade, scale, scale, 0.5);
+  afterimage(
+    texture: string,
+    x: number,
+    y: number,
+    flipX: boolean,
+    scale: number,
+    depth: number,
+    tint = 0x9a8fc4,
+    life = cfg.dash.afterimageFade,
+    alpha = 0.5,
+  ): void {
+    const f = this.spawn(this.images, life, scale, scale, alpha);
     const img = f.obj as Phaser.GameObjects.Image;
-    img.setTexture(texture).setOrigin(0.5, 1).setFlipX(flipX).setTintFill(0x9a8fc4);
+    img.setTexture(texture).setOrigin(0.5, 1).setFlipX(flipX).setTintFill(tint);
     img.setPosition(x, y).setDepth(depth - 0.5).setBlendMode(Phaser.BlendModes.ADD);
+  }
+
+  particle(o: {
+    texture?: string;
+    x: number;
+    y: number;
+    life: number;
+    from: number;
+    to: number;
+    alpha?: number;
+    tint?: number;
+    additive?: boolean;
+    vx?: number;
+    vy?: number;
+    depth?: number;
+  }): void {
+    const f = this.spawn(this.images, o.life, o.from, o.to, o.alpha ?? 1);
+    const img = f.obj as Phaser.GameObjects.Image;
+    img
+      .setTexture(o.texture ?? Tex.glow)
+      .setOrigin(0.5)
+      .setFlipX(false)
+      .setPosition(o.x, o.y)
+      .setDepth(o.depth ?? 1e6)
+      .setBlendMode(o.additive === false ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD);
+    if (o.tint !== undefined) img.setTint(o.tint);
+    else img.clearTint();
+    f.vx = o.vx ?? 0;
+    f.vy = o.vy ?? 0;
   }
 
   smoke(x: number, y: number, count: number, spread: number): void {

@@ -2,10 +2,13 @@ import Phaser from 'phaser';
 import { makePlaceholderArt, Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { DevMenu } from '../dev/DevMenu';
+import { Abilities } from '../game/Abilities';
 import { Arrows, Hittable } from '../game/Arrows';
 import { Dummies } from '../game/Dummies';
+import { Fairies } from '../game/Fairies';
 import { Fx } from '../game/Fx';
 import { Ground } from '../game/Ground';
+import { Hud } from '../game/Hud';
 import { Player } from '../game/Player';
 import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
@@ -22,6 +25,9 @@ export class GameScene extends Phaser.Scene {
   private dummies!: Dummies;
   private fx!: Fx;
   private ground!: Ground;
+  private abilities!: Abilities;
+  private fairies!: Fairies;
+  private hud!: Hud;
   private targets = new SpatialHash<Hittable>(64);
   private devMenu!: DevMenu;
   private debugGfx!: Phaser.GameObjects.Graphics;
@@ -43,12 +49,22 @@ export class GameScene extends Phaser.Scene {
     this.playerView = new PlayerView(this, this.player, this.fx);
     this.arrows = new Arrows(this);
     this.dummies = new Dummies(this);
+    this.fairies = new Fairies(this, this.fx);
+    this.abilities = new Abilities(this, this.fx, () => this.dummies.list);
+    this.hud = new Hud(this, 2);
 
     this.player.onFire = (x, y, dx, dy) => {
       this.arrows.fire(x, y, dx, dy);
       this.playerView.onFire();
     };
     this.player.onDashStart = () => this.playerView.onDashStart();
+    this.player.onTeleport = (x0, y0, x1, y1) => this.playerView.onTeleport(x0, y0, x1, y1);
+    this.abilities.onCast = (kind) => this.fairies.flare(kind);
+    this.abilities.onDamage = (target, amount, x, y) => {
+      this.dummies.damage(target, amount);
+      toScreen(x, y, screen);
+      this.fx.damageNumber(screen.x, screen.y - 40, amount);
+    };
     this.arrows.onHit = (target, damage, hx, hy) => {
       this.dummies.damage(target, damage);
       toScreen(hx, hy, screen);
@@ -70,6 +86,7 @@ export class GameScene extends Phaser.Scene {
     this.devMenu = new DevMenu([
       { label: 'Spawn target dummies', run: () => this.dummies.spawnRing(this.player.x, this.player.y) },
       { label: 'Clear dummies', run: () => this.dummies.clear() },
+      { label: 'Reset ability cooldowns', run: () => this.abilities.resetCooldowns() },
       { label: 'Recenter player', run: () => Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0 }) },
     ]);
     this.dummies.spawnRing(0, 0);
@@ -89,10 +106,15 @@ export class GameScene extends Phaser.Scene {
     let aimWorld = null;
     if (input.aim) aimWorld = toWorld(cam.scrollX + input.aim.x, cam.scrollY + input.aim.y + cfg.render.aimHeight);
 
+    // Abilities place things on the ground under the cursor, unlike aiming which targets bodies.
+    const cursor = input.aim ? toWorld(cam.scrollX + input.aim.x, cam.scrollY + input.aim.y) : null;
+
     this.targets.clear();
     this.dummies.update(dt, this.targets);
     this.player.update(dt, input, aimWorld);
     this.arrows.update(dt, this.targets, cfg.dummy.radius);
+    this.abilities.update(dt, this.player, input, cursor);
+    this.fairies.update(dt, this.player);
     this.fx.update(dt);
 
     // Camera follows the player's projected position, with screen shake on top.
@@ -107,6 +129,10 @@ export class GameScene extends Phaser.Scene {
     this.playerView.update(dt);
     this.arrows.render();
     this.dummies.render();
+    this.hud.update(cam.width, cam.height, [
+      { key: 'Q', color: 0xff7a20, enabled: cfg.abilities.fireFairy, remaining: this.abilities.fireCooldown, total: cfg.fireCone.cooldown },
+      { key: 'E', color: 0x7fd4ff, enabled: cfg.abilities.iceFairy, remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown },
+    ]);
     this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
     this.drawDebug();
 
