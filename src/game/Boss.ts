@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { toScreen, Vec2 } from '../iso';
 import { stats } from '../skills';
@@ -6,12 +7,12 @@ import { Hittable } from './Arrows';
 import { Fx } from './Fx';
 import { Player } from './Player';
 import { drawHaze } from './haze';
+import { drawSwordArt, flame, RED_SWORD } from './swordArt';
 import { PlayerView } from './PlayerView';
 
-// A dark purple flickering shape with a red aura; its own swing is the red version of the Sword Slash.
-const BOSS_TONE = 0x5a2a9a;
+// A vivid, flickering purple shape with a red aura; its own swing is the red version of the Sword Slash.
+const BOSS_TONE = 0xc060ff;
 const RED = 0xff3b3b;
-const RED_LIGHT = 0xff9a8a;
 
 type State = 'spawn' | 'chase' | 'dash' | 'telegraph' | 'strike' | 'recover';
 
@@ -28,23 +29,14 @@ interface Effect {
   age: number;
 }
 
-interface Wave {
-  ox: number;
-  oy: number;
-  dirX: number;
-  dirY: number;
-  dist: number;
-  hits: Set<Hittable>;
-  ember: number;
-}
-
-const EFFECT_TIME = 0.25;
+const FIRE_TIME = 0.7;
+const SWEEP_TIME = 0.1;
 const KILL = 1e9;
 const screen = { x: 0, y: 0 };
 
 // A bright purple copy of the player whose only attack is a red Sword Slash swing, telegraphed first.
-// It teleports close, winds up, then swings; the swing also sends a wave that travels on like the Fire Wave.
-// Anything the swing or wave touches dies at once, the player included. Contact is harmless.
+// It teleports close, winds up behind a red orbiting sword, then swings it in a burst of fire.
+// Anything the swing touches dies at once, the player included. Contact is harmless.
 // The simulation is flat world space; the view reuses PlayerView on a stand-in Player.
 export class Boss implements Hittable {
   readonly kind = 'boss' as const;
@@ -57,7 +49,7 @@ export class Boss implements Hittable {
   maxHp = 0;
 
   onKilled: (x: number, y: number) => void = () => {};
-  // The swing and its wave kill whatever else they touch.
+  // The swing kills whatever else it touches.
   onSlay: (target: Hittable) => void = () => {};
 
   private sim = new Player();
@@ -67,9 +59,15 @@ export class Boss implements Hittable {
   private teleportGap = 0;
   private snap!: Snapshot;
   private effect: Effect | null = null;
-  private waves: Wave[] = [];
-  private telegraph: Phaser.GameObjects.Graphics;
-  private waveGfx: Phaser.GameObjects.Graphics;
+  private telegraphTotal = 0;
+  private sword = { x: 0, y: 0, angle: 0, placed: false };
+  private swordGfx: Phaser.GameObjects.Graphics;
+  private swordGlow: Phaser.GameObjects.Graphics;
+  private orbit = 0;
+  private heat = 0;
+  private wispState = { wisp: 0 };
+  private fireGfx: Phaser.GameObjects.Graphics;
+  private arcGfx: Phaser.GameObjects.Graphics;
   private aura: Phaser.GameObjects.Graphics;
   private portal: Phaser.GameObjects.Graphics;
   private age = 0;
@@ -79,10 +77,12 @@ export class Boss implements Hittable {
 
   constructor(scene: Phaser.Scene, private fx: Fx, private targets: () => readonly Hittable[]) {
     this.view = new PlayerView(scene, this.sim, fx);
-    this.view.setTone(BOSS_TONE, 1.2);
+    this.view.setTone(BOSS_TONE, 1.6);
     this.view.setVisible(false);
-    this.telegraph = scene.add.graphics();
-    this.waveGfx = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    this.fireGfx = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    this.arcGfx = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    this.swordGfx = scene.add.graphics();
+    this.swordGlow = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     this.aura = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     this.portal = scene.add.graphics();
     this.bar = scene.add.graphics().setScrollFactor(0).setDepth(5e6);
@@ -111,6 +111,7 @@ export class Boss implements Hittable {
     this.timer = 0;
     this.teleportGap = 0;
     this.effect = null;
+    this.sword.placed = false;
     this.snap = { moveSpeed: stats.moveSpeed(), teleportDistance: cfg.teleport.distance };
     Object.assign(this.sim, { x: this.x, y: this.y, vx: 0, vy: 0, armsUpTimer: 0 });
     this.view.setVisible(true);
@@ -126,11 +127,13 @@ export class Boss implements Hittable {
   clear(): void {
     this.alive = false;
     this.effect = null;
-    this.waves.length = 0;
+    this.sword.placed = false;
     this.view.setVisible(false);
     this.name.setVisible(false);
-    this.telegraph.clear();
-    this.waveGfx.clear();
+    this.fireGfx.clear();
+    this.arcGfx.clear();
+    this.swordGfx.clear();
+    this.swordGlow.clear();
     this.aura.clear();
     this.portal.clear();
     this.bar.clear();
@@ -141,22 +144,23 @@ export class Boss implements Hittable {
     this.hp -= amount;
     this.view.flash();
     if (this.hp > 0) return;
-    // Waves already in flight keep going after it dies.
     this.alive = false;
     this.view.setVisible(false);
     this.name.setVisible(false);
     this.aura.clear();
+    this.swordGfx.clear();
+    this.swordGlow.clear();
     this.bar.clear();
     this.onKilled(this.x, this.y);
   }
 
-  // Returns true if the swing or a wave caught the player this frame.
+  // Returns true if the swing caught the player this frame.
   update(dt: number, px: number, py: number, playerSafe: boolean, playerRadius: number): boolean {
     if (this.effect) {
       this.effect.age += dt;
-      if (this.effect.age >= EFFECT_TIME) this.effect = null;
+      if (this.effect.age >= FIRE_TIME) this.effect = null;
     }
-    let hit = this.updateWaves(dt, px, py, playerSafe, playerRadius);
+    let hit = false;
     if (!this.alive) return hit;
     const b = cfg.boss;
     const dx = px - this.x;
@@ -188,13 +192,13 @@ export class Boss implements Hittable {
       if (dist - step <= b.closeDistance * 0.8 + 1e-3) {
         this.sim.dashTime = 0;
         this.state = 'telegraph';
-        this.timer = Math.max(this.timer, b.aimLockTime + 0.15);
+        this.timer = this.telegraphTotal = Math.max(this.timer, b.aimLockTime + 0.15);
       }
     } else if (this.state === 'chase') {
       this.faceToward(px, py);
       if (dist <= b.closeDistance) {
         this.state = 'telegraph';
-        this.timer = b.windup;
+        this.timer = this.telegraphTotal = b.windup;
       } else if (this.teleportGap <= 0) {
         // Blink toward the player, stopping inside close range rather than overshooting.
         this.teleportBy(dx / dist, dy / dist, Math.min(this.snap.teleportDistance, dist - b.closeDistance * 0.5));
@@ -246,20 +250,18 @@ export class Boss implements Hittable {
   }
 
   render(dt: number, width: number): void {
-    this.telegraph.clear();
-    this.waveGfx.clear();
+    this.fireGfx.clear();
+    this.arcGfx.clear();
     this.aura.clear();
     this.portal.clear();
     this.bar.clear();
     this.time += dt;
     if (this.alive) this.drawPortal();
-    if (this.effect) this.drawEffect(this.effect);
-    for (const w of this.waves) this.drawWave(w);
+    if (this.effect) this.drawFire(this.effect);
+    this.drawSword(dt);
     if (!this.alive) return;
     this.view.update(dt);
     this.drawAura();
-    if (this.state === 'telegraph' && cfg.boss.showTelegraph) this.drawTelegraph();
-    if (this.state !== 'spawn') this.drawSword();
 
     const w = Math.min(420, width - 40);
     const x = width / 2 - w / 2;
@@ -268,7 +270,7 @@ export class Boss implements Hittable {
     this.bar.fillStyle(0xb070ff, 1).fillRect(x, 116, w * Math.max(0, this.hp / this.maxHp), 8);
   }
 
-  // The cone swing: kills whatever is inside it, then launches the wave along the same aim.
+  // The cone swing: kills whatever is inside it and bursts into fire along its arc.
   private strike(px: number, py: number, r: number, playerSafe: boolean): boolean {
     const c = cfg.swordSlash;
     const ax = this.sim.aimX;
@@ -285,109 +287,9 @@ export class Boss implements Hittable {
       return angle <= half + pad;
     };
     for (const t of this.targets()) if (t.alive && t.kind !== 'boss' && inCone(t.x, t.y, t.radius)) this.onSlay(t);
-    this.waves.push({ ox: this.x, oy: this.y, dirX: ax, dirY: ay, dist: 0, hits: new Set(), ember: 0 });
     this.fx.addShake(c.slamShake * 0.5);
+    this.burst(ax, ay);
     return !playerSafe && inCone(px, py, r);
-  }
-
-  // Waves travel until they pass the despawn ring around the player, killing each thing once.
-  private updateWaves(dt: number, px: number, py: number, playerSafe: boolean, playerRadius: number): boolean {
-    const b = cfg.boss;
-    let hit = false;
-    for (let i = this.waves.length - 1; i >= 0; i--) {
-      const w = this.waves[i];
-      const prev = w.dist;
-      w.dist += b.waveSpeed * dt;
-      const lo = prev - b.waveLength / 2;
-      const hi = w.dist + b.waveLength / 2;
-      const inside = (tx: number, ty: number, tr: number) => {
-        const rx = tx - w.ox;
-        const ry = ty - w.oy;
-        const along = rx * w.dirX + ry * w.dirY;
-        const side = -rx * w.dirY + ry * w.dirX;
-        return Math.abs(side) <= b.waveWidth / 2 + tr && along >= lo - tr && along <= hi + tr;
-      };
-      for (const t of this.targets()) {
-        if (!t.alive || t.kind === 'boss' || w.hits.has(t) || !inside(t.x, t.y, t.radius)) continue;
-        w.hits.add(t);
-        this.onSlay(t);
-      }
-      if (!playerSafe && inside(px, py, playerRadius)) hit = true;
-
-      const cx = w.ox + w.dirX * w.dist;
-      const cy = w.oy + w.dirY * w.dist;
-      if (Math.hypot(cx - px, cy - py) > cfg.world.despawnRadius) {
-        this.waves.splice(i, 1);
-        continue;
-      }
-      w.ember += dt * 120;
-      while (w.ember >= 1) {
-        w.ember -= 1;
-        const side = (Math.random() - 0.5) * b.waveWidth;
-        const along = (Math.random() - 0.5) * b.waveLength;
-        toScreen(cx - w.dirY * side + w.dirX * along, cy + w.dirX * side + w.dirY * along, screen);
-        this.fx.particle({
-          x: screen.x,
-          y: screen.y - 6 * cfg.render.pixelScale,
-          life: 0.3 + Math.random() * 0.3,
-          from: 0.35,
-          to: 0.05,
-          alpha: 0.9,
-          tint: Math.random() < 0.5 ? RED : RED_LIGHT,
-          vx: (Math.random() - 0.5) * 40,
-          vy: -30 - Math.random() * 60,
-          depth: screen.y + 2,
-        });
-      }
-    }
-    return hit;
-  }
-
-  private cone(ox: number, oy: number, base: number): Vec2[] {
-    const c = cfg.swordSlash;
-    const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
-    const poly: Vec2[] = [toScreen(ox, oy, { x: 0, y: 0 })];
-    for (let i = 0; i <= 16; i++) {
-      const a = base - half + (i / 16) * half * 2;
-      poly.push(toScreen(ox + Math.cos(a) * c.coneRange, oy + Math.sin(a) * c.coneRange, { x: 0, y: 0 }));
-    }
-    return poly;
-  }
-
-  // The area about to be hit: faint while the aim still tracks, bright red once it is locked.
-  private drawTelegraph(): void {
-    const g = this.telegraph;
-    const locked = this.timer <= cfg.boss.aimLockTime;
-    const poly = this.cone(this.x, this.y, Math.atan2(this.sim.aimY, this.sim.aimX));
-    g.setDepth(-5e8);
-    g.fillStyle(locked ? RED : RED_LIGHT, locked ? 0.3 : 0.1);
-    g.fillPoints(poly, true);
-    g.lineStyle(2, locked ? RED : RED_LIGHT, locked ? 0.9 : 0.4);
-    g.strokePoints(poly, true);
-  }
-
-  private drawEffect(e: Effect): void {
-    const g = this.telegraph;
-    g.setDepth(9e5);
-    g.fillStyle(RED, 0.6 * (1 - e.age / EFFECT_TIME));
-    g.fillPoints(this.cone(e.ox, e.oy, e.base), true);
-  }
-
-  private drawWave(w: Wave): void {
-    const b = cfg.boss;
-    const g = this.waveGfx;
-    g.setDepth(9e5);
-    const cx = w.ox + w.dirX * w.dist;
-    const cy = w.oy + w.dirY * w.dist;
-    const hw = b.waveWidth / 2;
-    const hl = b.waveLength / 2;
-    const corner = (side: number, along: number) =>
-      toScreen(cx + w.dirX * along - w.dirY * hw * side, cy + w.dirY * along + w.dirX * hw * side, { x: 0, y: 0 });
-    const poly = [corner(-1, -hl), corner(1, -hl), corner(1, hl), corner(-1, hl)];
-    g.fillStyle(RED, 0.45);
-    g.fillPoints(poly, true);
-    g.lineStyle(3, RED_LIGHT, 0.9);
-    g.strokePoints(poly, true);
   }
 
   // A wavy red glow around him, like the fairies' but red.
@@ -421,7 +323,7 @@ export class Boss implements Hittable {
       g.strokeEllipse(screen.x, screen.y, rx * 2 * f, ry * 2 * f);
     }
     // Swirling arcs and sparks rising out of it.
-    const arcs = this.waveGfx;
+    const arcs = this.arcGfx;
     arcs.setDepth(screen.y - 1000);
     for (let i = 0; i < 6; i++) {
       const a = this.time * 3 + (i / 6) * Math.PI * 2;
@@ -445,20 +347,117 @@ export class Boss implements Hittable {
     }
   }
 
-  // A red blade held out along the aim while swinging.
-  private drawSword(): void {
-    if (this.state !== 'telegraph' && this.state !== 'strike') return;
-    const px = cfg.render.pixelScale;
-    const reach = this.state === 'strike' ? 34 : 24;
-    const a = toScreen(this.x, this.y, { x: 0, y: 0 });
-    const b = toScreen(this.x + this.sim.aimX, this.y + this.sim.aimY, { x: 0, y: 0 });
-    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    const ux = (b.x - a.x) / len;
-    const uy = (b.y - a.y) / len;
-    const y0 = a.y - 12 * px;
-    const g = this.telegraph;
-    g.lineStyle(3 * px, RED, 1);
-    g.lineBetween(a.x + ux * 6 * px, y0 + uy * 6 * px * 0.5, a.x + ux * reach * px, y0 + uy * reach * px * 0.5);
+  private world(angle: number, r: number, ox = this.x, oy = this.y): Vec2 {
+    return toScreen(ox + Math.cos(angle) * r, oy + Math.sin(angle) * r, { x: 0, y: 0 });
+  }
+
+  // Fire erupting across the swept arc, tallest at the leading edge, fading out.
+  private drawFire(e: Effect): void {
+    const c = cfg.swordSlash;
+    const g = this.fireGfx;
+    g.setDepth(9e5);
+    const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
+    const prog = Math.min(1, e.age / SWEEP_TIME);
+    const span = -half * 2 * Math.pow(prog, c.sweepPower);
+    const start = e.base + half;
+    const fade = 1 - Math.max(0, (e.age - SWEEP_TIME) / (FIRE_TIME - SWEEP_TIME));
+    const px = cfg.render.pixelScale * cfg.boss.size;
+    const cols = 14;
+    for (let k = 0; k <= cols; k++) {
+      const f = k / cols;
+      const ang = start + span * f;
+      for (let j = 0; j < 5; j++) {
+        const r = c.coneRange * (0.3 + 0.7 * ((j + 0.5) / 5));
+        const p = this.world(ang, r, e.ox, e.oy);
+        const flick = 0.6 + 0.4 * Math.sin(this.time * 18 + k * 2.1 + j * 1.3);
+        flame(g, p.x, p.y, px * (8 + 18 * f * f) * flick, px * 3.2, k * 3 + j, fade * (0.35 + 0.65 * f), this.time, RED_SWORD.fire);
+      }
+    }
+  }
+
+  // Embers and smoke thrown off the whole arc the moment the swing lands.
+  private burst(ax: number, ay: number): void {
+    const c = cfg.swordSlash;
+    const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
+    const base = Math.atan2(ay, ax);
+    const px = cfg.render.pixelScale * cfg.boss.size;
+    for (let i = 0; i < 90; i++) {
+      const a = base - half + Math.random() * half * 2;
+      const p = this.world(a, c.coneRange * (0.2 + Math.random() * 0.8));
+      const smoke = Math.random() < 0.25;
+      this.fx.particle({
+        texture: smoke ? Tex.smoke : Tex.glow,
+        x: p.x,
+        y: p.y - 6 * px,
+        life: 0.3 + Math.random() * 0.5,
+        from: smoke ? px * 0.6 : 0.4 + Math.random() * 0.5,
+        to: smoke ? px * 2 : 0.1,
+        alpha: 0.9,
+        tint: smoke ? 0x3a1010 : RED_SWORD.fire[Math.floor(Math.random() * 3)],
+        additive: !smoke,
+        vx: (Math.random() - 0.5) * 100,
+        vy: -50 - Math.random() * 130,
+        depth: p.y + 2,
+      });
+    }
+  }
+
+  // His red sword: it circles him like ours, winds up behind during the telegraph, then whips through the swing.
+  private drawSword(dt: number): void {
+    const gfx = this.swordGfx;
+    const glow = this.swordGlow;
+    gfx.clear();
+    glow.clear();
+    if (!this.alive || this.state === 'spawn') return;
+
+    const c = cfg.swordSlash;
+    const px = cfg.render.pixelScale * cfg.boss.size;
+    const P = toScreen(this.x, this.y, { x: 0, y: 0 });
+    const base = Math.atan2(this.sim.aimY, this.sim.aimX);
+    const swinging = this.state === 'telegraph' || this.state === 'strike';
+    let tx: number;
+    let ty: number;
+    let tAngle: number;
+    let rate = 10;
+    let depth: number;
+
+    if (!swinging) {
+      this.orbit += dt * c.orbitSpeed;
+      tx = P.x + Math.cos(this.orbit) * c.orbitRadius * cfg.boss.size;
+      ty = P.y - c.height * px + Math.sin(this.orbit) * c.orbitRadius * cfg.boss.size * 0.5;
+      tAngle = this.orbit + Math.PI / 2;
+      depth = P.y + (Math.sin(this.orbit) < 0 ? -0.6 : 0.6);
+    } else {
+      const wind = this.state === 'telegraph' ? 1 - Math.max(0, this.timer) / Math.max(this.telegraphTotal, 1e-3) : 1;
+      const windEase = wind * wind * (3 - 2 * wind);
+      const strike = this.state === 'strike' ? 1 - Math.max(0, this.timer) / Math.max(c.slashTime, 1e-3) : 0;
+      const fast = Math.pow(strike, c.sweepPower);
+      rate = this.state === 'strike' ? 70 : 12;
+      const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
+      const back = Phaser.Math.DegToRad(c.windupAngle) * windEase;
+      // Right to left, like our first swing.
+      const a = base + half + back - (half * 2 + back) * fast;
+      const pos = this.world(a, c.coneRange * 0.65);
+      const out = toScreen(Math.cos(a), Math.sin(a), { x: 0, y: 0 });
+      tx = pos.x;
+      ty = pos.y - 10 * px;
+      tAngle = Math.atan2(out.y, out.x);
+      depth = ty + 1;
+    }
+
+    const sw = this.sword;
+    if (!sw.placed) {
+      sw.x = tx;
+      sw.y = ty;
+      sw.angle = tAngle;
+      sw.placed = true;
+    }
+    const follow = 1 - Math.exp(-rate * dt);
+    sw.x += (tx - sw.x) * follow;
+    sw.y += (ty - sw.y) * follow;
+    sw.angle += Phaser.Math.Angle.Wrap(tAngle - sw.angle) * follow;
+    this.heat += ((swinging ? 1 : 0.35) - this.heat) * Math.min(1, dt * 6);
+    drawSwordArt(gfx, glow, this.fx, sw, px, this.heat, this.time, dt, depth, RED_SWORD, this.wispState);
   }
 
   private teleportBy(dirX: number, dirY: number, distance: number): void {

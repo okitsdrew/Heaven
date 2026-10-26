@@ -68,13 +68,13 @@ export class PlayerView {
     this.dustRing = scene.add.graphics();
   }
 
-  // Recolours everything to one bright tone, for the boss's copy of the player. Null restores the colours.
+  // Recolours everything toward one vivid tone, for the boss's copy of the player. Null restores the colours.
   setTone(tone: number | null, boost = 2): void {
     this.tone = tone;
     this.body.preFX?.clear();
     if (tone !== null) {
       const m = this.body.preFX?.addColorMatrix();
-      m?.grayscale(1);
+      m?.saturate(1, true);
       m?.brightness(boost, true);
     }
     this.body.setTint(tone ?? 0xffffff);
@@ -95,7 +95,7 @@ export class PlayerView {
   private c(color: number): number {
     if (this.tone === null) return color;
     const y = (0.3 * ((color >> 16) & 255) + 0.59 * ((color >> 8) & 255) + 0.11 * (color & 255)) / 255;
-    const k = Math.min(1, 0.45 + y * 1.2);
+    const k = Math.min(1, 0.7 + y * 0.5);
     const ch = (shift: number) => Math.round(((this.tone! >> shift) & 255) * k);
     return (ch(16) << 16) | (ch(8) << 8) | ch(0);
   }

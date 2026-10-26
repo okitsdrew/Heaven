@@ -77,6 +77,9 @@ In-game overlay, toggled with backtick. Must include:
 - Pickup Radius: 2 levels, +50% each, 100g then 200g. Move Speed: 2 levels, +25% each, 100g then 200g. XP per kill back to 1.
 - Boss: 25% bigger (`boss.size`), a dark purple flickering copy of the player with a wavy red aura (`auraSize`, `auraWave`, `auraAlpha`, `flicker`). Teleport gap 0.15s with a width 8 line. If the player leaves sword range during the windup it dashes after them and winds up again. It spawns 320 units away from a purple portal in the ground (`portalTime`, `riseTime`, `closeTime`) and rises with its hands raised; it cannot be hit until it is out.
 
+## 7g. Round 5 (phase 3 branch)
+- Boss is vivid purple (no grey) with the red aura, 1.5625x size (`boss.size`). Its red sword circles it like ours, winds up behind during the windup, then sweeps right to left in a fire explosion. No ground lines and no extra wave. The swing still kills enemies in the cone and kills the player unless dashing or teleporting. The sword art is shared with the player's in `src/game/swordArt.ts`.
+
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.

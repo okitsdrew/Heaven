@@ -6,6 +6,7 @@ import { toScreen, Vec2 } from '../iso';
 import { Hittable } from './Arrows';
 import { canUse } from '../skills';
 import { Fx } from './Fx';
+import { drawSwordArt, flame, PURPLE_SWORD } from './swordArt';
 import { Player } from './Player';
 
 interface Slash {
@@ -44,7 +45,7 @@ export class SwordSlash {
   private swordGfx: Phaser.GameObjects.Graphics;
   private swordGlow: Phaser.GameObjects.Graphics;
   private sword = { x: 0, y: 0, angle: 0, placed: false };
-  private wispTimer = 0;
+  private wispState = { wisp: 0 };
   private heat = 0;
 
   onDamage: (target: Hittable, amount: number, x: number, y: number) => void = () => {};
@@ -247,14 +248,8 @@ export class SwordSlash {
     }
   }
 
-  // A flickering purple flame tongue standing on a screen point.
   private flame(g: Phaser.GameObjects.Graphics, x: number, y: number, height: number, width: number, seed: number, alpha: number): void {
-    const sway = Math.sin(this.time * 9 + seed) * width * 0.6;
-    FIRE.forEach((color, i) => {
-      const k = 1 - i * 0.28;
-      g.fillStyle(color, alpha * (0.55 + i * 0.2));
-      g.fillTriangle(x - width * k, y, x + width * k, y, x + sway * k, y - height * k);
-    });
+    flame(g, x, y, height, width, seed, alpha, this.time, FIRE);
   }
 
   private world(x: number, y: number, angle: number, r: number): Vec2 {
@@ -449,70 +444,6 @@ export class SwordSlash {
     this.heat += (lit - this.heat) * Math.min(1, dt * 6);
     const heat = this.heat;
 
-    gfx.setDepth(depth);
-    glow.setDepth(depth - 0.1);
-    const cos = Math.cos(sw.angle);
-    const sin = Math.sin(sw.angle);
-    const at = (d: number, w = 0): Vec2 => ({
-      x: sw.x + cos * d * px - sin * w * px,
-      y: sw.y + sin * d * px + cos * w * px,
-    });
-    const pulse = 0.8 + 0.2 * Math.sin(this.time * 14);
-
-    // Grip and cross guard.
-    const g0 = at(-1);
-    const g1 = at(4);
-    gfx.lineStyle(2.4 * px, 0x07000d, 1);
-    gfx.lineBetween(g0.x, g0.y, g1.x, g1.y);
-    gfx.lineStyle(1.4 * px, 0x4a1a7a, 1);
-    gfx.lineBetween(g0.x, g0.y, g1.x, g1.y);
-    const gl = at(4, -3.5);
-    const gr = at(4, 3.5);
-    gfx.lineStyle(1.6 * px, 0x7a2fd0, 1);
-    gfx.lineBetween(gl.x, gl.y, gr.x, gr.y);
-
-    // Sharp tapered blade with a bright edge.
-    const tip = at(27);
-    const blade = [at(4, -2.2), at(4, 2.2), at(23, 1.6), tip, at(23, -1.6)];
-    glow.lineStyle(7 * px, 0xa060ff, (0.35 + 0.35 * heat) * pulse);
-    glow.lineBetween(g1.x, g1.y, tip.x, tip.y);
-    gfx.fillStyle(0xcfb0ff, 1);
-    gfx.fillPoints(blade, true);
-    gfx.fillStyle(0xffffff, 1);
-    gfx.fillTriangle(at(4, 0).x, at(4, 0).y, at(23, 0.6).x, at(23, 0.6).y, tip.x, tip.y);
-    gfx.lineStyle(1, 0x5a1aa0, 1);
-    gfx.strokePoints(blade, true);
-
-    // Purple fire radiating off the blade while the skill is on.
-    if (heat > 0.02) {
-      for (let i = 0; i < 6; i++) {
-        const d = 7 + i * 3.6;
-        const p = at(d, Math.sin(this.time * 7 + i * 1.7) * 1.2);
-        const h = px * (7 + 6 * Math.sin(this.time * 11 + i * 2.3) ** 2) * heat * (1 - i * 0.07);
-        this.flame(glow, p.x, p.y, h, px * 2.2, i * 5 + 1, heat * 0.85);
-      }
-      glow.fillStyle(0xa060ff, 0.25 * heat);
-      glow.fillCircle(at(16).x, at(16).y, 14 * px * pulse);
-
-      this.wispTimer += dt * 40 * heat;
-      while (this.wispTimer >= 1) {
-        this.wispTimer -= 1;
-        const p = at(5 + Math.random() * 22, (Math.random() - 0.5) * 3);
-        this.fx.particle({
-          x: p.x,
-          y: p.y,
-          life: 0.3 + Math.random() * 0.3,
-          from: 0.3,
-          to: 0.05,
-          alpha: 0.9,
-          tint: FIRE[Math.floor(Math.random() * FIRE.length)],
-          vx: (Math.random() - 0.5) * 24,
-          vy: -25 - Math.random() * 35,
-          depth: depth + 1,
-        });
-      }
-    }
-    glow.fillStyle(0xa060ff, 0.35 + 0.25 * heat);
-    glow.fillCircle(g1.x, g1.y, 2.2 * px);
+    drawSwordArt(gfx, glow, this.fx, sw, px, heat, this.time, dt, depth, PURPLE_SWORD, this.wispState);
   }
 }
