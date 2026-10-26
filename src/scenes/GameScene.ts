@@ -292,7 +292,7 @@ export class GameScene extends Phaser.Scene {
     this.targetList.length = 0;
     for (const d of this.dummies.list) if (d.alive) this.targetList.push(d);
     for (const e of this.enemies.list) if (e.alive) this.targetList.push(e);
-    if (this.boss.alive) {
+    if (this.boss.targetable) {
       this.targets.insert(this.boss, this.boss.x, this.boss.y);
       this.targetList.push(this.boss);
     }

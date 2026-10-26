@@ -5,14 +5,15 @@ import { stats } from '../skills';
 import { Hittable } from './Arrows';
 import { Fx } from './Fx';
 import { Player } from './Player';
+import { drawHaze } from './haze';
 import { PlayerView } from './PlayerView';
 
-// Bright like the player's Sword Slash; its own swing is the red version.
-const BOSS_TONE = 0xb070ff;
+// A dark purple flickering shape with a red aura; its own swing is the red version of the Sword Slash.
+const BOSS_TONE = 0x5a2a9a;
 const RED = 0xff3b3b;
 const RED_LIGHT = 0xff9a8a;
 
-type State = 'chase' | 'telegraph' | 'strike' | 'recover';
+type State = 'spawn' | 'chase' | 'dash' | 'telegraph' | 'strike' | 'recover';
 
 // What the boss copies from the player when it spawns.
 interface Snapshot {
@@ -69,15 +70,21 @@ export class Boss implements Hittable {
   private waves: Wave[] = [];
   private telegraph: Phaser.GameObjects.Graphics;
   private waveGfx: Phaser.GameObjects.Graphics;
+  private aura: Phaser.GameObjects.Graphics;
+  private portal: Phaser.GameObjects.Graphics;
+  private age = 0;
+  private time = 0;
   private bar: Phaser.GameObjects.Graphics;
   private name: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, private fx: Fx, private targets: () => readonly Hittable[]) {
     this.view = new PlayerView(scene, this.sim, fx);
-    this.view.setTone(BOSS_TONE);
+    this.view.setTone(BOSS_TONE, 1.2);
     this.view.setVisible(false);
     this.telegraph = scene.add.graphics();
     this.waveGfx = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    this.aura = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    this.portal = scene.add.graphics();
     this.bar = scene.add.graphics().setScrollFactor(0).setDepth(5e6);
     this.name = scene.add
       .text(0, 0, 'THE SHADE OF YOU', { fontFamily: 'monospace', fontSize: '13px', color: '#d9b8ff' })
@@ -93,10 +100,14 @@ export class Boss implements Hittable {
     const angle = Math.random() * Math.PI * 2;
     this.x = px + Math.cos(angle) * b.spawnDistance;
     this.y = py + Math.sin(angle) * b.spawnDistance;
-    this.radius = b.radius;
+    this.radius = b.radius * b.size;
+    this.view.sizeMult = b.size;
+    this.view.flicker = b.flicker;
+    this.view.rise = 0;
+    this.age = 0;
     this.maxHp = this.hp = b.hp;
     this.alive = true;
-    this.state = 'chase';
+    this.state = 'spawn';
     this.timer = 0;
     this.teleportGap = 0;
     this.effect = null;
@@ -107,6 +118,11 @@ export class Boss implements Hittable {
     this.faceToward(px, py);
   }
 
+  // Can be hit once it is out of the portal.
+  get targetable(): boolean {
+    return this.alive && this.state !== 'spawn';
+  }
+
   clear(): void {
     this.alive = false;
     this.effect = null;
@@ -115,11 +131,13 @@ export class Boss implements Hittable {
     this.name.setVisible(false);
     this.telegraph.clear();
     this.waveGfx.clear();
+    this.aura.clear();
+    this.portal.clear();
     this.bar.clear();
   }
 
   damage(amount: number): void {
-    if (!this.alive) return;
+    if (!this.targetable) return;
     this.hp -= amount;
     this.view.flash();
     if (this.hp > 0) return;
@@ -127,6 +145,7 @@ export class Boss implements Hittable {
     this.alive = false;
     this.view.setVisible(false);
     this.name.setVisible(false);
+    this.aura.clear();
     this.bar.clear();
     this.onKilled(this.x, this.y);
   }
@@ -144,10 +163,34 @@ export class Boss implements Hittable {
     const dy = py - this.y;
     const dist = Math.hypot(dx, dy) || 1;
     this.teleportGap = Math.max(0, this.teleportGap - dt);
+    this.age += dt;
 
     let vx = 0;
     let vy = 0;
-    if (this.state === 'chase') {
+    if (this.state === 'spawn') {
+      // A portal opens, then he rises out of it with his hands raised.
+      const t = (this.age - b.portalTime) / Math.max(b.riseTime, 1e-3);
+      this.view.rise = Math.min(1, Math.max(0, t));
+      this.view.rise = this.view.rise * this.view.rise * (3 - 2 * this.view.rise);
+      this.faceToward(px, py);
+      if (t >= 1) {
+        this.view.rise = 1;
+        this.state = 'chase';
+      }
+    } else if (this.state === 'dash') {
+      // The player slipped out of range mid-attack: close the gap at dash speed, then wind up again.
+      const speed = cfg.dash.distance / cfg.dash.duration;
+      const step = Math.min(speed * dt, Math.max(0, dist - b.closeDistance * 0.8));
+      this.x += (dx / dist) * step;
+      this.y += (dy / dist) * step;
+      this.faceToward(px, py);
+      this.sim.dashTime = cfg.dash.duration;
+      if (dist - step <= b.closeDistance * 0.8 + 1e-3) {
+        this.sim.dashTime = 0;
+        this.state = 'telegraph';
+        this.timer = Math.max(this.timer, b.aimLockTime + 0.15);
+      }
+    } else if (this.state === 'chase') {
       this.faceToward(px, py);
       if (dist <= b.closeDistance) {
         this.state = 'telegraph';
@@ -162,6 +205,9 @@ export class Boss implements Hittable {
         this.x += vx * dt;
         this.y += vy * dt;
       }
+    } else if (this.state === 'telegraph' && dist > cfg.swordSlash.coneRange) {
+      this.state = 'dash';
+      this.view.onDashStart();
     } else if (this.state === 'telegraph') {
       this.timer -= dt;
       // Aim follows the player until just before the swing, then locks so a dash away dodges it.
@@ -195,20 +241,25 @@ export class Boss implements Hittable {
     this.sim.vx = vx;
     this.sim.vy = vy;
     // Arms flap while swinging, like the player's.
-    this.sim.armsUpTimer = this.state === 'telegraph' || this.state === 'strike' ? 0.1 : 0;
+    this.sim.armsUpTimer = this.state === 'telegraph' || this.state === 'strike' || this.state === 'spawn' ? 0.1 : 0;
     return hit;
   }
 
   render(dt: number, width: number): void {
     this.telegraph.clear();
     this.waveGfx.clear();
+    this.aura.clear();
+    this.portal.clear();
     this.bar.clear();
+    this.time += dt;
+    if (this.alive) this.drawPortal();
     if (this.effect) this.drawEffect(this.effect);
     for (const w of this.waves) this.drawWave(w);
     if (!this.alive) return;
     this.view.update(dt);
+    this.drawAura();
     if (this.state === 'telegraph' && cfg.boss.showTelegraph) this.drawTelegraph();
-    this.drawSword();
+    if (this.state !== 'spawn') this.drawSword();
 
     const w = Math.min(420, width - 40);
     const x = width / 2 - w / 2;
@@ -339,6 +390,61 @@ export class Boss implements Hittable {
     g.strokePoints(poly, true);
   }
 
+  // A wavy red glow around him, like the fairies' but red.
+  private drawAura(): void {
+    const b = cfg.boss;
+    const px = cfg.render.pixelScale * b.size;
+    toScreen(this.x, this.y, screen);
+    const grow = this.state === 'spawn' ? this.view.rise : 1;
+    const pulse = 0.85 + 0.15 * Math.sin(this.time * 9);
+    this.aura.setDepth(screen.y - 0.1);
+    drawHaze(this.aura, screen.x, screen.y - 9 * px, b.auraSize * b.size * grow, b.auraWave, this.time, 3, RED, b.auraAlpha * pulse);
+  }
+
+  // The purple portal in the ground: it opens, holds while he rises, then closes.
+  private drawPortal(): void {
+    const b = cfg.boss;
+    const total = b.portalTime + b.riseTime + b.closeTime;
+    if (this.age >= total) return;
+    const open = Math.min(1, this.age / Math.max(b.portalTime, 1e-3));
+    const closing = this.age > b.portalTime + b.riseTime ? 1 - (this.age - b.portalTime - b.riseTime) / Math.max(b.closeTime, 1e-3) : 1;
+    const k = open * open * (3 - 2 * open) * Math.max(0, closing);
+    const rx = b.portalRadius * b.size * k;
+    const ry = rx * 0.5;
+    toScreen(this.x, this.y, screen);
+    const g = this.portal;
+    g.setDepth(screen.y - 1001);
+    g.fillStyle(0x07000d, 0.95).fillEllipse(screen.x, screen.y, rx * 2, ry * 2);
+    for (let i = 0; i < 3; i++) {
+      const f = 1 - i * 0.28;
+      g.lineStyle(3 - i, i === 0 ? 0xb070ff : 0x7a2fd0, 0.9 - i * 0.2);
+      g.strokeEllipse(screen.x, screen.y, rx * 2 * f, ry * 2 * f);
+    }
+    // Swirling arcs and sparks rising out of it.
+    const arcs = this.waveGfx;
+    arcs.setDepth(screen.y - 1000);
+    for (let i = 0; i < 6; i++) {
+      const a = this.time * 3 + (i / 6) * Math.PI * 2;
+      arcs.lineStyle(2, 0xa060ff, 0.7 * k);
+      arcs.lineBetween(screen.x + Math.cos(a) * rx * 0.3, screen.y + Math.sin(a) * ry * 0.3, screen.x + Math.cos(a + 0.7) * rx * 0.9, screen.y + Math.sin(a + 0.7) * ry * 0.9);
+    }
+    if (Math.random() < 40 * k * 0.016) {
+      const a = Math.random() * Math.PI * 2;
+      this.fx.particle({
+        x: screen.x + Math.cos(a) * rx * 0.8,
+        y: screen.y + Math.sin(a) * ry * 0.8,
+        life: 0.5 + Math.random() * 0.4,
+        from: 0.3,
+        to: 0.05,
+        alpha: 0.9,
+        tint: Math.random() < 0.5 ? 0xb070ff : 0x6a20c0,
+        vx: (Math.random() - 0.5) * 20,
+        vy: -50 - Math.random() * 60,
+        depth: screen.y + 3,
+      });
+    }
+  }
+
   // A red blade held out along the aim while swinging.
   private drawSword(): void {
     if (this.state !== 'telegraph' && this.state !== 'strike') return;
@@ -361,7 +467,7 @@ export class Boss implements Hittable {
     const y0 = this.y;
     this.x += dirX * distance;
     this.y += dirY * distance;
-    this.view.onTeleport(x0, y0, this.x, this.y, 0);
+    this.view.onTeleport(x0, y0, this.x, this.y, 0, cfg.boss.teleportLineWidth);
     this.view.onTeleportArrive(this.x, this.y);
     this.teleportGap = cfg.boss.teleportGap;
   }

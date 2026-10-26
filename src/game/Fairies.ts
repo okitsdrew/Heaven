@@ -4,6 +4,7 @@ import { cfg } from '../config';
 import { toScreen, Vec2 } from '../iso';
 import { canUse } from '../skills';
 import { Fx } from './Fx';
+import { drawHaze } from './haze';
 import { Player } from './Player';
 
 type Kind = 'fire' | 'ice';
@@ -45,29 +46,9 @@ export class Fairies {
     }));
   }
 
-  // A soft blob whose edge ripples like heat rising off hot ground, stretched a little upward.
   private drawGlow(f: Fairy, scale: number, alpha: number, seed: number, depth: number): void {
-    const g = f.glow;
-    g.clear().setDepth(depth);
-    const t = this.time;
-    const base = cfg.fairy.glowSize * scale;
-    const layers = [1, 0.62, 0.3];
-    layers.forEach((k, layer) => {
-      g.fillStyle(tints[f.kind].glow, alpha * (0.14 + layer * 0.12));
-      g.beginPath();
-      const n = 22;
-      for (let j = 0; j < n; j++) {
-        const a = (j / n) * Math.PI * 2;
-        const wave = 1 + cfg.fairy.glowWave * (0.6 * Math.sin(3 * a + t * 5 + seed + layer) + 0.4 * Math.sin(5 * a - t * 7 + seed * 2));
-        const r = base * k * wave;
-        const x = f.x + Math.cos(a) * r;
-        const y = f.y + Math.sin(a) * r * 1.15 - Math.max(0, -Math.sin(a)) * r * 0.2;
-        if (j === 0) g.moveTo(x, y);
-        else g.lineTo(x, y);
-      }
-      g.closePath();
-      g.fillPath();
-    });
+    f.glow.clear().setDepth(depth);
+    drawHaze(f.glow, f.x, f.y, cfg.fairy.glowSize * scale, cfg.fairy.glowWave, this.time, seed, tints[f.kind].glow, alpha);
   }
 
   flare(kind: Kind): void {

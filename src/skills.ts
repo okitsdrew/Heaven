@@ -32,7 +32,7 @@ export const nodes: SkillNode[] = [
 
   { id: 'fireRate', name: 'Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['damage'], currency: 'gold', levels: 2, base: 50, costs: [50, 100], effect: 'fireRate', x: -480, y: 0 },
   { id: 'time', name: 'Time', desc: (p) => `+${p}s run time`, parents: ['pierce'], currency: 'gold', levels: 5, base: 1, effect: 'time', x: 240, y: 0 },
-  { id: 'moveSpeed', name: 'Move Speed', desc: (p) => `+${pct(p)} move speed`, parents: ['time'], currency: 'gold', levels: 5, base: 50, effect: 'moveSpeed', x: 480, y: 190 },
+  { id: 'moveSpeed', name: 'Move Speed', desc: (p) => `+${pct(p)} move speed`, parents: ['time'], currency: 'gold', levels: 2, base: 100, costs: [100, 200], effect: 'moveSpeed', x: 480, y: 190 },
   { id: 'damage', name: 'Damage', desc: (p) => `+${p} damage`, parents: ['pierce'], currency: 'gold', levels: 5, base: 1, effect: 'damage', x: -240, y: -85 },
   { id: 'range', name: 'More Range', desc: (p) => `+${pct(p)} arrow range`, parents: ['damage'], currency: 'gold', levels: 1, base: 100, costs: [100], effect: 'range', x: -480, y: -170 },
 
@@ -43,7 +43,7 @@ export const nodes: SkillNode[] = [
   { id: 'moreMoreBullets', name: 'More MORE Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['moreDamage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMoreBullets', x: -960, y: 190 },
 
   { id: 'goldValue', name: 'Gold Value', desc: (p) => `+${p} gold per kill`, parents: ['time'], currency: 'gold', levels: 5, base: 25, effect: 'goldValue', x: 480, y: 0 },
-  { id: 'pickupRadius', name: 'Pickup Radius', desc: (p) => `+${pct(p)} pickup radius`, parents: ['time'], currency: 'gold', levels: 5, base: 50, effect: 'pickupRadius', x: 480, y: -240 },
+  { id: 'pickupRadius', name: 'Pickup Radius', desc: (p) => `+${pct(p)} pickup radius`, parents: ['time'], currency: 'gold', levels: 2, base: 100, costs: [100, 200], effect: 'pickupRadius', x: 480, y: -240 },
   { id: 'doubleGold', name: 'Double Gold', desc: (p) => `x${1 + p} gold per kill`, parents: ['goldValue'], currency: 'gold', levels: 1, base: 500, effect: 'doubleGold', x: 720, y: 110 },
 
   { id: 'quadGold', name: 'Quadruple Gold', desc: (p) => `+${pct(p)} gold per kill (x4 with Double Gold)`, parents: ['doubleGold'], currency: 'gold', levels: 1, base: 1000, effect: 'quadGold', x: 960, y: 110 },

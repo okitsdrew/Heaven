@@ -49,6 +49,10 @@ export class PlayerView {
   // Time left on the Dust Devil stacks, 0 to 1; drawn as a small ring at his bottom right.
   dustFraction = 0;
   private tone: number | null = null;
+  // The boss reuses this view: bigger, flickering, and rising out of the ground while `rise` < 1.
+  sizeMult = 1;
+  flicker = 0;
+  rise = 1;
   private flashTime = 0;
 
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
@@ -65,16 +69,22 @@ export class PlayerView {
   }
 
   // Recolours everything to one bright tone, for the boss's copy of the player. Null restores the colours.
-  setTone(tone: number | null): void {
+  setTone(tone: number | null, boost = 2): void {
     this.tone = tone;
     this.body.preFX?.clear();
     if (tone !== null) {
       const m = this.body.preFX?.addColorMatrix();
       m?.grayscale(1);
-      m?.brightness(2, true);
+      m?.brightness(boost, true);
     }
     this.body.setTint(tone ?? 0xffffff);
     for (const img of this.handGlow) img.setTint(this.c(0xa060ff));
+  }
+
+  private flickerAlpha(): number {
+    if (this.flicker <= 0) return 1;
+    const v = 0.5 + 0.5 * Math.sin(this.time * 41) * Math.sin(this.time * 23 + 1);
+    return 1 - this.flicker * v;
   }
 
   // Briefly lights the body up when hit.
@@ -88,6 +98,10 @@ export class PlayerView {
     const k = Math.min(1, 0.45 + y * 1.2);
     const ch = (shift: number) => Math.round(((this.tone! >> shift) & 255) * k);
     return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+  }
+
+  private get px(): number {
+    return cfg.render.pixelScale * this.sizeMult;
   }
 
   setVisible(visible: boolean): void {
@@ -105,19 +119,19 @@ export class PlayerView {
   }
 
   // A dark purple line zips between the two points, with a puff of void at the start.
-  onTeleport(fromX: number, fromY: number, toX: number, toY: number, travelTime: number): void {
-    const px = cfg.render.pixelScale;
+  onTeleport(fromX: number, fromY: number, toX: number, toY: number, travelTime: number, lineWidth?: number): void {
+    const px = this.px;
     const a = toScreen(fromX, fromY);
     const b = toScreen(toX, toY);
     const lift = 10 * px;
-    this.fx.streak(a.x, a.y - lift, b.x, b.y - lift, travelTime > 0 ? travelTime : undefined);
+    this.fx.streak(a.x, a.y - lift, b.x, b.y - lift, travelTime > 0 ? travelTime : undefined, lineWidth);
     this.voidPuff(a.x, a.y - lift);
     this.fx.addShake(cfg.camera.shakeOnCast * 0.5);
   }
 
   onTeleportArrive(x: number, y: number): void {
     const a = toScreen(x, y);
-    this.voidPuff(a.x, a.y - 10 * cfg.render.pixelScale);
+    this.voidPuff(a.x, a.y - 10 * this.px);
   }
 
   private voidPuff(x: number, y: number): void {
@@ -142,7 +156,7 @@ export class PlayerView {
   // Where arrows start in world space: the nocked arrow on the fully drawn string.
   muzzle(): Vec2 {
     const p = this.player;
-    const px = cfg.render.pixelScale;
+    const px = this.px;
     const g = toScreen(p.x, p.y);
     const a = toScreen(p.x + p.aimX, p.y + p.aimY);
     const angle = Math.atan2(a.y - g.y, a.x - g.x);
@@ -154,7 +168,7 @@ export class PlayerView {
 
   update(dt: number): void {
     const p = this.player;
-    const px = cfg.render.pixelScale;
+    const px = this.px;
     const f = cfg.feel;
     toScreen(p.x, p.y, screen);
     toScreen(p.x + p.aimX, p.y + p.aimY, ahead);
@@ -174,7 +188,16 @@ export class PlayerView {
       .setScale(px)
       .setFlipX(facingLeft)
       .setDepth(screen.y)
-      .setAlpha(p.dashing || p.teleporting ? 0.55 : 1);
+      .setAlpha((p.dashing || p.teleporting ? 0.55 : 1) * this.flickerAlpha());
+    if (this.flicker > 0 && Math.sin(this.time * 31) > 0.6) this.body.x += (Math.sin(this.time * 97) > 0 ? 1 : -1) * 1.5 * px;
+    // Rising out of the ground: only the top part of the sprite shows, sliding up.
+    const riseDrop = (1 - this.rise) * this.body.height * px;
+    if (this.rise < 1) {
+      this.body.setCrop(0, 0, this.body.width, this.body.height * Math.max(this.rise, 0.001));
+      this.body.y += riseDrop;
+    } else {
+      this.body.setCrop();
+    }
     this.flashTime = Math.max(0, this.flashTime - dt);
     if (this.flashTime > 0) this.body.setTintFill(0xffffff);
     else this.body.setTint(this.tone ?? 0xffffff);
@@ -192,7 +215,7 @@ export class PlayerView {
     const kickT = f.bowKickTime > 0 ? this.kick / f.bowKickTime : 0;
 
     const cx = screen.x;
-    const cy = screen.y - bob;
+    const cy = screen.y - bob + riseDrop;
     const bowSide = facingLeft ? -1 : 1;
     const dirX = Math.cos(aimAngle);
     const dirY = Math.sin(aimAngle);
@@ -238,7 +261,7 @@ export class PlayerView {
     const bowAngle = aimAngle;
 
     const g = this.arms;
-    g.clear().setDepth(screen.y + 0.3).setAlpha(this.body.alpha);
+    g.clear().setDepth(screen.y + 0.3).setAlpha(this.body.alpha * Phaser.Math.Clamp((this.rise - 0.4) / 0.3, 0, 1));
     for (const [width, color] of [
       [3 * px, this.c(SLEEVE_EDGE)],
       [2 * px, this.c(SLEEVE)],
@@ -285,7 +308,7 @@ export class PlayerView {
   // Dust kicked up at his feet while he drifts out of a teleport.
   private slideDust(dt: number): void {
     const p = this.player;
-    const px = cfg.render.pixelScale;
+    const px = this.px;
     const v = toScreen(p.vx, p.vy);
     const len = Math.hypot(v.x, v.y) || 1;
     this.dustTimer += dt * 70;
@@ -440,7 +463,7 @@ export class PlayerView {
     const g = this.dustRing;
     g.clear();
     if (this.dustFraction <= 0) return;
-    const px = cfg.render.pixelScale;
+    const px = this.px;
     const x = screen.x + 11 * px;
     const y = screen.y - 1 * px;
     g.setDepth(screen.y + 0.5);

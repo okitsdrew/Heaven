@@ -102,9 +102,9 @@ export class Fx {
   }
 
   // A line that zips from start to end, then its tail catches up and it fades.
-  streak(x0: number, y0: number, x1: number, y1: number, zip = cfg.teleport.zipTime): void {
+  streak(x0: number, y0: number, x1: number, y1: number, zip = cfg.teleport.zipTime, width = cfg.teleport.lineWidth): void {
     const t = cfg.teleport;
-    this.streaks.push({ x0, y0, x1, y1, age: 0, zip, fade: t.lineFade, width: t.lineWidth });
+    this.streaks.push({ x0, y0, x1, y1, age: 0, zip, fade: t.lineFade, width });
   }
 
   smoke(x: number, y: number, count: number, spread: number): void {
