@@ -11,6 +11,7 @@ export type Action =
   | 'abilityQ'
   | 'abilityE'
   | 'abilityR'
+  | 'abilityF'
   | 'devMenu';
 
 export interface InputSource {
@@ -37,6 +38,7 @@ const keyBindings: Record<string, Action> = {
   KeyQ: 'abilityQ',
   KeyE: 'abilityE',
   KeyR: 'abilityR',
+  KeyF: 'abilityF',
   Backquote: 'devMenu',
 };
 

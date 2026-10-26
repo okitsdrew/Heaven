@@ -60,6 +60,11 @@ export class Boss implements Hittable {
   private snap!: Snapshot;
   private effect: Effect | null = null;
   private telegraphTotal = 0;
+  private frozen = 0;
+  private freezeCooldown = 0;
+  private stunned = 0;
+  private iceGfx: Phaser.GameObjects.Graphics;
+  private stunGfx: Phaser.GameObjects.Graphics;
   private sword = { x: 0, y: 0, angle: 0, placed: false };
   private swordGfx: Phaser.GameObjects.Graphics;
   private swordGlow: Phaser.GameObjects.Graphics;
@@ -79,6 +84,8 @@ export class Boss implements Hittable {
     this.view = new PlayerView(scene, this.sim, fx);
     this.view.setTone(BOSS_TONE, 1.6);
     this.view.setVisible(false);
+    this.iceGfx = scene.add.graphics();
+    this.stunGfx = scene.add.graphics();
     this.fireGfx = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     this.arcGfx = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     this.swordGfx = scene.add.graphics();
@@ -111,12 +118,33 @@ export class Boss implements Hittable {
     this.timer = 0;
     this.teleportGap = 0;
     this.effect = null;
+    this.frozen = 0;
+    this.freezeCooldown = 0;
+    this.stunned = 0;
+    this.view.setFrozen(false);
     this.sword.placed = false;
     this.snap = { moveSpeed: stats.moveSpeed(), teleportDistance: cfg.teleport.distance };
     Object.assign(this.sim, { x: this.x, y: this.y, vx: 0, vy: 0, armsUpTimer: 0 });
     this.view.setVisible(true);
     this.name.setVisible(true);
     this.faceToward(px, py);
+  }
+
+  // Freezes him solid. He picks up where he left off afterwards, and it can only land once per cooldown.
+  freeze(): void {
+    if (!this.targetable || this.frozen > 0 || this.freezeCooldown > 0) return;
+    this.frozen = cfg.iceStorm.bossFreeze;
+    this.freezeCooldown = cfg.iceStorm.bossFreezeCooldown;
+  }
+
+  // Cancels whatever attack he was starting and holds him still. Another hit restarts the timer.
+  stun(seconds: number): void {
+    if (!this.targetable || seconds <= 0) return;
+    this.stunned = seconds;
+    if (this.state === 'telegraph' || this.state === 'strike' || this.state === 'dash') {
+      this.state = 'chase';
+      this.sim.dashTime = 0;
+    }
   }
 
   // Can be hit once it is out of the portal.
@@ -126,6 +154,11 @@ export class Boss implements Hittable {
 
   clear(): void {
     this.alive = false;
+    this.frozen = 0;
+    this.stunned = 0;
+    this.view.setFrozen(false);
+    this.iceGfx.clear();
+    this.stunGfx.clear();
     this.effect = null;
     this.sword.placed = false;
     this.view.setVisible(false);
@@ -156,6 +189,13 @@ export class Boss implements Hittable {
 
   // Returns true if the swing caught the player this frame.
   update(dt: number, px: number, py: number, playerSafe: boolean, playerRadius: number): boolean {
+    this.freezeCooldown = Math.max(0, this.freezeCooldown - dt);
+    // Frozen solid: nothing advances, so every timer resumes exactly where it was.
+    if (this.alive && this.frozen > 0) {
+      this.frozen -= dt;
+      this.view.setFrozen(this.frozen > 0);
+      return false;
+    }
     if (this.effect) {
       this.effect.age += dt;
       if (this.effect.age >= FIRE_TIME) this.effect = null;
@@ -163,6 +203,13 @@ export class Boss implements Hittable {
     let hit = false;
     if (!this.alive) return hit;
     const b = cfg.boss;
+    if (this.stunned > 0) {
+      this.stunned -= dt;
+      this.faceToward(px, py);
+      this.sim.vx = 0;
+      this.sim.vy = 0;
+      return false;
+    }
     const dx = px - this.x;
     const dy = py - this.y;
     const dist = Math.hypot(dx, dy) || 1;
@@ -250,7 +297,10 @@ export class Boss implements Hittable {
     return hit;
   }
 
-  render(dt: number, width: number): void {
+  render(realDt: number, width: number): void {
+    const dt = this.frozen > 0 ? 0 : realDt;
+    this.iceGfx.clear();
+    this.stunGfx.clear();
     this.fireGfx.clear();
     this.arcGfx.clear();
     this.aura.clear();
@@ -263,6 +313,8 @@ export class Boss implements Hittable {
     if (!this.alive) return;
     this.view.update(dt);
     this.drawAura();
+    if (this.frozen > 0) this.drawIce();
+    if (this.stunned > 0) this.drawStun();
 
     const w = Math.min(420, width - 40);
     const x = width / 2 - w / 2;
@@ -291,6 +343,56 @@ export class Boss implements Hittable {
     this.fx.addShake(c.slamShake * 0.5);
     this.burst(ax, ay);
     return !playerSafe && inCone(px, py, r);
+  }
+
+  // A block of ice around him while frozen.
+  private drawIce(): void {
+    const px = cfg.render.pixelScale * cfg.boss.size;
+    toScreen(this.x, this.y, screen);
+    const g = this.iceGfx;
+    g.setDepth(screen.y + 5);
+    const w = 11 * px;
+    const h = 22 * px;
+    const base = screen.y + 2 * px;
+    const pts = [
+      { x: screen.x - w, y: base - h * 0.15 },
+      { x: screen.x - w * 0.8, y: base - h },
+      { x: screen.x - w * 0.1, y: base - h * 1.15 },
+      { x: screen.x + w * 0.7, y: base - h * 0.95 },
+      { x: screen.x + w, y: base - h * 0.1 },
+      { x: screen.x + w * 0.2, y: base + h * 0.05 },
+    ];
+    g.fillStyle(0x9fe4ff, 0.45);
+    g.fillPoints(pts, true);
+    g.lineStyle(2, 0xe8fbff, 0.95);
+    g.strokePoints(pts, true);
+    g.lineStyle(2, 0xffffff, 0.8);
+    g.lineBetween(pts[1].x + 4, pts[1].y + 6, pts[1].x + 4, pts[0].y - 4);
+    g.lineBetween(screen.x - w * 0.2, base - h * 1.0, screen.x + w * 0.35, base - h * 0.35);
+  }
+
+  // A yellow anger mark bobbing over his head while stunned.
+  private drawStun(): void {
+    const px = cfg.render.pixelScale * cfg.boss.size;
+    toScreen(this.x, this.y, screen);
+    const g = this.stunGfx;
+    const bob = Math.sin(this.time * 10) * 2;
+    const cx = screen.x;
+    const cy = screen.y - 26 * px + bob;
+    const s = 5 * px;
+    g.setDepth(screen.y + 6);
+    for (const [qx, qy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+      const pts = [
+        { x: cx + qx * s * 0.25, y: cy + qy * s * 0.25 },
+        { x: cx + qx * s, y: cy + qy * s * 0.25 },
+        { x: cx + qx * s * 0.55, y: cy + qy * s * 0.55 },
+        { x: cx + qx * s * 0.25, y: cy + qy * s },
+      ];
+      g.fillStyle(0xffd21a, 1);
+      g.fillPoints(pts, true);
+      g.lineStyle(1, 0x7a5a00, 1);
+      g.strokePoints(pts, true);
+    }
   }
 
   // A wavy red glow around him, like the fairies' but red.

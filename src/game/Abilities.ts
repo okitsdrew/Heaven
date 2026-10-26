@@ -25,6 +25,18 @@ interface Wave {
   dist: number;
   hits: Set<number>;
   emberTimer: number;
+  lastPatch: number;
+}
+
+// A strip of burning ground left behind a wave.
+interface Patch {
+  ox: number;
+  oy: number;
+  dirX: number;
+  dirY: number;
+  start: number;
+  end: number;
+  age: number;
 }
 
 const screen = { x: 0, y: 0 };
@@ -38,6 +50,9 @@ export class Abilities {
   private storms: Storm[] = [];
   private gfx: Phaser.GameObjects.Graphics;
   private waves: Wave[] = [];
+  private patches: Patch[] = [];
+  private patchTimer = 0;
+  private focus = { x: 0, y: 0 };
   private waveGfx: Phaser.GameObjects.Graphics;
   private preview = { fire: false, ice: false, x: 0, y: 0, dirX: 1, dirY: 0, targetX: 0, targetY: 0 };
   private time = 0;
@@ -49,6 +64,8 @@ export class Abilities {
   private swallowFire = false;
 
   onDamage: (target: Hittable, amount: number, x: number, y: number) => void = () => {};
+  onBurn: (target: Hittable) => void = () => {};
+  onFreeze: (target: Hittable) => void = () => {};
   onCast: (kind: 'fire' | 'ice') => void = () => {};
   onAimStart: () => void = () => {};
 
@@ -64,6 +81,7 @@ export class Abilities {
   // Clears running spells and cooldowns for a fresh run.
   reset(): void {
     this.waves.length = 0;
+    this.patches.length = 0;
     this.storms.length = 0;
     this.aiming = null;
     this.resetCooldowns();
@@ -135,7 +153,10 @@ export class Abilities {
     }
 
     this.time += dt;
+    this.focus.x = player.x;
+    this.focus.y = player.y;
     this.updateWaves(dt, player);
+    this.updatePatches(dt);
     for (let i = this.storms.length - 1; i >= 0; i--) {
       const s = this.storms[i];
       s.age += dt;
@@ -150,7 +171,7 @@ export class Abilities {
   }
 
   private castFireWave(x: number, y: number, dirX: number, dirY: number): void {
-    this.waves.push({ ox: x, oy: y, dirX, dirY, dist: 0, hits: new Set(), emberTimer: 0 });
+    this.waves.push({ ox: x, oy: y, dirX, dirY, dist: 0, hits: new Set(), emberTimer: 0, lastPatch: 0 });
     this.fx.addShake(cfg.camera.shakeOnCast);
     this.onCast('fire');
   }
@@ -187,7 +208,14 @@ export class Abilities {
         if (Math.abs(side) <= c.width / 2 + t.radius && along >= lo - t.radius && along <= hi + t.radius) {
           w.hits.add(t.id);
           this.onDamage(t, c.damage, t.x, t.y);
+          this.onBurn(t);
         }
+      }
+      // Leave burning ground behind the wave.
+      const reach = Math.min(hi, w.dist);
+      while (reach - w.lastPatch >= c.groundSpacing && c.groundTime > 0) {
+        this.patches.push({ ox: w.ox, oy: w.oy, dirX: w.dirX, dirY: w.dirY, start: w.lastPatch, end: w.lastPatch + c.groundSpacing, age: 0 });
+        w.lastPatch += c.groundSpacing;
       }
 
       if (blocked) {
@@ -229,6 +257,28 @@ export class Abilities {
     }
   }
 
+  // Burning ground ignites every enemy standing on it, restarting their burn.
+  private updatePatches(dt: number): void {
+    const c = cfg.fireWave;
+    for (let i = this.patches.length - 1; i >= 0; i--) {
+      this.patches[i].age += dt;
+      if (this.patches[i].age >= c.groundTime) this.patches.splice(i, 1);
+    }
+    this.patchTimer += dt;
+    if (this.patchTimer < 0.2) return;
+    this.patchTimer = 0;
+    for (const p of this.patches) {
+      for (const t of this.targets()) {
+        if (!t.alive || t.kind !== 'enemy') continue;
+        const rx = t.x - p.ox;
+        const ry = t.y - p.oy;
+        const along = rx * p.dirX + ry * p.dirY;
+        const side = -rx * p.dirY + ry * p.dirX;
+        if (Math.abs(side) <= c.width / 2 + t.radius && along >= p.start - t.radius && along <= p.end + t.radius) this.onBurn(t);
+      }
+    }
+  }
+
   // Embers scatter where a wave hits terrain.
   private waveSplash(w: Wave, along: number): void {
     const c = cfg.fireWave;
@@ -263,7 +313,9 @@ export class Abilities {
       s.tickTimer -= interval;
       s.flash = 0.08;
       for (const t of this.targets()) {
-        if (t.alive && Math.hypot(t.x - s.x, t.y - s.y) <= c.radius + t.radius) this.onDamage(t, c.damage, t.x, t.y);
+        if (!t.alive || Math.hypot(t.x - s.x, t.y - s.y) > c.radius + t.radius) continue;
+        this.onDamage(t, c.damage, t.x, t.y);
+        if (t.kind === 'boss') this.onFreeze(t);
       }
     }
 
@@ -293,6 +345,7 @@ export class Abilities {
     g.clear();
     this.waveGfx.clear();
     this.drawPreviews(g);
+    for (const p of this.patches) this.drawPatch(g, p);
     for (const w of this.waves) this.drawWave(g, w);
     for (const s of this.storms) this.drawStorm(g, s);
   }
@@ -375,6 +428,45 @@ export class Abilities {
           t.x + sway * scale,
           t.y - height * scale,
         );
+      }
+    }
+  }
+
+  // Flames flicker over the ground a wave has passed, dying down as the patch ages.
+  private drawPatch(ground: Phaser.GameObjects.Graphics, p: Patch): void {
+    const c = cfg.fireWave;
+    const mid = (p.start + p.end) / 2;
+    const cx = p.ox + p.dirX * mid;
+    const cy = p.oy + p.dirY * mid;
+    if (Math.hypot(cx - this.focus.x, cy - this.focus.y) > 900) return;
+    const life = 1 - p.age / Math.max(c.groundTime, 1e-3);
+    const fade = Math.min(1, life * 3);
+    const px = cfg.render.pixelScale;
+    const perpX = -p.dirY;
+    const perpY = p.dirX;
+    const hw = c.width / 2;
+    const corner = (s: number, l: number) => toScreen(p.ox + perpX * hw * s + p.dirX * l, p.oy + perpY * hw * s + p.dirY * l);
+    ground.fillStyle(0xff5a10, 0.14 * fade);
+    ground.fillPoints([corner(-1, p.start), corner(1, p.start), corner(1, p.end), corner(-1, p.end)], true);
+
+    const g = ground;
+    const cols = Math.max(2, Math.round(c.width / Math.max(c.groundTongue, 1)));
+    const rows = 3;
+    for (let row = 0; row < rows; row++) {
+      for (let i = 0; i < cols; i++) {
+        const side = -hw + ((i + 0.5) * c.width) / cols;
+        const along = p.start + ((row + 0.5) * (p.end - p.start)) / rows;
+        const sp = toScreen(p.ox + perpX * side + p.dirX * along, p.oy + perpY * side + p.dirY * along);
+        const flick = 0.5 + 0.5 * Math.sin(this.time * 12 + i * 2.1 + row * 3.7 + mid * 0.05);
+        const height = px * (3 + 6 * flick) * (0.4 + 0.6 * life);
+        const half = Math.max(2, (c.groundTongue / 3) * px * 0.5);
+        for (const [scale, color, alpha] of [
+          [1, 0xff4a10, 0.7],
+          [0.6, 0xffa030, 0.8],
+        ] as const) {
+          g.fillStyle(color, alpha * fade);
+          g.fillTriangle(sp.x - half * scale, sp.y, sp.x + half * scale, sp.y, sp.x, sp.y - height * scale);
+        }
       }
     }
   }

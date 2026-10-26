@@ -49,6 +49,12 @@ export class PlayerView {
   // Time left on the Dust Devil stacks, 0 to 1; drawn as a small ring at his bottom right.
   dustFraction = 0;
   private tone: number | null = null;
+  private frozen = false;
+  // Doomsday Scenario: the glowing gauntlet on his screen-right hand, and how far that arm is raised overhead.
+  gauntlet = false;
+  handRaise = 0;
+  readonly handPos = { x: 0, y: 0 };
+  private gauntletGfx: Phaser.GameObjects.Graphics;
   // The boss reuses this view: bigger, flickering, and rising out of the ground while `rise` < 1.
   sizeMult = 1;
   flicker = 0;
@@ -66,6 +72,7 @@ export class PlayerView {
     this.arms = scene.add.graphics();
     this.ring = scene.add.graphics();
     this.dustRing = scene.add.graphics();
+    this.gauntletGfx = scene.add.graphics();
   }
 
   // Recolours everything toward one vivid tone, for the boss's copy of the player. Null restores the colours.
@@ -79,6 +86,10 @@ export class PlayerView {
     }
     this.body.setTint(tone ?? 0xffffff);
     for (const img of this.handGlow) img.setTint(this.c(0xa060ff));
+  }
+
+  setFrozen(frozen: boolean): void {
+    this.frozen = frozen;
   }
 
   private flickerAlpha(): number {
@@ -105,7 +116,7 @@ export class PlayerView {
   }
 
   setVisible(visible: boolean): void {
-    for (const o of [this.body, this.shadow, this.bowGfx, this.bowGlow, this.arms, this.ring, this.dustRing, ...this.handGlow]) {
+    for (const o of [this.body, this.shadow, this.bowGfx, this.bowGlow, this.arms, this.ring, this.dustRing, this.gauntletGfx, ...this.handGlow]) {
       o.setVisible(visible);
     }
   }
@@ -199,7 +210,8 @@ export class PlayerView {
       this.body.setCrop();
     }
     this.flashTime = Math.max(0, this.flashTime - dt);
-    if (this.flashTime > 0) this.body.setTintFill(0xffffff);
+    if (this.frozen) this.body.setTintFill(0xbfeaff);
+    else if (this.flashTime > 0) this.body.setTintFill(0xffffff);
     else this.body.setTint(this.tone ?? 0xffffff);
     this.shadow.setPosition(screen.x, screen.y).setScale(px * 0.9, px * 0.35).setDepth(screen.y - 1000);
 
@@ -245,8 +257,21 @@ export class PlayerView {
       };
       return lerp(lerp(rest, walking, this.walk), shooting, Math.max(poseT, flap));
     };
-    const armA = solveArm(shoulderA, pose(shoulderA, bowSide, 1, this.flapAmt[0]), f.armLength * px);
-    const armB = solveArm(shoulderB, pose(shoulderB, -bowSide, -1, this.flapAmt[1]), f.armLength * px);
+    let armA = solveArm(shoulderA, pose(shoulderA, bowSide, 1, this.flapAmt[0]), f.armLength * px);
+    let armB = solveArm(shoulderB, pose(shoulderB, -bowSide, -1, this.flapAmt[1]), f.armLength * px);
+    // The screen-right arm wears the gauntlet and can be thrust overhead.
+    const rightIsA = bowSide > 0;
+    const rightShoulder = rightIsA ? shoulderA : shoulderB;
+    if (this.handRaise > 0) {
+      const cur = rightIsA ? armA.hand : armB.hand;
+      const up = { x: rightShoulder.x + 2 * px, y: rightShoulder.y - f.armLength * 2 * px * 0.92 };
+      const raised = solveArm(rightShoulder, lerp(cur, up, this.handRaise), f.armLength * px);
+      if (rightIsA) armA = raised;
+      else armB = raised;
+    }
+    const rightHand = rightIsA ? armA.hand : armB.hand;
+    this.handPos.x = rightHand.x;
+    this.handPos.y = rightHand.y;
 
     // The bow floats in front of him toward the cursor and phases in only while he shoots.
     const visRate = p.readyTimer > 0 ? dt / Math.max(f.bowPhaseInTime, 1e-4) : -dt / Math.max(f.bowPhaseOutTime, 1e-4);
@@ -279,6 +304,7 @@ export class PlayerView {
     g.fillCircle(armA.hand.x, armA.hand.y, 1.2 * px);
     g.fillCircle(armB.hand.x, armB.hand.y, 1.2 * px);
 
+    this.drawGauntlet(rightHand, px);
     if (sliding) this.slideDust(dt);
     this.drawBow(bowPos, bowAngle, bs, vis, prevVis, p.drawProgress, p.readyTimer > 0, dirY < 0 ? -0.5 : 0.5, dt);
 
@@ -457,6 +483,19 @@ export class PlayerView {
         depth: screen.y + 1,
       });
     }
+  }
+
+  private drawGauntlet(hand: Vec2, px: number): void {
+    const g = this.gauntletGfx;
+    g.clear();
+    if (!this.gauntlet) return;
+    g.setDepth(screen.y + 0.45);
+    const pulse = 0.8 + 0.2 * Math.sin(this.time * 9);
+    g.fillStyle(0xffd21a, 0.28 * pulse + 0.3 * this.handRaise).fillCircle(hand.x, hand.y, 4.2 * px);
+    g.fillStyle(0x16120a, 1).fillCircle(hand.x, hand.y, 2.3 * px);
+    g.lineStyle(Math.max(1, px * 0.7), 0xffd21a, 1).strokeCircle(hand.x, hand.y, 2.3 * px);
+    // Knuckle studs.
+    for (let i = -1; i <= 1; i++) g.fillStyle(0xffe680, 1).fillCircle(hand.x + i * 1.3 * px, hand.y - 2.1 * px, 0.45 * px);
   }
 
   private drawDustRing(): void {

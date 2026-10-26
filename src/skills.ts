@@ -56,11 +56,12 @@ export const nodes: SkillNode[] = [
   { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -240, y: 530 },
   { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 0, y: 530 },
   { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 240, y: 530 },
+  { id: 'doomsday', name: 'Doomsday Scenario', desc: () => 'Unlocks F: teleport and detonate a huge explosion', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 480, y: 530 },
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
-export type SkillId = 'fireFairy' | 'iceFairy' | 'swordSlash';
+export type SkillId = 'fireFairy' | 'iceFairy' | 'swordSlash' | 'doomsday';
 
 export function level(id: string): number {
   return profile.nodes[id] ?? 0;

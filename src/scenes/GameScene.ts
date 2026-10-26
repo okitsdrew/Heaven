@@ -6,6 +6,7 @@ import { Abilities } from '../game/Abilities';
 import { Arrows, Hittable } from '../game/Arrows';
 import { Boss, slayDamage } from '../game/Boss';
 import { Chunks } from '../game/Chunks';
+import { Doomsday } from '../game/Doomsday';
 import { Dummies } from '../game/Dummies';
 import { Enemies, hpAt, pushOut, spawnRateAt } from '../game/Enemies';
 import { Fairies } from '../game/Fairies';
@@ -55,6 +56,8 @@ export class GameScene extends Phaser.Scene {
   private abilities!: Abilities;
   private fairies!: Fairies;
   private swordSlash!: SwordSlash;
+  private doomsday!: Doomsday;
+  private hitStop = 0;
   private hud!: Hud;
   private targets = new SpatialHash<Hittable>(64);
   private devMenu!: DevMenu;
@@ -94,7 +97,8 @@ export class GameScene extends Phaser.Scene {
     this.fairies = new Fairies(this, this.fx);
     this.abilities = new Abilities(this, this.fx, () => this.targetList);
     this.swordSlash = new SwordSlash(this, this.fx, () => this.targetList);
-    this.hud = new Hud(this, 3);
+    this.doomsday = new Doomsday(this, this.fx, () => this.targetList);
+    this.hud = new Hud(this, 4);
 
     this.player.onFire = (_x, _y, dx, dy) => {
       const m = this.playerView.muzzle();
@@ -111,9 +115,36 @@ export class GameScene extends Phaser.Scene {
     };
     this.player.onTeleportArrive = (x, y) => this.playerView.onTeleportArrive(x, y);
     this.abilities.onCast = (kind) => this.fairies.flare(kind);
-    this.abilities.onAimStart = () => (this.swordSlash.armed = false);
+    this.abilities.onAimStart = () => {
+      this.swordSlash.armed = false;
+      this.doomsday.cancel();
+    };
+    this.abilities.onBurn = (t) => this.enemies.ignite(t);
+    this.abilities.onFreeze = () => this.boss.freeze();
+    this.enemies.fx = this.fx;
+    this.enemies.onBurnTick = (x, y, amount) => {
+      toScreen(x, y, screen);
+      this.fx.damageNumber(screen.x, screen.y - 40, amount);
+    };
+    this.doomsday.onAimStart = () => {
+      this.abilities.aiming = null;
+      this.swordSlash.cancel();
+    };
+    this.doomsday.onCast = (x, y) => this.player.teleportTo(x, y, cfg.doomsday.windup);
+    this.doomsday.onImpact = () => (this.hitStop = 0.14);
+    this.doomsday.onDamage = (target, amount, x, y) => {
+      this.damage(target, amount);
+      toScreen(x, y, screen);
+      this.fx.damageNumber(screen.x, screen.y - 40, amount);
+    };
+    this.doomsday.onStun = (target, seconds) => {
+      if (target.kind === 'boss') this.boss.stun(seconds);
+      else this.enemies.stun(target, seconds);
+    };
+    this.doomsday.onKnock = (target, dx, dy, force) => this.enemies.knock(target, dx, dy, force);
     this.swordSlash.onDamage = (target, amount, x, y) => {
       this.damage(target, amount);
+      if (target.kind === 'boss') this.boss.stun(cfg.swordSlash.bossStun);
       toScreen(x, y, screen);
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
@@ -237,6 +268,7 @@ export class GameScene extends Phaser.Scene {
         run: () => {
           this.abilities.resetCooldowns();
           this.swordSlash.cooldown = 0;
+          this.doomsday.cooldown = 0;
         },
       },
       { label: 'Recenter player', run: () => Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0 }) },
@@ -259,7 +291,12 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const dt = Math.min(deltaMs / 1000, 0.05) * cfg.time.timeScale;
+    let dt = Math.min(deltaMs / 1000, 0.05) * cfg.time.timeScale;
+    // A brief slow-motion beat on the Doomsday impact.
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
+      dt *= 0.08;
+    }
     const cam = this.cameras.main;
 
     // The cursor usually sits on a sprite's body, not its feet, so aim at the ground point below it.
@@ -271,7 +308,7 @@ export class GameScene extends Phaser.Scene {
 
     this.targets.clear();
     this.dummies.update(dt, this.targets);
-    this.player.fireBlocked = this.swordSlash.blocksFire || this.abilities.blocksFire;
+    this.player.fireBlocked = this.swordSlash.blocksFire || this.abilities.blocksFire || this.doomsday.blocksFire;
     if (!this.dead) {
       this.player.update(dt, input, aimWorld);
       const body = { x: this.player.x, y: this.player.y, radius: cfg.player.bodyRadius };
@@ -301,6 +338,9 @@ export class GameScene extends Phaser.Scene {
     this.arrows.update(dt, this.targets, Math.max(cfg.dummy.radius, this.enemies.maxRadius, this.boss.radius), this.chunks.obstacles);
     this.abilities.update(dt, this.player, input, cursor);
     this.swordSlash.update(dt, this.player, input);
+    this.playerView.gauntlet = canUse('doomsday');
+    this.playerView.handRaise = this.doomsday.raise;
+    this.doomsday.update(dt, this.player, input, cursor, this.playerView.handPos, { width: cam.width, height: cam.height });
     if (!this.dead && !this.player.safe && !cfg.debug.godMode) {
       if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius)) this.endRun('You died', true);
     }
@@ -343,6 +383,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.update(cam.width, cam.height, [
       { key: 'Q', color: 0xff7a20, enabled: canUse('fireFairy'), remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
       { key: 'E', color: 0x7fd4ff, enabled: canUse('iceFairy'), remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown, active: this.abilities.aiming === 'ice' },
+      { key: 'F', color: 0xffd21a, enabled: canUse('doomsday'), remaining: this.doomsday.cooldown, total: cfg.doomsday.cooldown, active: this.doomsday.aiming || this.doomsday.busy },
       { key: 'R', color: 0xb070ff, enabled: canUse('swordSlash'), remaining: this.swordSlash.cooldown, total: cfg.swordSlash.cooldown, active: this.swordSlash.armed || this.swordSlash.active },
     ]);
     this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
@@ -438,6 +479,8 @@ export class GameScene extends Phaser.Scene {
     this.bossSpawned = false;
     this.gold.clear();
     this.abilities.reset();
+    this.doomsday.reset();
+    this.hitStop = 0;
     this.swordSlash.cancel();
     this.swordSlash.cooldown = 0;
     Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0, dashTime: 0, teleportTime: 0, lockTime: 0 });

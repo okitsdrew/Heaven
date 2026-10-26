@@ -56,6 +56,8 @@ export class Player {
   // Grace period after a dash or teleport ends.
   graceTime = 0;
   fireBlocked = false;
+  // While above zero he cannot move, shoot or dash (Doomsday Scenario's casting pose).
+  frozenTime = 0;
   shootSlowTimer = 0;
   private lastMoveX = 0;
   private lastMoveY = 0;
@@ -110,6 +112,15 @@ export class Player {
       }
     }
 
+    if (this.frozenTime > 0) {
+      this.frozenTime = Math.max(0, this.frozenTime - dt);
+      this.graceTime = Math.max(0, this.graceTime - dt);
+      this.vx = 0;
+      this.vy = 0;
+      this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+      return;
+    }
+
     if (canUse('dash') && input.justPressed('dash')) this.dashBuffer = Math.max(cfg.dash.inputBuffer, 1e-4);
     if (this.dashBuffer > 0 && !this.dashing && this.dashCooldown <= 0) {
       this.resolveMoveDir(input);
@@ -133,6 +144,21 @@ export class Player {
 
     if (!this.dashing) this.dashCooldown = Math.max(0, this.dashCooldown - dt);
     this.updateFire(dt, input);
+  }
+
+  // Jumps straight to a point (Doomsday Scenario) and holds him still for the cast.
+  teleportTo(x: number, y: number, hold: number): void {
+    this.onTeleport(this.x, this.y, x, y, 0);
+    this.x = x;
+    this.y = y;
+    this.vx = 0;
+    this.vy = 0;
+    this.lockTime = 0;
+    this.dashTime = 0;
+    this.teleportTime = 0;
+    this.graceTime = hold + cfg.player.invulnAfter;
+    this.frozenTime = hold;
+    this.onTeleportArrive(x, y);
   }
 
   private updateMove(dt: number, input: Input): void {

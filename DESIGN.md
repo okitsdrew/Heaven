@@ -84,6 +84,13 @@ In-game overlay, toggled with backtick. Must include:
 - Holding right click repeats the teleport at its cooldown. The Dust Devil ring is smaller.
 - Boss: windup 0.8, recover 1.2, teleport gap 0.2, portal radius 70 and 1.5s. A chase-dash cancels the attack and the next windup starts in full. It only abandons a windup when the player is beyond `boss.chaseRangeMult` (2.5) times the sword range.
 
+## 7i. Skill effects and Doomsday Scenario (phase 3 branch)
+- **Fire Wave** sets enemies alight (`fireWave.burnDps` 5 for `burnTime` 5, ticking every `burnTick`); a new application restarts the timer. The wave leaves burning ground behind (`groundTime` 5s) that ignites any enemy standing on it. Burning enemies glow orange and shed flames. Bosses do not burn.
+- **Ice Storm**: damage 10, cooldown 20. It freezes a boss solid for 1s (`bossFreeze`), at most once per 6s (`bossFreezeCooldown`). A frozen boss is encased in ice and every timer resumes where it left off.
+- **Sword Slash**: cooldown 10. Each of the three hits stuns a boss for 1s (`bossStun`, a new hit restarts the timer). Stun cancels the boss's attack and shows a yellow anger mark over its head.
+- **Doomsday Scenario** (F, 3 skill points, child of Teleport beside Sword Slash): a yellow-black glowing gauntlet on the screen-right hand. F shows a circle (and the wider stun ring) at the cursor, held within `maxRange`. A click teleports him there, he thrusts the gauntlet overhead (`windup`), then it detonates from the hand: 100 damage inside the circle, then everything within 1.5x the radius is stunned for `stunTime`, and non-bosses are knocked back. Big flash, ground shockwaves, debris, heavy shake and a short slow-motion beat. Cooldown 8s.
+- Dev menu sections are grouped: player, skills, enemies and boss, progression, world, look and feel, system.
+
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.

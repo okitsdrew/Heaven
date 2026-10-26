@@ -26,6 +26,9 @@ const css = `
 #dev-menu h1 { font-size: 14px; margin: 0 0 8px; color: #f2d7a6; display: flex; justify-content: space-between; }
 #dev-menu h1 small { color: #8a83a0; font-weight: normal; }
 #dev-menu details { border-top: 1px solid #2a2538; padding: 4px 0; }
+#dev-menu details details { margin-left: 8px; border-top: 1px solid #1f1b2c; }
+#dev-menu details.group > summary { color: #f2d7a6; }
+#dev-menu details details > summary { text-transform: none; letter-spacing: 0; }
 #dev-menu summary { cursor: pointer; color: #c9b6ff; padding: 2px 0; text-transform: uppercase; letter-spacing: 1px; }
 #dev-menu .row { display: grid; grid-template-columns: 1fr 90px 56px 16px; gap: 4px; align-items: center; margin: 3px 0; }
 #dev-menu .row.changed label { color: #f2d7a6; }
@@ -43,6 +46,17 @@ const css = `
 #dev-toggle { position: fixed; left: 8px; bottom: 8px; z-index: 11; background: rgba(42, 37, 56, 0.6); color: #c9b6ff;
   border: 1px solid #443c5c; font: 11px monospace; padding: 3px 6px; cursor: pointer; }
 `;
+
+// How the config sections are grouped in the menu. Sections not listed here land in "other".
+const groups: [string, string[]][] = [
+  ['player', ['player', 'bow', 'dash', 'teleport', 'abilities']],
+  ['skills', ['swordSlash', 'fireWave', 'iceStorm', 'doomsday', 'fairy']],
+  ['enemies and boss', ['spawn', 'enemy', 'wraith', 'shade', 'husk', 'boss']],
+  ['progression', ['run', 'xp', 'gold', 'upgrade', 'tree']],
+  ['world', ['world', 'map', 'dummy']],
+  ['look and feel', ['camera', 'feel', 'render']],
+  ['system', ['time', 'debug', 'story']],
+];
 
 function labelFor(key: string): string {
   return key.replace(/([A-Z])/g, ' $1').toLowerCase();
@@ -156,13 +170,20 @@ export class DevMenu {
       }),
     );
 
-    const actionBar = this.section('actions', true);
+    const actionBar = this.section('actions', true, this.root, 'group');
     for (const a of actions) actionBar.appendChild(this.button(a.label, a.run));
 
-    for (const [section, params] of Object.entries(meta)) {
-      const body = this.section(section, section !== 'render');
-      for (const [key, param] of Object.entries(params as Record<string, Param>)) {
-        body.appendChild(this.row(section, key, param));
+    const known = new Set(groups.flatMap(([, names]) => names));
+    const all = [...groups, ['other', Object.keys(meta).filter((n) => !known.has(n))] as [string, string[]]];
+    for (const [groupName, names] of all) {
+      const present = names.filter((n) => n in meta);
+      if (present.length === 0) continue;
+      const group = this.section(groupName, false, this.root, 'group');
+      for (const section of present) {
+        const body = this.section(section, false, group);
+        for (const [key, param] of Object.entries((meta as Record<string, Record<string, Param>>)[section])) {
+          body.appendChild(this.row(section, key, param));
+        }
       }
     }
     this.refreshPresets();
@@ -184,13 +205,14 @@ export class DevMenu {
     return bar;
   }
 
-  private section(name: string, open: boolean): HTMLElement {
+  private section(name: string, open: boolean, parent: HTMLElement = this.root, cls = ''): HTMLElement {
     const details = document.createElement('details');
     details.open = open;
+    details.className = cls;
     const summary = document.createElement('summary');
-    summary.textContent = name;
+    summary.textContent = cls === 'group' ? name : labelFor(name);
     details.appendChild(summary);
-    this.root.appendChild(details);
+    parent.appendChild(details);
     return details;
   }
 

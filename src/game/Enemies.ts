@@ -5,6 +5,7 @@ import { toScreen, toWorld } from '../iso';
 import { Pool } from '../util/pool';
 import { SpatialHash } from '../util/spatialHash';
 import { Hittable } from './Arrows';
+import type { Fx } from './Fx';
 import { Obstacle } from './Chunks';
 
 export const enemyKinds = ['wraith', 'shade', 'husk'] as const;
@@ -20,6 +21,10 @@ interface Enemy extends Hittable {
   ky: number;
   flash: number;
   phase: number;
+  // Seconds of burn and stun left, and the time since the last burn tick.
+  burn: number;
+  burnTick: number;
+  stun: number;
   // Which way round the current obstacle this enemy committed to, so it doesn't dither head-on.
   avoid: Obstacle | null;
   side: number;
@@ -63,6 +68,8 @@ export class Enemies {
   private live: Enemy[] = [];
 
   onKilled: (x: number, y: number, type: EnemyKind) => void = () => {};
+  onBurnTick: (x: number, y: number, amount: number) => void = () => {};
+  fx: Fx | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.pool = new Pool(() => ({
@@ -81,6 +88,9 @@ export class Enemies {
       ky: 0,
       flash: 0,
       phase: 0,
+      burn: 0,
+      burnTick: 0,
+      stun: 0,
       avoid: null,
       side: 1,
       sprite: scene.add.image(0, 0, enemyFrames.wraith[0]).setOrigin(0.5, 1).setVisible(false),
@@ -162,6 +172,9 @@ export class Enemies {
     e.flash = 0;
     e.phase = Math.random() * Math.PI * 2;
     e.avoid = null;
+    e.burn = 0;
+    e.burnTick = 0;
+    e.stun = 0;
     e.sprite.setTexture(enemyFrames[type][0]).setVisible(true);
     e.shadow.setVisible(true);
     this.live.push(e);
@@ -185,6 +198,27 @@ export class Enemies {
       e.shadow.setVisible(false);
       this.onKilled(e.x, e.y, e.type);
     }
+  }
+
+  // Sets an enemy alight; a fresh application restarts the timer.
+  ignite(target: Hittable): void {
+    const e = target as Enemy;
+    if (e.kind !== 'enemy' || !e.alive) return;
+    e.burn = cfg.fireWave.burnTime;
+  }
+
+  stun(target: Hittable, seconds: number): void {
+    const e = target as Enemy;
+    if (e.kind !== 'enemy' || !e.alive) return;
+    e.stun = Math.max(e.stun, seconds);
+  }
+
+  knock(target: Hittable, dirX: number, dirY: number, force: number): void {
+    const e = target as Enemy;
+    if (e.kind !== 'enemy' || !e.alive) return;
+    const k = force / cfg[e.type].scale;
+    e.kx += dirX * k;
+    e.ky += dirY * k;
   }
 
   // Run-time spawning, steering toward the player, soft separation and obstacle avoidance.
@@ -233,6 +267,8 @@ export class Enemies {
       e.radius = c.radius;
       e.flash -= dt;
       e.phase += dt * ec.bobSpeed;
+      if (e.burn > 0) this.burnTick(e, dt);
+      if (!e.alive) continue;
 
       let dx = px - e.x;
       let dy = py - e.y;
@@ -277,6 +313,11 @@ export class Enemies {
       e.vy += (dy * speed - e.vy) * turn;
       e.kx *= kdecay;
       e.ky *= kdecay;
+      if (e.stun > 0) {
+        e.stun -= dt;
+        e.vx = 0;
+        e.vy = 0;
+      }
 
       // Soft push away from overlapping neighbours.
       let sx = 0;
@@ -306,6 +347,26 @@ export class Enemies {
       e.y += (e.vy + e.ky) * dt + sy * sepK;
       slideOut(e, obstacles);
     }
+  }
+
+  private burnTick(e: Enemy, dt: number): void {
+    const c = cfg.fireWave;
+    e.burn -= dt;
+    e.burnTick += dt;
+    const interval = Math.max(c.burnTick, 0.05);
+    while (e.burnTick >= interval && e.alive) {
+      e.burnTick -= interval;
+      const amount = c.burnDps * interval;
+      e.hp -= amount;
+      this.onBurnTick(e.x, e.y, amount);
+      if (e.hp <= 0) {
+        e.alive = false;
+        e.sprite.setVisible(false);
+        e.shadow.setVisible(false);
+        this.onKilled(e.x, e.y, e.type);
+      }
+    }
+    if (e.burn <= 0) e.burnTick = 0;
   }
 
   // Inserts live enemies into the shared hit-test hash.
@@ -347,7 +408,23 @@ export class Enemies {
         .setScale(scale * 0.9, scale * 0.35)
         .setDepth(screen.y - 1000);
       if (e.flash > 0) e.sprite.setTintFill(0xffffff);
+      else if (e.burn > 0) e.sprite.setTint(0xff9a50);
+      else if (e.stun > 0) e.sprite.setTint(0xfff0a0);
       else e.sprite.clearTint();
+      if (e.burn > 0 && this.fx && Math.random() < 0.25) {
+        this.fx.particle({
+          x: screen.x + (Math.random() - 0.5) * 8 * scale / pxs * 1.5,
+          y: screen.y - (4 + Math.random() * 10) * scale,
+          life: 0.35 + Math.random() * 0.2,
+          from: 0.35,
+          to: 0.05,
+          alpha: 0.9,
+          tint: Math.random() < 0.5 ? 0xff6a10 : 0xffc060,
+          vy: -30 - Math.random() * 30,
+          vx: (Math.random() - 0.5) * 16,
+          depth: screen.y + 1,
+        });
+      }
     }
   }
 
