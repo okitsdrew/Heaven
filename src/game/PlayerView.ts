@@ -45,6 +45,8 @@ export class PlayerView {
   slashArms: () => { right: boolean; left: boolean } = () => ({ right: false, left: false });
   private dustTimer = 0;
   private time = 0;
+  private grey = false;
+  private flashTime = 0;
 
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
     this.shadow = scene.add.image(0, 0, Tex.shadow);
@@ -56,6 +58,26 @@ export class PlayerView {
     );
     this.arms = scene.add.graphics();
     this.ring = scene.add.graphics();
+  }
+
+  // Desaturates everything, for the boss's copy of the player.
+  setGrey(grey: boolean): void {
+    this.grey = grey;
+    this.body.preFX?.clear();
+    if (grey) this.body.preFX?.addColorMatrix().grayscale(1);
+    this.body.setTint(grey ? 0xb4b4bc : 0xffffff);
+    for (const img of this.handGlow) img.setTint(this.c(0xa060ff));
+  }
+
+  // Briefly lights the body up when hit.
+  flash(): void {
+    this.flashTime = cfg.feel.hitFlashTime;
+  }
+
+  private c(color: number): number {
+    if (!this.grey) return color;
+    const y = Math.round(0.3 * ((color >> 16) & 255) + 0.59 * ((color >> 8) & 255) + 0.11 * (color & 255));
+    return (y << 16) | (y << 8) | y;
   }
 
   setVisible(visible: boolean): void {
@@ -143,6 +165,9 @@ export class PlayerView {
       .setFlipX(facingLeft)
       .setDepth(screen.y)
       .setAlpha(p.dashing || p.teleporting ? 0.55 : 1);
+    this.flashTime = Math.max(0, this.flashTime - dt);
+    if (this.flashTime > 0) this.body.setTintFill(0xffffff);
+    else this.body.setTint(this.grey ? 0xb4b4bc : 0xffffff);
     this.shadow.setPosition(screen.x, screen.y).setScale(px * 0.9, px * 0.35).setDepth(screen.y - 1000);
 
     // While shooting he holds his arms up as if steering the bow with magic, and flaps them.
@@ -205,8 +230,8 @@ export class PlayerView {
     const g = this.arms;
     g.clear().setDepth(screen.y + 0.3).setAlpha(this.body.alpha);
     for (const [width, color] of [
-      [3 * px, SLEEVE_EDGE],
-      [2 * px, SLEEVE],
+      [3 * px, this.c(SLEEVE_EDGE)],
+      [2 * px, this.c(SLEEVE)],
     ] as const) {
       g.lineStyle(width, color, 1);
       for (const arm of [armA, armB]) {
@@ -217,7 +242,7 @@ export class PlayerView {
         g.strokePath();
       }
     }
-    g.fillStyle(SKIN, 1);
+    g.fillStyle(this.c(SKIN), 1);
     g.fillCircle(armA.hand.x, armA.hand.y, 1.2 * px);
     g.fillCircle(armB.hand.x, armB.hand.y, 1.2 * px);
 
@@ -238,7 +263,7 @@ export class PlayerView {
     if (p.dashing && cfg.dash.afterimages > 0) {
       this.afterimageTimer -= dt;
       if (this.afterimageTimer <= 0) {
-        this.fx.afterimage(this.body.texture.key, screen.x, screen.y, facingLeft, px, screen.y);
+        this.fx.afterimage(this.body.texture.key, screen.x, screen.y, facingLeft, px, screen.y, this.grey ? 0xa0a0a8 : undefined);
         this.afterimageTimer += cfg.dash.duration / cfg.dash.afterimages;
       }
     }
@@ -326,9 +351,9 @@ export class PlayerView {
     const frame = Math.floor(this.time * 30);
     const segVisible = (i: number) => vis >= 0.99 || hash(i, frame) < vis * 1.15;
     for (const [target, width, color, alpha] of [
-      [glow, 6 * scale, 0x7a2fd0, 0.5],
-      [g, 3.4 * scale, 0x3a0f6a, 0.95],
-      [g, 1.6 * scale, 0x07000d, 1],
+      [glow, 6 * scale, this.c(0x7a2fd0), 0.5],
+      [g, 3.4 * scale, this.c(0x3a0f6a), 0.95],
+      [g, 1.6 * scale, this.c(0x07000d), 1],
     ] as const) {
       target.lineStyle(width, color, alpha * vis);
       for (let i = 0; i < pts.length - 1; i++) {
@@ -340,9 +365,9 @@ export class PlayerView {
     const tip = place(5, 0);
     const l = place(-1, -2.2);
     const r = place(-1, 2.2);
-    g.fillStyle(0x2a0a4a, vis);
+    g.fillStyle(this.c(0x2a0a4a), vis);
     g.fillTriangle(tip.x, tip.y, l.x, l.y, r.x, r.y);
-    glow.fillStyle(0xc9a0ff, 0.7 * vis);
+    glow.fillStyle(this.c(0xc9a0ff), 0.7 * vis);
     glow.fillCircle(pos.x, pos.y, 1.6 * scale);
 
     // The string, pulled by a small yellow hand.
@@ -350,7 +375,7 @@ export class PlayerView {
     const nock = place(pulledX, 0);
     const a = pts[0];
     const b = pts[pts.length - 1];
-    g.lineStyle(1, 0xd9b8ff, 0.9 * vis);
+    g.lineStyle(1, this.c(0xd9b8ff), 0.9 * vis);
     g.beginPath();
     g.moveTo(a.x, a.y);
     g.lineTo(nock.x, nock.y);
@@ -358,17 +383,17 @@ export class PlayerView {
     g.strokePath();
     if (shooting && pull > 0.02) {
       const head = place(5, 0);
-      g.lineStyle(Math.max(1, scale), 0xc9a0ff, vis);
+      g.lineStyle(Math.max(1, scale), this.c(0xc9a0ff), vis);
       g.beginPath();
       g.moveTo(nock.x, nock.y);
       g.lineTo(head.x, head.y);
       g.strokePath();
     }
-    glow.fillStyle(HAND_YELLOW, 0.5 * vis);
+    glow.fillStyle(this.c(HAND_YELLOW), 0.5 * vis);
     glow.fillCircle(nock.x, nock.y, 3.2 * scale);
-    g.fillStyle(0x8a6a10, vis);
+    g.fillStyle(this.c(0x8a6a10), vis);
     g.fillCircle(nock.x, nock.y, 1.9 * scale);
-    g.fillStyle(HAND_YELLOW, vis);
+    g.fillStyle(this.c(HAND_YELLOW), vis);
     g.fillCircle(nock.x, nock.y, 1.5 * scale);
     for (const [fx, fy] of [[-1.2, -1.6], [-1.9, 0], [-1.2, 1.6]] as const) {
       const f = place(pulledX + fx, fy);
@@ -392,7 +417,7 @@ export class PlayerView {
         from: 0.25 + Math.random() * 0.2,
         to: 0.05,
         alpha: 0.9,
-        tint: Math.random() < 0.5 ? 0xa060ff : 0x6a20c0,
+        tint: Math.random() < 0.5 ? this.c(0xa060ff) : this.c(0x6a20c0),
         vx: (Math.random() - 0.5) * 30,
         vy: -10 - Math.random() * 25,
         depth: screen.y + 1,
@@ -416,7 +441,7 @@ export class PlayerView {
       const progress = p.dashing ? 0 : 1 - p.dashCooldownFraction;
       g.lineStyle(2, 0x2a2638, 0.8);
       ellipseArc(g, screen.x, screen.y, half.x, half.y, 1);
-      g.lineStyle(2, 0xc9b6ff, 0.9);
+      g.lineStyle(2, this.c(0xc9b6ff), 0.9);
       ellipseArc(g, screen.x, screen.y, half.x, half.y, progress);
     } else if (this.readyPulse > 0) {
       const t = this.readyPulse / 0.25;

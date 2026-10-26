@@ -4,6 +4,7 @@ import { cfg } from '../config';
 import { DevMenu } from '../dev/DevMenu';
 import { Abilities } from '../game/Abilities';
 import { Arrows, Hittable } from '../game/Arrows';
+import { Boss } from '../game/Boss';
 import { Chunks } from '../game/Chunks';
 import { Dummies } from '../game/Dummies';
 import { Enemies, hpAt, pushOut, spawnRateAt } from '../game/Enemies';
@@ -19,6 +20,7 @@ import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
 import { canUse, onKillBuffs, runBuffs, stats as upgrades, unlockEverything } from '../skills';
+import { Cutscene } from '../ui/Cutscene';
 import { Screens } from '../ui/Screens';
 import { SpatialHash } from '../util/spatialHash';
 import { addXp, setLevel, xpToNext } from '../xp';
@@ -33,6 +35,8 @@ export class GameScene extends Phaser.Scene {
   private dummies!: Dummies;
   private enemies!: Enemies;
   private chunks!: Chunks;
+  private boss!: Boss;
+  private bossSpawned = false;
   private targetList: Hittable[] = [];
   private clock = 0;
   // Where the run clock began (Time Warp starts it ahead); the run length counts from here.
@@ -45,6 +49,7 @@ export class GameScene extends Phaser.Scene {
   private gold!: Gold;
   private runHud!: RunHud;
   private screens!: Screens;
+  private cutscene!: Cutscene;
   private fx!: Fx;
   private ground!: Ground;
   private abilities!: Abilities;
@@ -75,9 +80,11 @@ export class GameScene extends Phaser.Scene {
     this.dummies = new Dummies(this);
     this.enemies = new Enemies(this);
     this.chunks = new Chunks(this, this.fx);
+    this.boss = new Boss(this, this.fx);
     this.gold = new Gold(this);
     this.runHud = new RunHud(this);
     this.screens = new Screens();
+    this.cutscene = new Cutscene();
     this.gold.onCollect = (v) => {
       profile.gold += v;
       this.run.gold += v;
@@ -148,6 +155,18 @@ export class GameScene extends Phaser.Scene {
       }
     };
 
+    this.boss.onKilled = (x, y) => {
+      toScreen(x, y, screen);
+      const px = cfg.render.pixelScale;
+      this.fx.smoke(screen.x, screen.y - 10 * px, cfg.boss.deathSmoke, 24 * px);
+      this.fx.particle({ x: screen.x, y: screen.y - 10 * px, life: 0.4, from: 6, to: 0, tint: 0xffffff, depth: screen.y + 2 });
+      this.fx.addShake(cfg.boss.deathShake);
+      this.gold.drop(x, y, cfg.boss.rewardGold);
+      profile.skillPoints += cfg.boss.rewardSkillPoints;
+      persist();
+      this.runHud.announce(`BOSS DEFEATED  +${cfg.boss.rewardSkillPoints} skill point`);
+    };
+
     this.debugGfx = this.add.graphics().setDepth(2e6);
     this.vignette = this.add.image(0, 0, Tex.vignette).setOrigin(0).setScrollFactor(0).setDepth(3e6);
     this.stats = this.add
@@ -166,8 +185,12 @@ export class GameScene extends Phaser.Scene {
       { label: 'Clock +60s', run: jump(60) },
       { label: 'Clock to 5:00', run: () => setClock(300) },
       { label: 'Clock to 0', run: () => setClock(0) },
+      { label: 'Spawn boss', run: () => this.spawnBoss() },
+      { label: 'Kill boss', run: () => this.boss.damage(this.boss.hp) },
+      { label: 'Clock to 1:55 (boss soon)', run: () => setClock(cfg.boss.spawnTime - 5) },
       { label: 'Spawn 50 enemies', run: () => this.spawnBurst(50) },
       { label: 'Clear enemies', run: () => this.enemies.clear() },
+      { label: 'Play intro cutscene', run: () => this.playIntro() },
       { label: 'Restart run', run: () => this.startRun() },
       { label: 'End run (show summary)', run: () => this.endRun('Run ended') },
       { label: 'Open skill tree', run: () => this.openTree() },
@@ -221,6 +244,8 @@ export class GameScene extends Phaser.Scene {
     this.clockStart = upgrades.timeWarp();
     this.clock = this.clockStart;
 
+    if (cfg.story.introEnabled && !profile.seenIntro) this.playIntro();
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input2.destroy());
   }
 
@@ -253,6 +278,7 @@ export class GameScene extends Phaser.Scene {
       this.player.x = body.x;
       this.player.y = body.y;
       this.clock += dt;
+      if (cfg.boss.enabled && !this.bossSpawned && this.clock >= cfg.boss.spawnTime) this.spawnBoss();
       if (this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
     }
 
@@ -264,14 +290,20 @@ export class GameScene extends Phaser.Scene {
     this.targetList.length = 0;
     for (const d of this.dummies.list) if (d.alive) this.targetList.push(d);
     for (const e of this.enemies.list) if (e.alive) this.targetList.push(e);
+    if (this.boss.alive) {
+      this.targets.insert(this.boss, this.boss.x, this.boss.y);
+      this.targetList.push(this.boss);
+    }
 
     this.abilities.obstacles = this.chunks.obstacles;
-    this.arrows.update(dt, this.targets, Math.max(cfg.dummy.radius, this.enemies.maxRadius), this.chunks.obstacles);
+    this.arrows.update(dt, this.targets, Math.max(cfg.dummy.radius, this.enemies.maxRadius, this.boss.radius), this.chunks.obstacles);
     this.abilities.update(dt, this.player, input, cursor);
     this.swordSlash.update(dt, this.player, input);
     if (!this.dead && !this.player.safe && !cfg.debug.godMode) {
       if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius)) this.endRun('You died', true);
     }
+    const bossHit = this.boss.update(dt, this.player.x, this.player.y, this.player.safe || this.dead, cfg.player.hitRadius, this.chunks.obstacles);
+    if (bossHit && !this.dead && !cfg.debug.godMode) this.endRun('Shot by your shade', true);
     if (this.dead) {
       this.endTimer -= dt;
       if (this.endTimer <= 0) this.showSummary();
@@ -291,6 +323,7 @@ export class GameScene extends Phaser.Scene {
     this.chunks.update(dt, cam);
     if (!this.dead) this.playerView.update(dt);
     this.arrows.render();
+    this.boss.render(dt, cam.width);
     this.dummies.render();
     this.enemies.render(this.player.x);
     this.gold.render(cam);
@@ -315,6 +348,7 @@ export class GameScene extends Phaser.Scene {
 
   private damage(target: Hittable, amount: number): void {
     if (target.kind === 'enemy') this.enemies.damage(target, amount, this.player.x, this.player.y);
+    else if (target.kind === 'boss') this.boss.damage(amount);
     else this.dummies.damage(target, amount);
   }
 
@@ -331,6 +365,13 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const view = { halfW: cam.width / 2, halfH: cam.height / 2, heading: this.heading() };
     for (let i = 0; i < n; i++) this.enemies.spawn(this.clock, this.player.x, this.player.y, view);
+  }
+
+  private spawnBoss(): void {
+    this.bossSpawned = true;
+    this.boss.spawn(this.player.x, this.player.y);
+    this.runHud.announce('Your shade approaches');
+    this.fx.addShake(cfg.camera.shakeOnCast);
   }
 
   private addProfile(field: 'gold' | 'skillPoints', amount: number): void {
@@ -364,6 +405,16 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private playIntro(): void {
+    this.menu = true;
+    this.screens.hide();
+    this.cutscene.play(() => {
+      profile.seenIntro = true;
+      persistNow();
+      this.startRun();
+    });
+  }
+
   private openTree(): void {
     this.menu = true;
     this.screens.showTree(() => this.startRun());
@@ -378,6 +429,8 @@ export class GameScene extends Phaser.Scene {
     runBuffs.dust = 0;
     this.run = { kills: 0, gold: 0, xp: 0, levels: 0 };
     this.enemies.clear();
+    this.boss.clear();
+    this.bossSpawned = false;
     this.gold.clear();
     this.abilities.reset();
     this.swordSlash.cancel();

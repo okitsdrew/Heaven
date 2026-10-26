@@ -11,10 +11,11 @@ export interface SaveData {
   level: number;
   xp: number;
   nodes: Record<string, number>;
+  seenIntro: boolean;
 }
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {} };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, seenIntro: false };
 }
 
 function storageGet(key: string): string | null {
@@ -45,6 +46,7 @@ function sanitize(src: unknown): SaveData {
   out.skillPoints = Math.floor(num(s.skillPoints, 0, 0));
   out.level = Math.floor(num(s.level, 1, 1));
   out.xp = num(s.xp, 0, 0);
+  out.seenIntro = s.seenIntro === true;
   if (s.nodes && typeof s.nodes === 'object') {
     for (const [k, v] of Object.entries(s.nodes)) if (typeof v === 'number' && v > 0) out.nodes[k] = Math.floor(v);
   }

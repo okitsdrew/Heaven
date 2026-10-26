@@ -143,6 +143,10 @@ Radial graph on a pannable canvas. Nodes are **completely hidden** until their p
 - Normal spawns continue during the fight. If the run timer ends while it's alive, the run ends normally.
 - Rewards: 100 gold and 1 skill point, plus a large smoke-burst death.
 
+## 11b. Boss and intro: current build (phase 3 branch)
+- Boss spawns at `boss.spawnTime` (120s of run clock) near the player and snapshots arrow count, range, move speed and dash. Abilities are not copied yet. Chases by dashing, walks between dashes, winds up (`boss.windup`), locks aim `boss.aimLockTime` before firing, then recovers and sometimes dodge-dashes. A red line shows the locked aim. Contact is safe; its arrows kill. Dev menu: Spawn boss, Kill boss, Clock to 1:55. Reward: 100 gold and 1 skill point.
+- Intro cutscene (`src/story.ts`, `src/ui/Cutscene.ts`) plays once on a fresh save (`seenIntro`), then a controls card. Replay from the dev menu. Story text is placeholder.
+
 ## 12. Later (not now)
 - Enemy variations, a second boss, more tree upgrades to carry the player to the 5 minute mark.
 - Final boss at 10 minutes.

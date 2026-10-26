@@ -9,7 +9,7 @@ import { Fx } from './Fx';
 import type { Obstacle } from './Chunks';
 
 export interface Hittable {
-  kind: 'dummy' | 'enemy';
+  kind: 'dummy' | 'enemy' | 'boss';
   id: number;
   x: number;
   y: number;
@@ -221,7 +221,7 @@ export class Arrows {
 }
 
 // Distance along the ray (within [0, len]) where it first touches the circle, or -1.
-function segmentCircle(
+export function segmentCircle(
   x: number,
   y: number,
   dx: number,
