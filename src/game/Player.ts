@@ -120,7 +120,7 @@ export class Player {
     this.graceTime = Math.max(0, this.graceTime - dt);
 
     this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
-    if (canUse('teleport') && input.justPressed('teleport') && this.teleportCooldown <= 0) {
+    if (canUse('teleport') && (input.justPressed('teleport') || input.isDown('teleport')) && this.teleportCooldown <= 0) {
       this.teleport();
     }
 

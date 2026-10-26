@@ -80,6 +80,10 @@ In-game overlay, toggled with backtick. Must include:
 ## 7g. Round 5 (phase 3 branch)
 - Boss is vivid purple (no grey) with the red aura, 1.5625x size (`boss.size`). Its red sword circles it like ours, winds up behind during the windup, then sweeps right to left in a fire explosion. No ground lines and no extra wave. The swing still kills enemies in the cone and kills the player unless dashing or teleporting. The sword art is shared with the player's in `src/game/swordArt.ts`.
 
+## 7h. Round 6 (phase 3 branch)
+- Holding right click repeats the teleport at its cooldown. The Dust Devil ring is smaller.
+- Boss: windup 0.8, recover 1.2, teleport gap 0.2, portal radius 70 and 1.5s. A chase-dash cancels the attack and the next windup starts in full. It only abandons a windup when the player is beyond `boss.chaseRangeMult` (2.5) times the sword range.
+
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.

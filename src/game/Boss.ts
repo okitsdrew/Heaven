@@ -192,7 +192,8 @@ export class Boss implements Hittable {
       if (dist - step <= b.closeDistance * 0.8 + 1e-3) {
         this.sim.dashTime = 0;
         this.state = 'telegraph';
-        this.timer = this.telegraphTotal = Math.max(this.timer, b.aimLockTime + 0.15);
+        // A dash cancels the attack: the windup starts over in full.
+        this.timer = this.telegraphTotal = b.windup;
       }
     } else if (this.state === 'chase') {
       this.faceToward(px, py);
@@ -209,7 +210,7 @@ export class Boss implements Hittable {
         this.x += vx * dt;
         this.y += vy * dt;
       }
-    } else if (this.state === 'telegraph' && dist > cfg.swordSlash.coneRange) {
+    } else if (this.state === 'telegraph' && dist > cfg.swordSlash.coneRange * b.chaseRangeMult) {
       this.state = 'dash';
       this.view.onDashStart();
     } else if (this.state === 'telegraph') {

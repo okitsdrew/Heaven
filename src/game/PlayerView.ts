@@ -464,13 +464,13 @@ export class PlayerView {
     g.clear();
     if (this.dustFraction <= 0) return;
     const px = this.px;
-    const x = screen.x + 11 * px;
+    const x = screen.x + 9 * px;
     const y = screen.y - 1 * px;
     g.setDepth(screen.y + 0.5);
-    g.lineStyle(2, 0x2a2638, 0.8).strokeCircle(x, y, 5 * px);
+    g.lineStyle(2, 0x2a2638, 0.8).strokeCircle(x, y, 3 * px);
     g.lineStyle(2, 0xe8c56a, 0.95);
     g.beginPath();
-    g.arc(x, y, 5 * px, -Math.PI / 2, -Math.PI / 2 + this.dustFraction * Math.PI * 2, false);
+    g.arc(x, y, 3 * px, -Math.PI / 2, -Math.PI / 2 + this.dustFraction * Math.PI * 2, false);
     g.strokePath();
   }
 
