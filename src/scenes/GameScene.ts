@@ -187,7 +187,7 @@ export class GameScene extends Phaser.Scene {
       { label: 'Clock to 0', run: () => setClock(0) },
       { label: 'Spawn boss', run: () => this.spawnBoss() },
       { label: 'Kill boss', run: () => this.boss.damage(this.boss.hp) },
-      { label: 'Clock to 1:55 (boss soon)', run: () => setClock(cfg.boss.spawnTime - 5) },
+      { label: 'Clock to boss spawn -5s', run: () => setClock(cfg.boss.spawnTime - 5) },
       { label: 'Spawn 50 enemies', run: () => this.spawnBurst(50) },
       { label: 'Clear enemies', run: () => this.enemies.clear() },
       { label: 'Play intro cutscene', run: () => this.playIntro() },
@@ -303,8 +303,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.dead && !this.player.safe && !cfg.debug.godMode) {
       if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius)) this.endRun('You died', true);
     }
-    const bossHit = this.boss.update(dt, this.player.x, this.player.y, this.player.safe || this.dead, cfg.player.hitRadius, this.chunks.obstacles);
-    if (bossHit && !this.dead && !cfg.debug.godMode) this.endRun('Shot by your shade', true);
+    const bossHit = this.boss.update(dt, this.player.x, this.player.y, this.player.safe || this.dead, cfg.player.hitRadius);
+    if (bossHit && !this.dead && !cfg.debug.godMode) this.endRun('Cut down by your shade', true);
     if (this.dead) {
       this.endTimer -= dt;
       if (this.endTimer <= 0) this.showSummary();
