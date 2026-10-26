@@ -28,11 +28,13 @@ const SLASH_LIGHT = 0xb070ff;
 const FIRE = [0x7a2fd0, 0xb070ff, 0xf0e0ff];
 const SLASH_WHITE = 0xf0e0ff;
 
-// Toggle skill: press R to arm it, and the next attack becomes three consecutive sword swings
+// Press R to arm it for a few seconds. The next three attack clicks become sword swings, one per click
 // (cone right to left, cone left to right, then a forward slam). Each swing is telegraphed first.
 export class SwordSlash {
   armed = false;
   cooldown = 0;
+  private charges = 0;
+  private armTimer = 0;
   private slash: Slash | null = null;
   private effects: Effect[] = [];
   private time = 0;
@@ -69,21 +71,24 @@ export class SwordSlash {
     return canUse('swordSlash') && (this.armed || this.active);
   }
 
-  // A dash or teleport cancels a swing that is already under way and the chain moves on to the next one.
+  // A dash or teleport cancels a swing that is already striking; that swing stays spent.
   // A swing still in its telegraph is untouched here: update() shelves it until the dash or teleport ends.
   interrupt(): void {
     const s = this.slash;
     if (!s || s.phase !== 'strike') return;
     this.effects.length = 0;
-    s.swing++;
-    s.phase = 'telegraph';
-    s.t = 0;
-    if (s.swing > 2) this.slash = null;
+    this.endSwing();
   }
 
   cancel(): void {
     this.slash = null;
     this.armed = false;
+    this.charges = 0;
+  }
+
+  private endSwing(): void {
+    this.slash = null;
+    if (this.charges <= 0) this.armed = false;
   }
 
   update(dt: number, player: Player, input: Input): void {
@@ -94,13 +99,23 @@ export class SwordSlash {
     if (!canUse('swordSlash')) this.cancel();
     else if (!shelved) {
       if (input.justPressed('abilityR') && !this.slash) {
-        if (this.armed) this.armed = false;
-        else if (this.cooldown <= 0) this.armed = true;
+        if (this.armed) this.cancel();
+        else if (this.cooldown <= 0) {
+          this.armed = true;
+          this.charges = cfg.swordSlash.charges;
+          this.armTimer = cfg.swordSlash.armTime;
+          this.cooldown = cfg.swordSlash.cooldown;
+        }
       }
-      if (this.armed && !this.slash && input.isDown('fire')) {
-        this.armed = false;
-        this.slash = { swing: 0, phase: 'telegraph', t: 0 };
-        this.cooldown = cfg.swordSlash.cooldown;
+      if (this.armed) {
+        this.armTimer -= dt;
+        if (this.armTimer <= 0 && !this.slash) this.cancel();
+      }
+      // Each click starts the next swing at once.
+      if (this.armed && !this.slash && input.justPressed('fire')) {
+        const swing = cfg.swordSlash.charges - this.charges;
+        this.charges--;
+        this.slash = { swing: Math.min(swing, 2), phase: 'telegraph', t: 0 };
       }
     }
 
@@ -130,10 +145,7 @@ export class SwordSlash {
       s.phase = 'strike';
       s.t = 0;
     } else if (s.phase === 'strike' && s.t >= c.slashTime) {
-      s.swing++;
-      s.phase = 'telegraph';
-      s.t = 0;
-      if (s.swing > 2) this.slash = null;
+      this.endSwing();
     }
   }
 

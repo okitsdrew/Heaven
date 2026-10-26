@@ -70,6 +70,11 @@ In-game overlay, toggled with backtick. Must include:
 - Magic: Teleport 1 skill point; Fire Fairy, Ice Fairy, Sword Slash 3 skill points each.
 - Tree structure follows the owner's drawing: Dash leads to Damage, More Bullets, Time and Teleport. Damage leads to More Range and Fire Rate; More Bullets leads to Pierce; Fire Rate to More Damage; More Damage to More Fire Rate, more MORE Pierce and More MORE Bullets; more MORE Pierce to Bigger Arrows and more MORE Range. Time leads to Gold Value, Pickup Radius and Move Speed; Gold Value to Double Gold and More MORE Time. Teleport leads to the three magic abilities.
 
+## 7d. Tweaks, 2026-10-26 (phase 3 branch)
+- Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
+- More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.
+- Sword Slash: R arms it for 5s (`swordSlash.armTime`). The next 3 clicks (`charges`) each start one swing at once: cone, cone, slam. A dash cancels a swing that is striking and spends it. Telegraph 0.2s, slash 0.1s. Cooldown counts from arming.
+
 ## 7c. More tree rules (current)
 - Upgrade costs grow by `tree.costScale` (1.5) per level, rounded up. Dust Devil (500 gold): each kill gives +1% move and attack speed for the rest of the run, capped at 25%. Time Warp (500 gold) starts the run clock 30s in. XP per kill is 2.
 

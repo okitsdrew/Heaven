@@ -19,7 +19,7 @@ import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
-import { canUse, onKillBuffs, runBuffs, stats as upgrades, unlockEverything } from '../skills';
+import { canUse, dustFraction, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
 import { Cutscene } from '../ui/Cutscene';
 import { Screens } from '../ui/Screens';
 import { SpatialHash } from '../util/spatialHash';
@@ -241,7 +241,7 @@ export class GameScene extends Phaser.Scene {
       { label: 'Recenter player', run: () => Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0 }) },
     ]);
 
-    this.clockStart = upgrades.timeWarp();
+    this.clockStart = 0;
     this.clock = this.clockStart;
 
     if (cfg.story.introEnabled && !profile.seenIntro) this.playIntro();
@@ -278,6 +278,7 @@ export class GameScene extends Phaser.Scene {
       this.player.x = body.x;
       this.player.y = body.y;
       this.clock += dt;
+      tickBuffs(dt);
       if (cfg.boss.enabled && !this.bossSpawned && this.clock >= cfg.boss.spawnTime) this.spawnBoss();
       if (this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
     }
@@ -321,7 +322,10 @@ export class GameScene extends Phaser.Scene {
 
     this.ground.update(cam);
     this.chunks.update(dt, cam);
-    if (!this.dead) this.playerView.update(dt);
+    if (!this.dead) {
+      this.playerView.dustFraction = dustFraction();
+      this.playerView.update(dt);
+    }
     this.arrows.render();
     this.boss.render(dt, cam.width);
     this.dummies.render();
@@ -424,9 +428,9 @@ export class GameScene extends Phaser.Scene {
     this.screens.hide();
     this.menu = false;
     this.dead = false;
-    this.clockStart = upgrades.timeWarp();
+    this.clockStart = 0;
     this.clock = this.clockStart;
-    runBuffs.dust = 0;
+    resetBuffs();
     this.run = { kills: 0, gold: 0, xp: 0, levels: 0 };
     this.enemies.clear();
     this.boss.clear();

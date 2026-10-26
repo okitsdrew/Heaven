@@ -32,6 +32,7 @@ export class PlayerView {
   private wispTimer = 0;
   private arms: Phaser.GameObjects.Graphics;
   private ring: Phaser.GameObjects.Graphics;
+  private dustRing: Phaser.GameObjects.Graphics;
   private kick = 0;
   private afterimageTimer = 0;
   private readyPulse = 0;
@@ -45,6 +46,8 @@ export class PlayerView {
   slashArms: () => { right: boolean; left: boolean } = () => ({ right: false, left: false });
   private dustTimer = 0;
   private time = 0;
+  // Time left on the Dust Devil stacks, 0 to 1; drawn as a small ring at his bottom right.
+  dustFraction = 0;
   private grey = false;
   private flashTime = 0;
 
@@ -58,6 +61,7 @@ export class PlayerView {
     );
     this.arms = scene.add.graphics();
     this.ring = scene.add.graphics();
+    this.dustRing = scene.add.graphics();
   }
 
   // Desaturates everything, for the boss's copy of the player.
@@ -81,7 +85,7 @@ export class PlayerView {
   }
 
   setVisible(visible: boolean): void {
-    for (const o of [this.body, this.shadow, this.bowGfx, this.bowGlow, this.arms, this.ring, ...this.handGlow]) {
+    for (const o of [this.body, this.shadow, this.bowGfx, this.bowGlow, this.arms, this.ring, this.dustRing, ...this.handGlow]) {
       o.setVisible(visible);
     }
   }
@@ -269,6 +273,7 @@ export class PlayerView {
     }
 
     this.drawCooldownRing(dt);
+    this.drawDustRing();
   }
 
   // Dust kicked up at his feet while he drifts out of a teleport.
@@ -423,6 +428,21 @@ export class PlayerView {
         depth: screen.y + 1,
       });
     }
+  }
+
+  private drawDustRing(): void {
+    const g = this.dustRing;
+    g.clear();
+    if (this.dustFraction <= 0) return;
+    const px = cfg.render.pixelScale;
+    const x = screen.x + 11 * px;
+    const y = screen.y - 1 * px;
+    g.setDepth(screen.y + 0.5);
+    g.lineStyle(2, 0x2a2638, 0.8).strokeCircle(x, y, 5 * px);
+    g.lineStyle(2, 0xe8c56a, 0.95);
+    g.beginPath();
+    g.arc(x, y, 5 * px, -Math.PI / 2, -Math.PI / 2 + this.dustFraction * Math.PI * 2, false);
+    g.strokePath();
   }
 
   private drawCooldownRing(dt: number): void {
