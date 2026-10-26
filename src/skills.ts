@@ -27,17 +27,17 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 // Adding a node is just a new entry here plus, for a new stat, an effect value in config and a reader below.
 export const nodes: SkillNode[] = [
-  { id: 'dash', name: 'Dash', desc: () => 'Unlocks the dash', parents: [], currency: 'gold', levels: 1, base: 1, effect: null, x: 0, y: 0 },
+  { id: 'pierce', name: 'Pierce', desc: (p) => `+${p} pierce`, parents: [], currency: 'gold', levels: 1, base: 1, effect: 'pierce', x: 0, y: 0 },
+  { id: 'dash', name: 'Dash', desc: () => 'Unlocks the dash', parents: ['pierce'], currency: 'sp', levels: 1, base: 1, effect: null, x: 0, y: 190 },
 
   { id: 'fireRate', name: 'Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['damage'], currency: 'gold', levels: 2, base: 50, costs: [50, 100], effect: 'fireRate', x: -480, y: 0 },
-  { id: 'pierce', name: 'Pierce', desc: (p) => `+${p} pierce`, parents: ['moreBullets'], currency: 'gold', levels: 1, base: 50, effect: 'pierce', x: -480, y: 190 },
-  { id: 'time', name: 'Time', desc: (p) => `+${p}s run time`, parents: ['dash'], currency: 'gold', levels: 5, base: 1, effect: 'time', x: 240, y: 0 },
+  { id: 'time', name: 'Time', desc: (p) => `+${p}s run time`, parents: ['pierce'], currency: 'gold', levels: 5, base: 1, effect: 'time', x: 240, y: 0 },
   { id: 'moveSpeed', name: 'Move Speed', desc: (p) => `+${pct(p)} move speed`, parents: ['time'], currency: 'gold', levels: 5, base: 50, effect: 'moveSpeed', x: 480, y: 190 },
-  { id: 'damage', name: 'Damage', desc: (p) => `+${p} damage`, parents: ['dash'], currency: 'gold', levels: 5, base: 1, effect: 'damage', x: -240, y: -85 },
+  { id: 'damage', name: 'Damage', desc: (p) => `+${p} damage`, parents: ['pierce'], currency: 'gold', levels: 5, base: 1, effect: 'damage', x: -240, y: -85 },
   { id: 'range', name: 'More Range', desc: (p) => `+${pct(p)} arrow range`, parents: ['damage'], currency: 'gold', levels: 1, base: 100, costs: [100], effect: 'range', x: -480, y: -170 },
 
   { id: 'moreFireRate', name: 'More Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['moreDamage'], currency: 'gold', levels: 5, base: 250, effect: 'moreFireRate', x: -960, y: -170 },
-  { id: 'moreBullets', name: 'More Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['dash'], currency: 'gold', levels: 2, base: 1, effect: 'moreBullets', x: -240, y: 110 },
+  { id: 'moreBullets', name: 'More Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['pierce'], currency: 'gold', levels: 2, base: 1, effect: 'moreBullets', x: -240, y: 110 },
   { id: 'moreTime', name: 'More MORE Time', desc: (p) => `+${p}s run time`, parents: ['goldValue'], currency: 'gold', levels: 5, base: 500, effect: 'moreTime', x: 720, y: -130 },
   { id: 'moreDamage', name: 'More Damage', desc: (p) => `+${p} damage`, parents: ['fireRate'], currency: 'gold', levels: 6, base: 500, effect: 'moreDamage', x: -720, y: 0 },
   { id: 'moreMoreBullets', name: 'More MORE Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['moreDamage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMoreBullets', x: -960, y: 190 },
@@ -50,12 +50,12 @@ export const nodes: SkillNode[] = [
 
   { id: 'moreMorePierce', name: 'more MORE Pierce', desc: (p) => `+${p} pierce`, parents: ['moreDamage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMorePierce', x: -960, y: 0 },
   { id: 'biggerArrows', name: 'Better Arrows', desc: (p) => `+${pct(p)} arrow size and range`, parents: ['moreMorePierce'], currency: 'gold', levels: 5, base: 500, effect: 'biggerArrows', x: -1200, y: -70 },
-  { id: 'dustDevil', name: 'Dust Devil', desc: () => `Each kill: +${pct(cfg.upgrade.dustPerKill)} move and attack speed (max ${pct(cfg.upgrade.dustCap)}), lasts ${cfg.upgrade.dustHold + cfg.upgrade.dustDuration}s, reset by kills`, parents: ['dash'], currency: 'gold', levels: 1, base: 500, effect: null, x: 0, y: -190 },
-  { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: ['dash'], currency: 'sp', levels: 1, base: 1, effect: null, x: 0, y: 190 },
+  { id: 'dustDevil', name: 'Dust Devil', desc: () => `Each kill: +${pct(cfg.upgrade.dustPerKill)} move and attack speed (max ${pct(cfg.upgrade.dustCap)}), lasts ${cfg.upgrade.dustHold + cfg.upgrade.dustDuration}s, reset by kills`, parents: ['pierce'], currency: 'gold', levels: 1, base: 500, effect: null, x: 0, y: -190 },
+  { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: ['dash'], currency: 'sp', levels: 1, base: 2, effect: null, x: 0, y: 380 },
 
-  { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -240, y: 340 },
-  { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 0, y: 340 },
-  { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 240, y: 340 },
+  { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -240, y: 530 },
+  { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 0, y: 530 },
+  { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 240, y: 530 },
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));

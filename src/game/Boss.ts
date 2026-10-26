@@ -7,6 +7,11 @@ import { Fx } from './Fx';
 import { Player } from './Player';
 import { PlayerView } from './PlayerView';
 
+// Bright like the player's Sword Slash; its own swing is the red version.
+const BOSS_TONE = 0xb070ff;
+const RED = 0xff3b3b;
+const RED_LIGHT = 0xff9a8a;
+
 type State = 'chase' | 'telegraph' | 'strike' | 'recover';
 
 // What the boss copies from the player when it spawns.
@@ -16,18 +21,29 @@ interface Snapshot {
 }
 
 interface Effect {
-  swing: number;
   ox: number;
   oy: number;
   base: number;
   age: number;
 }
 
-const GREY = 0xb8b8c8;
-const EFFECT_TIME = 0.25;
+interface Wave {
+  ox: number;
+  oy: number;
+  dirX: number;
+  dirY: number;
+  dist: number;
+  hits: Set<Hittable>;
+  ember: number;
+}
 
-// A grey copy of the player whose only attack is Sword Slash: cone, cone, slam, each telegraphed first.
-// It teleports close, winds up, then swings. Any swing that catches the player kills; contact is harmless.
+const EFFECT_TIME = 0.25;
+const KILL = 1e9;
+const screen = { x: 0, y: 0 };
+
+// A bright purple copy of the player whose only attack is a red Sword Slash swing, telegraphed first.
+// It teleports close, winds up, then swings; the swing also sends a wave that travels on like the Fire Wave.
+// Anything the swing or wave touches dies at once, the player included. Contact is harmless.
 // The simulation is flat world space; the view reuses PlayerView on a stand-in Player.
 export class Boss implements Hittable {
   readonly kind = 'boss' as const;
@@ -40,27 +56,31 @@ export class Boss implements Hittable {
   maxHp = 0;
 
   onKilled: (x: number, y: number) => void = () => {};
+  // The swing and its wave kill whatever else they touch.
+  onSlay: (target: Hittable) => void = () => {};
 
   private sim = new Player();
   private view: PlayerView;
   private state: State = 'chase';
   private timer = 0;
-  private swing = 0;
   private teleportGap = 0;
   private snap!: Snapshot;
   private effect: Effect | null = null;
+  private waves: Wave[] = [];
   private telegraph: Phaser.GameObjects.Graphics;
+  private waveGfx: Phaser.GameObjects.Graphics;
   private bar: Phaser.GameObjects.Graphics;
   private name: Phaser.GameObjects.Text;
 
-  constructor(scene: Phaser.Scene, fx: Fx) {
+  constructor(scene: Phaser.Scene, private fx: Fx, private targets: () => readonly Hittable[]) {
     this.view = new PlayerView(scene, this.sim, fx);
-    this.view.setGrey(true);
+    this.view.setTone(BOSS_TONE);
     this.view.setVisible(false);
     this.telegraph = scene.add.graphics();
+    this.waveGfx = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     this.bar = scene.add.graphics().setScrollFactor(0).setDepth(5e6);
     this.name = scene.add
-      .text(0, 0, 'THE SHADE OF YOU', { fontFamily: 'monospace', fontSize: '13px', color: '#c8c8d8' })
+      .text(0, 0, 'THE SHADE OF YOU', { fontFamily: 'monospace', fontSize: '13px', color: '#d9b8ff' })
       .setOrigin(0.5, 1)
       .setScrollFactor(0)
       .setDepth(5e6)
@@ -78,7 +98,6 @@ export class Boss implements Hittable {
     this.alive = true;
     this.state = 'chase';
     this.timer = 0;
-    this.swing = 0;
     this.teleportGap = 0;
     this.effect = null;
     this.snap = { moveSpeed: stats.moveSpeed(), teleportDistance: cfg.teleport.distance };
@@ -91,9 +110,11 @@ export class Boss implements Hittable {
   clear(): void {
     this.alive = false;
     this.effect = null;
+    this.waves.length = 0;
     this.view.setVisible(false);
     this.name.setVisible(false);
     this.telegraph.clear();
+    this.waveGfx.clear();
     this.bar.clear();
   }
 
@@ -102,17 +123,22 @@ export class Boss implements Hittable {
     this.hp -= amount;
     this.view.flash();
     if (this.hp > 0) return;
-    this.clear();
+    // Waves already in flight keep going after it dies.
+    this.alive = false;
+    this.view.setVisible(false);
+    this.name.setVisible(false);
+    this.bar.clear();
     this.onKilled(this.x, this.y);
   }
 
-  // Returns true if a swing caught the player this frame.
+  // Returns true if the swing or a wave caught the player this frame.
   update(dt: number, px: number, py: number, playerSafe: boolean, playerRadius: number): boolean {
     if (this.effect) {
       this.effect.age += dt;
       if (this.effect.age >= EFFECT_TIME) this.effect = null;
     }
-    if (!this.alive) return false;
+    let hit = this.updateWaves(dt, px, py, playerSafe, playerRadius);
+    if (!this.alive) return hit;
     const b = cfg.boss;
     const dx = px - this.x;
     const dy = py - this.y;
@@ -121,12 +147,10 @@ export class Boss implements Hittable {
 
     let vx = 0;
     let vy = 0;
-    let hit = false;
     if (this.state === 'chase') {
       this.faceToward(px, py);
       if (dist <= b.closeDistance) {
         this.state = 'telegraph';
-        this.swing = 0;
         this.timer = b.windup;
       } else if (this.teleportGap <= 0) {
         // Blink toward the player, stopping inside close range rather than overshooting.
@@ -143,21 +167,15 @@ export class Boss implements Hittable {
       // Aim follows the player until just before the swing, then locks so a dash away dodges it.
       if (this.timer > b.aimLockTime) this.faceToward(px, py);
       if (this.timer <= 0) {
-        hit = !playerSafe && this.strike(px, py, playerRadius);
+        hit = this.strike(px, py, playerRadius, playerSafe) || hit;
         this.state = 'strike';
         this.timer = cfg.swordSlash.slashTime;
       }
     } else if (this.state === 'strike') {
       this.timer -= dt;
       if (this.timer <= 0) {
-        if (this.swing < 2) {
-          this.swing++;
-          this.state = 'telegraph';
-          this.timer = b.swingTelegraph;
-        } else {
-          this.state = 'recover';
-          this.timer = b.recover;
-        }
+        this.state = 'recover';
+        this.timer = b.recover;
       }
     } else {
       this.timer -= dt;
@@ -183,8 +201,10 @@ export class Boss implements Hittable {
 
   render(dt: number, width: number): void {
     this.telegraph.clear();
+    this.waveGfx.clear();
     this.bar.clear();
     if (this.effect) this.drawEffect(this.effect);
+    for (const w of this.waves) this.drawWave(w);
     if (!this.alive) return;
     this.view.update(dt);
     if (this.state === 'telegraph' && cfg.boss.showTelegraph) this.drawTelegraph();
@@ -194,70 +214,132 @@ export class Boss implements Hittable {
     const x = width / 2 - w / 2;
     this.name.setPosition(width / 2, 110);
     this.bar.fillStyle(0x14111c, 0.9).fillRect(x - 2, 114, w + 4, 12);
-    this.bar.fillStyle(0xc8c8d8, 1).fillRect(x, 116, w * Math.max(0, this.hp / this.maxHp), 8);
+    this.bar.fillStyle(0xb070ff, 1).fillRect(x, 116, w * Math.max(0, this.hp / this.maxHp), 8);
   }
 
-  // Applies the current swing to the player. Cone for swings 0 and 1, a long rectangle for the slam.
-  private strike(px: number, py: number, r: number): boolean {
+  // The cone swing: kills whatever is inside it, then launches the wave along the same aim.
+  private strike(px: number, py: number, r: number, playerSafe: boolean): boolean {
     const c = cfg.swordSlash;
     const ax = this.sim.aimX;
     const ay = this.sim.aimY;
-    this.effect = { swing: this.swing, ox: this.x, oy: this.y, base: Math.atan2(ay, ax), age: 0 };
-    const dx = px - this.x;
-    const dy = py - this.y;
-    if (this.swing < 2) {
+    this.effect = { ox: this.x, oy: this.y, base: Math.atan2(ay, ax), age: 0 };
+    const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
+    const inCone = (tx: number, ty: number, tr: number) => {
+      const dx = tx - this.x;
+      const dy = ty - this.y;
       const d = Math.hypot(dx, dy);
-      if (d > c.coneRange + r) return false;
-      const pad = d > r ? Math.asin(r / d) : Math.PI;
+      if (d > c.coneRange + tr) return false;
+      const pad = d > tr ? Math.asin(tr / d) : Math.PI;
       const angle = d > 1e-3 ? Math.acos(Phaser.Math.Clamp((dx * ax + dy * ay) / d, -1, 1)) : 0;
-      return angle <= Phaser.Math.DegToRad(c.coneAngle) / 2 + pad;
-    }
-    const along = dx * ax + dy * ay;
-    const side = -dx * ay + dy * ax;
-    return Math.abs(side) <= c.slamWidth / 2 + r && along >= -r && along <= c.slamLength + r;
+      return angle <= half + pad;
+    };
+    for (const t of this.targets()) if (t.alive && t.kind !== 'boss' && inCone(t.x, t.y, t.radius)) this.onSlay(t);
+    this.waves.push({ ox: this.x, oy: this.y, dirX: ax, dirY: ay, dist: 0, hits: new Set(), ember: 0 });
+    this.fx.addShake(c.slamShake * 0.5);
+    return !playerSafe && inCone(px, py, r);
   }
 
-  private area(swing: number, ox: number, oy: number, base: number): Vec2[] {
-    const c = cfg.swordSlash;
-    if (swing < 2) {
-      const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
-      const poly: Vec2[] = [toScreen(ox, oy, { x: 0, y: 0 })];
-      for (let i = 0; i <= 16; i++) {
-        const a = base - half + (i / 16) * half * 2;
-        poly.push(toScreen(ox + Math.cos(a) * c.coneRange, oy + Math.sin(a) * c.coneRange, { x: 0, y: 0 }));
+  // Waves travel until they pass the despawn ring around the player, killing each thing once.
+  private updateWaves(dt: number, px: number, py: number, playerSafe: boolean, playerRadius: number): boolean {
+    const b = cfg.boss;
+    let hit = false;
+    for (let i = this.waves.length - 1; i >= 0; i--) {
+      const w = this.waves[i];
+      const prev = w.dist;
+      w.dist += b.waveSpeed * dt;
+      const lo = prev - b.waveLength / 2;
+      const hi = w.dist + b.waveLength / 2;
+      const inside = (tx: number, ty: number, tr: number) => {
+        const rx = tx - w.ox;
+        const ry = ty - w.oy;
+        const along = rx * w.dirX + ry * w.dirY;
+        const side = -rx * w.dirY + ry * w.dirX;
+        return Math.abs(side) <= b.waveWidth / 2 + tr && along >= lo - tr && along <= hi + tr;
+      };
+      for (const t of this.targets()) {
+        if (!t.alive || t.kind === 'boss' || w.hits.has(t) || !inside(t.x, t.y, t.radius)) continue;
+        w.hits.add(t);
+        this.onSlay(t);
       }
-      return poly;
+      if (!playerSafe && inside(px, py, playerRadius)) hit = true;
+
+      const cx = w.ox + w.dirX * w.dist;
+      const cy = w.oy + w.dirY * w.dist;
+      if (Math.hypot(cx - px, cy - py) > cfg.world.despawnRadius) {
+        this.waves.splice(i, 1);
+        continue;
+      }
+      w.ember += dt * 120;
+      while (w.ember >= 1) {
+        w.ember -= 1;
+        const side = (Math.random() - 0.5) * b.waveWidth;
+        const along = (Math.random() - 0.5) * b.waveLength;
+        toScreen(cx - w.dirY * side + w.dirX * along, cy + w.dirX * side + w.dirY * along, screen);
+        this.fx.particle({
+          x: screen.x,
+          y: screen.y - 6 * cfg.render.pixelScale,
+          life: 0.3 + Math.random() * 0.3,
+          from: 0.35,
+          to: 0.05,
+          alpha: 0.9,
+          tint: Math.random() < 0.5 ? RED : RED_LIGHT,
+          vx: (Math.random() - 0.5) * 40,
+          vy: -30 - Math.random() * 60,
+          depth: screen.y + 2,
+        });
+      }
     }
-    const dirX = Math.cos(base);
-    const dirY = Math.sin(base);
-    const hw = c.slamWidth / 2;
-    const corner = (side: number, along: number) =>
-      toScreen(ox + dirX * along - dirY * hw * side, oy + dirY * along + dirX * hw * side, { x: 0, y: 0 });
-    return [corner(-1, 0), corner(1, 0), corner(1, c.slamLength), corner(-1, c.slamLength)];
+    return hit;
+  }
+
+  private cone(ox: number, oy: number, base: number): Vec2[] {
+    const c = cfg.swordSlash;
+    const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
+    const poly: Vec2[] = [toScreen(ox, oy, { x: 0, y: 0 })];
+    for (let i = 0; i <= 16; i++) {
+      const a = base - half + (i / 16) * half * 2;
+      poly.push(toScreen(ox + Math.cos(a) * c.coneRange, oy + Math.sin(a) * c.coneRange, { x: 0, y: 0 }));
+    }
+    return poly;
   }
 
   // The area about to be hit: faint while the aim still tracks, bright red once it is locked.
   private drawTelegraph(): void {
     const g = this.telegraph;
     const locked = this.timer <= cfg.boss.aimLockTime;
-    const base = Math.atan2(this.sim.aimY, this.sim.aimX);
-    const poly = this.area(this.swing, this.x, this.y, base);
+    const poly = this.cone(this.x, this.y, Math.atan2(this.sim.aimY, this.sim.aimX));
     g.setDepth(-5e8);
-    g.fillStyle(locked ? 0xff6a6a : 0xd8d8e8, locked ? 0.3 : 0.1);
+    g.fillStyle(locked ? RED : RED_LIGHT, locked ? 0.3 : 0.1);
     g.fillPoints(poly, true);
-    g.lineStyle(2, locked ? 0xff6a6a : 0xd8d8e8, locked ? 0.9 : 0.4);
+    g.lineStyle(2, locked ? RED : RED_LIGHT, locked ? 0.9 : 0.4);
     g.strokePoints(poly, true);
   }
 
   private drawEffect(e: Effect): void {
-    const fade = 1 - e.age / EFFECT_TIME;
     const g = this.telegraph;
     g.setDepth(9e5);
-    g.fillStyle(0xf0f0ff, 0.55 * fade);
-    g.fillPoints(this.area(e.swing, e.ox, e.oy, e.base), true);
+    g.fillStyle(RED, 0.6 * (1 - e.age / EFFECT_TIME));
+    g.fillPoints(this.cone(e.ox, e.oy, e.base), true);
   }
 
-  // A plain grey blade held out along the aim while swinging.
+  private drawWave(w: Wave): void {
+    const b = cfg.boss;
+    const g = this.waveGfx;
+    g.setDepth(9e5);
+    const cx = w.ox + w.dirX * w.dist;
+    const cy = w.oy + w.dirY * w.dist;
+    const hw = b.waveWidth / 2;
+    const hl = b.waveLength / 2;
+    const corner = (side: number, along: number) =>
+      toScreen(cx + w.dirX * along - w.dirY * hw * side, cy + w.dirY * along + w.dirX * hw * side, { x: 0, y: 0 });
+    const poly = [corner(-1, -hl), corner(1, -hl), corner(1, hl), corner(-1, hl)];
+    g.fillStyle(RED, 0.45);
+    g.fillPoints(poly, true);
+    g.lineStyle(3, RED_LIGHT, 0.9);
+    g.strokePoints(poly, true);
+  }
+
+  // A red blade held out along the aim while swinging.
   private drawSword(): void {
     if (this.state !== 'telegraph' && this.state !== 'strike') return;
     const px = cfg.render.pixelScale;
@@ -269,7 +351,7 @@ export class Boss implements Hittable {
     const uy = (b.y - a.y) / len;
     const y0 = a.y - 12 * px;
     const g = this.telegraph;
-    g.lineStyle(3 * px, GREY, 1);
+    g.lineStyle(3 * px, RED, 1);
     g.lineBetween(a.x + ux * 6 * px, y0 + uy * 6 * px * 0.5, a.x + ux * reach * px, y0 + uy * reach * px * 0.5);
   }
 
@@ -294,3 +376,5 @@ export class Boss implements Hittable {
     }
   }
 }
+
+export const slayDamage = KILL;

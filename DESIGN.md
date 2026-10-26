@@ -70,6 +70,9 @@ In-game overlay, toggled with backtick. Must include:
 - Magic: Teleport 1 skill point; Fire Fairy, Ice Fairy, Sword Slash 3 skill points each.
 - Tree structure follows the owner's drawing: Dash leads to Damage, More Bullets, Time and Teleport. Damage leads to More Range and Fire Rate; More Bullets leads to Pierce; Fire Rate to More Damage; More Damage to More Fire Rate, more MORE Pierce and More MORE Bullets; more MORE Pierce to Bigger Arrows and more MORE Range. Time leads to Gold Value, Pickup Radius and Move Speed; Gold Value to Double Gold and More MORE Time. Teleport leads to the three magic abilities.
 
+## 7e. Round 3 (phase 3 branch)
+- Pierce is now the tree root: 1 gold, one level, and the parent of everything Dash used to parent (Time, Damage, More Bullets, Dust Devil). Dash moved below it and costs 1 skill point; Teleport costs 2 skill points; both chains sit lower. Obstacles are off (`map.obstacleChance` 0). Run base time 15s. Spawn `rampEnd` 180, `hpMax` 100.
+
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.
@@ -149,7 +152,7 @@ Radial graph on a pannable canvas. Nodes are **completely hidden** until their p
 - Rewards: 100 gold and 1 skill point, plus a large smoke-burst death.
 
 ## 11b. Boss and intro: current build (phase 3 branch)
-- Boss spawns at `boss.spawnTime` (60s of run clock, 2,000 HP) near the player. It has no bow: its only attack is Sword Slash (cone, cone, slam, using the player's cone and slam sizes). It walks, teleports toward the player (`boss.teleportGap` between blinks), winds up (`boss.windup`), then swings three times with `boss.swingTelegraph` between swings. The aim locks `boss.aimLockTime` before each swing, shown by a red area. It sometimes blinks sideways after recovering. Contact is safe; its swings kill unless the player is dashing or teleporting. Dev menu: Spawn boss, Kill boss, Clock to 0:55. Reward: 100 gold and 1 skill point.
+- Boss spawns at `boss.spawnTime` (60s of run clock, 2,000 HP) near the player, bright purple like the player's sword. No bow: its only attack is the first Sword Slash swing (cone), in red. It walks and teleports toward the player (`boss.teleportGap`, 0.1s so it can spam it like the player), winds up (`boss.windup`), locks aim `boss.aimLockTime` before the swing (red area shown), then swings. The swing also launches a red wave (`boss.waveSpeed`, `waveWidth`) that travels to the despawn ring like the Fire Wave. The swing and wave instantly kill every enemy they touch and kill the player unless dashing or teleporting. Contact is safe. Dev menu: Spawn boss, Kill boss, Clock to boss spawn -5s. Reward: 100 gold and 1 skill point.
 - Intro cutscene (`src/story.ts`, `src/ui/Cutscene.ts`) plays once on a fresh save (`seenIntro`), then a controls card. Replay from the dev menu. Story text is placeholder.
 
 ## 12. Later (not now)

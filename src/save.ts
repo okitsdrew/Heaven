@@ -1,7 +1,10 @@
 // Persistent player progress. Versioned so old saves can be migrated as the schema grows.
 
 const SAVE_KEY = 'heaven.save.v1';
-const LAYOUT_KEY = 'heaven.treeLayout.v2';
+const LAYOUT_KEY = 'heaven.treeLayout.v3';
+const OLD_LAYOUT_KEY = 'heaven.treeLayout.v2';
+// Nodes whose default spot moved; their saved drags from the old layout are dropped.
+const MOVED = ['pierce', 'dash', 'dustDevil', 'teleport', 'fireFairy', 'iceFairy', 'swordSlash'];
 const VERSION = 1;
 
 export interface SaveData {
@@ -101,8 +104,16 @@ export type Layout = Record<string, { x: number; y: number }>;
 
 export function loadLayout(): Layout {
   try {
-    const v = JSON.parse(storageGet(LAYOUT_KEY) ?? '{}');
-    return v && typeof v === 'object' ? v : {};
+    let raw = storageGet(LAYOUT_KEY);
+    let migrated = false;
+    if (raw === null) {
+      raw = storageGet(OLD_LAYOUT_KEY);
+      migrated = raw !== null;
+    }
+    const v = JSON.parse(raw ?? '{}');
+    if (!v || typeof v !== 'object') return {};
+    if (migrated) for (const id of MOVED) delete v[id];
+    return v;
   } catch {
     return {};
   }

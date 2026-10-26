@@ -4,7 +4,7 @@ import { cfg } from '../config';
 import { DevMenu } from '../dev/DevMenu';
 import { Abilities } from '../game/Abilities';
 import { Arrows, Hittable } from '../game/Arrows';
-import { Boss } from '../game/Boss';
+import { Boss, slayDamage } from '../game/Boss';
 import { Chunks } from '../game/Chunks';
 import { Dummies } from '../game/Dummies';
 import { Enemies, hpAt, pushOut, spawnRateAt } from '../game/Enemies';
@@ -80,7 +80,8 @@ export class GameScene extends Phaser.Scene {
     this.dummies = new Dummies(this);
     this.enemies = new Enemies(this);
     this.chunks = new Chunks(this, this.fx);
-    this.boss = new Boss(this, this.fx);
+    this.boss = new Boss(this, this.fx, () => this.targetList);
+    this.boss.onSlay = (t) => this.damage(t, slayDamage);
     this.gold = new Gold(this);
     this.runHud = new RunHud(this);
     this.screens = new Screens();

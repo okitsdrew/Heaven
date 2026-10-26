@@ -48,7 +48,7 @@ export class PlayerView {
   private time = 0;
   // Time left on the Dust Devil stacks, 0 to 1; drawn as a small ring at his bottom right.
   dustFraction = 0;
-  private grey = false;
+  private tone: number | null = null;
   private flashTime = 0;
 
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
@@ -64,12 +64,16 @@ export class PlayerView {
     this.dustRing = scene.add.graphics();
   }
 
-  // Desaturates everything, for the boss's copy of the player.
-  setGrey(grey: boolean): void {
-    this.grey = grey;
+  // Recolours everything to one bright tone, for the boss's copy of the player. Null restores the colours.
+  setTone(tone: number | null): void {
+    this.tone = tone;
     this.body.preFX?.clear();
-    if (grey) this.body.preFX?.addColorMatrix().grayscale(1);
-    this.body.setTint(grey ? 0xb4b4bc : 0xffffff);
+    if (tone !== null) {
+      const m = this.body.preFX?.addColorMatrix();
+      m?.grayscale(1);
+      m?.brightness(2, true);
+    }
+    this.body.setTint(tone ?? 0xffffff);
     for (const img of this.handGlow) img.setTint(this.c(0xa060ff));
   }
 
@@ -79,9 +83,11 @@ export class PlayerView {
   }
 
   private c(color: number): number {
-    if (!this.grey) return color;
-    const y = Math.round(0.3 * ((color >> 16) & 255) + 0.59 * ((color >> 8) & 255) + 0.11 * (color & 255));
-    return (y << 16) | (y << 8) | y;
+    if (this.tone === null) return color;
+    const y = (0.3 * ((color >> 16) & 255) + 0.59 * ((color >> 8) & 255) + 0.11 * (color & 255)) / 255;
+    const k = Math.min(1, 0.45 + y * 1.2);
+    const ch = (shift: number) => Math.round(((this.tone! >> shift) & 255) * k);
+    return (ch(16) << 16) | (ch(8) << 8) | ch(0);
   }
 
   setVisible(visible: boolean): void {
@@ -171,7 +177,7 @@ export class PlayerView {
       .setAlpha(p.dashing || p.teleporting ? 0.55 : 1);
     this.flashTime = Math.max(0, this.flashTime - dt);
     if (this.flashTime > 0) this.body.setTintFill(0xffffff);
-    else this.body.setTint(this.grey ? 0xb4b4bc : 0xffffff);
+    else this.body.setTint(this.tone ?? 0xffffff);
     this.shadow.setPosition(screen.x, screen.y).setScale(px * 0.9, px * 0.35).setDepth(screen.y - 1000);
 
     // While shooting he holds his arms up as if steering the bow with magic, and flaps them.
@@ -267,7 +273,7 @@ export class PlayerView {
     if (p.dashing && cfg.dash.afterimages > 0) {
       this.afterimageTimer -= dt;
       if (this.afterimageTimer <= 0) {
-        this.fx.afterimage(this.body.texture.key, screen.x, screen.y, facingLeft, px, screen.y, this.grey ? 0xa0a0a8 : undefined);
+        this.fx.afterimage(this.body.texture.key, screen.x, screen.y, facingLeft, px, screen.y, this.tone ?? undefined);
         this.afterimageTimer += cfg.dash.duration / cfg.dash.afterimages;
       }
     }
