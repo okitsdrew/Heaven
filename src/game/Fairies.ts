@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { fairyFrames, Tex } from '../art/placeholders';
+import { fairyFrames } from '../art/placeholders';
 import { cfg } from '../config';
 import { toScreen, Vec2 } from '../iso';
 import { canUse } from '../skills';
@@ -11,7 +11,7 @@ type Kind = 'fire' | 'ice';
 interface Fairy {
   kind: Kind;
   sprite: Phaser.GameObjects.Image;
-  glow: Phaser.GameObjects.Image;
+  glow: Phaser.GameObjects.Graphics;
   x: number;
   y: number;
   flare: number;
@@ -35,7 +35,7 @@ export class Fairies {
     this.fairies = (['fire', 'ice'] as const).map((kind) => ({
       kind,
       sprite: scene.add.image(0, 0, fairyFrames[kind][0]),
-      glow: scene.add.image(0, 0, Tex.glow).setTint(tints[kind].glow).setBlendMode(Phaser.BlendModes.ADD),
+      glow: scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD),
       x: 0,
       y: 0,
       flare: 0,
@@ -43,6 +43,31 @@ export class Fairies {
       placed: false,
       lastAttach: null,
     }));
+  }
+
+  // A soft blob whose edge ripples like heat rising off hot ground, stretched a little upward.
+  private drawGlow(f: Fairy, scale: number, alpha: number, seed: number, depth: number): void {
+    const g = f.glow;
+    g.clear().setDepth(depth);
+    const t = this.time;
+    const base = cfg.fairy.glowSize * scale;
+    const layers = [1, 0.62, 0.3];
+    layers.forEach((k, layer) => {
+      g.fillStyle(tints[f.kind].glow, alpha * (0.14 + layer * 0.12));
+      g.beginPath();
+      const n = 22;
+      for (let j = 0; j < n; j++) {
+        const a = (j / n) * Math.PI * 2;
+        const wave = 1 + cfg.fairy.glowWave * (0.6 * Math.sin(3 * a + t * 5 + seed + layer) + 0.4 * Math.sin(5 * a - t * 7 + seed * 2));
+        const r = base * k * wave;
+        const x = f.x + Math.cos(a) * r;
+        const y = f.y + Math.sin(a) * r * 1.15 - Math.max(0, -Math.sin(a)) * r * 0.2;
+        if (j === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.closePath();
+      g.fillPath();
+    });
   }
 
   flare(kind: Kind): void {
@@ -123,11 +148,7 @@ export class Fairies {
         .setPosition(f.x, f.y)
         .setScale(px * (1 + flare * 0.6) * big)
         .setDepth(depth);
-      f.glow
-        .setPosition(f.x, f.y)
-        .setScale(px * big * (0.9 + flare * 1.8 + Math.sin(this.time * 8 + i) * 0.1))
-        .setAlpha(0.55 + flare * 0.45)
-        .setDepth(depth - 0.1);
+      this.drawGlow(f, px * big * (1 + flare * 1.8), 0.55 + flare * 0.45, i, depth - 0.1);
 
       f.trailTimer += dt * c.trailRate * (at ? 2 : 1);
       while (f.trailTimer >= 1) {
