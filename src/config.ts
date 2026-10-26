@@ -91,7 +91,7 @@ export const defaults = {
     deathSmoke: 30,
   },
   xp: {
-    perKill: 1,
+    perKill: 2,
     curveBase: 10,
     curveExp: 1.5,
     pointsPerLevel: 1,
@@ -109,7 +109,7 @@ export const defaults = {
   upgrade: {
     fireRate: 0.1,
     pierce: 1,
-    time: 5,
+    time: 10,
     moveSpeed: 0.1,
     damage: 1,
     range: 0.05,
@@ -125,9 +125,12 @@ export const defaults = {
     biggerArrows: 0.1,
     pickupRadius: 0.2,
     timeWarp: 30,
+    dustPerKill: 0.01,
+    dustCap: 0.25,
   },
   tree: {
     free: false,
+    costScale: 1.5,
     revealAll: false,
     nodeSize: 1,
     showLines: true,
@@ -419,9 +422,12 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     biggerArrows: { min: 0, max: 1, step: 0.05 },
     pickupRadius: { min: 0, max: 2, step: 0.05 },
     timeWarp: { min: 0, max: 300, step: 5 },
+    dustPerKill: { min: 0, max: 0.2, step: 0.005 },
+    dustCap: { min: 0, max: 2, step: 0.05 },
   },
   tree: {
     free: 'bool',
+    costScale: { min: 1, max: 4, step: 0.05 },
     revealAll: 'bool',
     nodeSize: { min: 0.4, max: 2, step: 0.05 },
     showLines: 'bool',

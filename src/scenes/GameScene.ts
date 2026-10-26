@@ -18,7 +18,7 @@ import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
-import { canUse, stats as upgrades, unlockEverything } from '../skills';
+import { canUse, onKillBuffs, runBuffs, stats as upgrades, unlockEverything } from '../skills';
 import { Screens } from '../ui/Screens';
 import { SpatialHash } from '../util/spatialHash';
 import { addXp, setLevel, xpToNext } from '../xp';
@@ -130,6 +130,7 @@ export class GameScene extends Phaser.Scene {
     };
     this.enemies.onKilled = (x, y, type) => {
       this.run.kills++;
+      onKillBuffs();
       this.run.xp += cfg.xp.perKill;
       const gained = addXp(cfg.xp.perKill);
       if (gained > 0) {
@@ -299,6 +300,7 @@ export class GameScene extends Phaser.Scene {
       level: profile.level,
       xp: profile.xp,
       need: xpToNext(profile.level),
+      dust: runBuffs.dust,
     });
     this.hud.update(cam.width, cam.height, [
       { key: 'Q', color: 0xff7a20, enabled: canUse('fireFairy'), remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
@@ -373,6 +375,7 @@ export class GameScene extends Phaser.Scene {
     this.dead = false;
     this.clockStart = upgrades.timeWarp();
     this.clock = this.clockStart;
+    runBuffs.dust = 0;
     this.run = { kills: 0, gold: 0, xp: 0, levels: 0 };
     this.enemies.clear();
     this.gold.clear();

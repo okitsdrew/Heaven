@@ -106,11 +106,11 @@ export class RunHud {
     this.toastTime = 2;
   }
 
-  update(dt: number, width: number, d: { left: number; gold: number; level: number; xp: number; need: number }): void {
+  update(dt: number, width: number, d: { left: number; gold: number; level: number; xp: number; need: number; dust: number }): void {
     const secs = Math.max(0, Math.ceil(d.left));
     this.timer.setPosition(width / 2, 14).setText(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
     this.timer.setColor(d.left <= 3 ? '#ff7a7a' : '#f2d7a6');
-    this.info.setPosition(width / 2, 50).setText(`gold ${d.gold}   level ${d.level}`);
+    this.info.setPosition(width / 2, 50).setText(`gold ${d.gold}   level ${d.level}` + (d.dust > 0 ? `   dust +${Math.round(d.dust * 100)}%` : ''));
     const w = 160;
     const x = width / 2 - w / 2;
     this.bar.clear();

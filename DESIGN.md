@@ -70,6 +70,9 @@ In-game overlay, toggled with backtick. Must include:
 - Magic: Teleport 1 skill point; Fire Fairy, Ice Fairy, Sword Slash 3 skill points each.
 - Tree structure follows the owner's drawing: Dash leads to Damage, More Bullets, Time and Teleport. Damage leads to More Range and Fire Rate; More Bullets leads to Pierce; Fire Rate to More Damage; More Damage to More Fire Rate, more MORE Pierce and More MORE Bullets; more MORE Pierce to Bigger Arrows and more MORE Range. Time leads to Gold Value, Pickup Radius and Move Speed; Gold Value to Double Gold and More MORE Time. Teleport leads to the three magic abilities.
 
+## 7c. More tree rules (current)
+- Upgrade costs grow by `tree.costScale` (1.5) per level, rounded up. Dust Devil (500 gold): each kill gives +1% move and attack speed for the rest of the run, capped at 25%. Time Warp (500 gold) starts the run clock 30s in. XP per kill is 2.
+
 ## 7. Run loop
 - Base run time: **10 seconds**. Max with all time upgrades: 10 + 25 + 100 = **135s**.
 - Run ends on death or when time runs out. There is no penalty either way.
