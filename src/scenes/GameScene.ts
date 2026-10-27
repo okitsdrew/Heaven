@@ -23,6 +23,9 @@ import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
 import { canUse, dustFraction, nodeById, skillIds, slotKeys, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
 import { ghostHint } from '../ui/ghostHint';
+import { ThroneBox } from '../ui/ThroneBox';
+import { PurpleWave } from '../game/PurpleWave';
+import { preloadCrayonFont } from '../hub/Crayon';
 import { Screens } from '../ui/Screens';
 import { SpatialHash } from '../util/spatialHash';
 import { addXp, setLevel, xpToNext } from '../xp';
@@ -71,6 +74,14 @@ export class GameScene extends Phaser.Scene {
   private grace = 0;
   private entry: { t: number; x: number; y: number; img: Phaser.GameObjects.Image; shadow: Phaser.GameObjects.Ellipse } | null = null;
   private blast!: LandingBlast;
+  private wave!: PurpleWave;
+  private waveX = 0;
+  private waveY = 0;
+  private waveFired = false;
+  private throne!: ThroneBox;
+  private throneTalking = false;
+  // False while the boss or the wave is doing the killing: those kills give no xp and no souls.
+  private credit = true;
 
   constructor() {
     super('game');
@@ -84,9 +95,12 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     makePlaceholderArt(this);
+    preloadCrayonFont();
     this.menu = false;
     this.dead = false;
     this.bossSpawned = false;
+    this.waveFired = false;
+    this.throneTalking = false;
     this.hitStop = 0;
     this.run = { kills: 0, gold: 0, xp: 0, levels: 0 };
     resetBuffs();
@@ -103,7 +117,7 @@ export class GameScene extends Phaser.Scene {
     this.enemies = new Enemies(this);
     this.chunks = new Chunks(this, this.fx);
     this.boss = new Boss(this, this.fx, () => this.targetList);
-    this.boss.onSlay = (t) => this.damage(t, slayDamage);
+    this.boss.onSlay = (t) => this.creditless(() => this.damage(t, slayDamage));
     this.gold = new Gold(this);
     this.runHud = new RunHud(this);
     this.screens = Screens.get();
@@ -117,6 +131,8 @@ export class GameScene extends Phaser.Scene {
     this.swordSlash = new SwordSlash(this, this.fx, () => this.targetList);
     this.doomsday = new Doomsday(this, this.fx, () => this.targetList);
     this.hud = new Hud(this, 4);
+    this.wave = new PurpleWave(this, this.fx);
+    this.throne = new ThroneBox(this);
     this.blast = new LandingBlast(this, this.fx);
 
     this.player.onFire = (_x, _y, dx, dy) => {
@@ -188,15 +204,17 @@ export class GameScene extends Phaser.Scene {
       this.fx.smoke(screen.x, screen.y - 8 * cfg.render.pixelScale, 10, 10);
     };
     this.enemies.onKilled = (x, y, type) => {
-      this.run.kills++;
-      onKillBuffs();
-      this.run.xp += cfg.xp.perKill;
-      const gained = addXp(cfg.xp.perKill);
-      if (gained > 0) {
-        this.run.levels += gained;
-        this.runHud.announce(`LEVEL ${profile.level}!`);
+      if (this.credit) {
+        this.run.kills++;
+        onKillBuffs();
+        this.run.xp += cfg.xp.perKill;
+        const gained = addXp(cfg.xp.perKill);
+        if (gained > 0) {
+          this.run.levels += gained;
+          this.runHud.announce(`LEVEL ${profile.level}!`);
+        }
+        this.gold.drop(x, y, upgrades.goldValue());
       }
-      this.gold.drop(x, y, upgrades.goldValue());
       const px = cfg.render.pixelScale;
       const size = cfg[type].scale;
       toScreen(x, y, screen);
@@ -240,6 +258,8 @@ export class GameScene extends Phaser.Scene {
       { label: 'Spawn boss', run: () => this.spawnBoss() },
       { label: 'Kill boss', run: () => this.boss.damage(this.boss.hp) },
       { label: 'Clock to boss spawn -5s', run: () => setClock(cfg.boss.spawnTime - 5) },
+      { label: 'Clock to wave -5s', run: () => setClock(cfg.boss.waveTime - 5) },
+      { label: 'Reset throne speech', run: () => { profile.bossIntroSeen = false; persist(); } },
       { label: 'Spawn 50 enemies', run: () => this.spawnBurst(50) },
       { label: 'Clear enemies', run: () => this.enemies.clear() },
       { label: 'Go home (hub)', run: () => this.goHome() },
@@ -373,6 +393,14 @@ export class GameScene extends Phaser.Scene {
       input.endFrame();
       return;
     }
+    // The throne speaks with the whole game held still.
+    if (this.throneTalking) {
+      const cam = this.cameras.main;
+      toScreen(this.player.x, this.player.y, screen);
+      this.throne.update(dt, { x: screen.x - cam.scrollX, y: screen.y - cam.scrollY });
+      input.endFrame();
+      return;
+    }
     // A brief slow-motion beat on the Doomsday impact.
     if (this.hitStop > 0) {
       this.hitStop -= dt;
@@ -399,15 +427,17 @@ export class GameScene extends Phaser.Scene {
       if (this.grace > 0) this.grace -= dt;
       else this.clock += dt;
       tickBuffs(dt);
+      if (cfg.boss.enabled && !this.waveFired && this.clock >= cfg.boss.waveTime) this.fireWave();
       if (cfg.boss.enabled && !this.bossSpawned && this.clock >= cfg.boss.spawnTime) this.spawnBoss();
       if (this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
     }
 
     const view = { halfW: cam.width / 2, halfH: cam.height / 2, heading: this.heading() };
     const slowAt = (x: number, y: number, r: number) => this.abilities.slowAt(x, y, r);
-    this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, slowAt, !this.dead && this.grace <= 0);
+    this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, slowAt, !this.dead && this.grace <= 0 && !this.spawnsHeld());
     this.gold.update(dt, this.player.x, this.player.y, !this.dead);
     this.enemies.insertInto(this.targets);
+    this.updateWave(dt);
     this.targetList.length = 0;
     for (const d of this.dummies.list) if (d.alive) this.targetList.push(d);
     for (const e of this.enemies.list) if (e.alive) this.targetList.push(e);
@@ -506,6 +536,55 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < n; i++) this.enemies.spawn(this.clock, this.player.x, this.player.y, view);
   }
 
+  private creditless(fn: () => void): void {
+    const was = this.credit;
+    this.credit = false;
+    fn();
+    this.credit = was;
+  }
+
+  // Enemy spawning pauses from the wave until the boss has had its moment.
+  private spawnsHeld(): boolean {
+    return cfg.boss.enabled && this.clock >= cfg.boss.waveTime && this.clock < cfg.boss.resumeTime;
+  }
+
+  private fireWave(): void {
+    this.waveFired = true;
+    this.waveX = this.player.x;
+    this.waveY = this.player.y;
+    this.wave.start(this.waveX, this.waveY);
+    if (!profile.bossIntroSeen) {
+      profile.bossIntroSeen = true;
+      persist();
+      this.throneTalking = true;
+      this.throne
+        .play([
+          'impressive growth',
+          "but im not convinced",
+          'these dregs will not be your only opponents',
+          'if you seek to best anathema as an equal',
+          'then you should have no problems with the Shade',
+        ])
+        .then(() => {
+          this.throneTalking = false;
+        });
+    }
+  }
+
+  private updateWave(dt: number): void {
+    if (!this.wave.active) {
+      this.wave.update(dt, this.cameras.main);
+      return;
+    }
+    const r = this.wave.radius;
+    this.creditless(() => {
+      for (const e of this.enemies.list) {
+        if (e.alive && Math.hypot(e.x - this.waveX, e.y - this.waveY) <= r) this.enemies.damage(e, 1e9, this.waveX, this.waveY);
+      }
+    });
+    this.wave.update(dt, this.cameras.main);
+  }
+
   private spawnBoss(): void {
     this.bossSpawned = true;
     this.boss.spawn(this.player.x, this.player.y);
@@ -579,6 +658,8 @@ export class GameScene extends Phaser.Scene {
     this.enemies.clear();
     this.boss.clear();
     this.bossSpawned = false;
+    this.waveFired = false;
+    this.wave.stop();
     this.gold.clear();
     this.abilities.reset();
     this.doomsday.reset();

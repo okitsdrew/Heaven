@@ -92,6 +92,8 @@ export class HubScene extends Phaser.Scene {
   private iris: G | null = null;
   private skipWaiters: (() => void)[] = [];
   private clickIcon: G | null = null;
+  // Nobody knows the throne is occupied until the first book cutscene wakes its eyes.
+  private eyesRevealed = false;
   private headLit = false;
   private bookOutline!: Phaser.GameObjects.RenderTexture;
   private bookPointed = false;
@@ -155,6 +157,7 @@ export class HubScene extends Phaser.Scene {
     this.lines = [];
     this.skipWaiters = [];
     this.clickIcon = null;
+    this.eyesRevealed = false;
     this.voidK = 0;
     this.camRot = 0;
     this.camRate = 0;
@@ -455,6 +458,7 @@ export class HubScene extends Phaser.Scene {
           profile.bookIntroSeen = false;
           profile.bowHintShown = false;
           profile.skillTipShown = false;
+          profile.bossIntroSeen = false;
           profile.visitedHead = false;
           persistNow();
         },
@@ -546,7 +550,7 @@ export class HubScene extends Phaser.Scene {
   private showRoom(name: RoomName): void {
     this.room = name;
     for (const room of Object.values(this.rooms)) for (const o of room.objs) (o as Phaser.GameObjects.Image).setVisible(room.name === name);
-    this.eyes.setVisible(name === 'throne');
+    this.eyes.setVisible(name === 'throne' && (profile.introDone || this.eyesRevealed));
     this.prompt.setVisible(false);
   }
 
@@ -1202,6 +1206,8 @@ export class HubScene extends Phaser.Scene {
 
     // Something on the throne wakes: two slits crack open and turn toward him.
     this.focus(560, 230, 1.08);
+    this.eyesRevealed = true;
+    this.eyes.setVisible(true);
     this.eyesFollow = true;
     this.bump(8);
     await this.tweenValue(0, 0.35, 900, (v) => (this.eyes.open = v));

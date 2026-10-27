@@ -26,6 +26,8 @@ export interface SaveData {
   bowHintShown: boolean;
   // The tip about assigning a skill to a slot has been shown.
   skillTipShown: boolean;
+  // The throne's talk before the first Shade has played.
+  bossIntroSeen: boolean;
   // Which skill sits on Q, E and R (null when empty).
   binds: (string | null)[];
 }
@@ -33,7 +35,7 @@ export interface SaveData {
 const SKILL_IDS = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday'];
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, skillTipShown: false, binds: [null, null, null] };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, skillTipShown: false, bossIntroSeen: false, binds: [null, null, null] };
 }
 
 function storageGet(key: string): string | null {
@@ -71,6 +73,7 @@ function sanitize(src: unknown): SaveData {
   out.bookIntroSeen = s.bookIntroSeen === true || out.bookUnlocked;
   out.bowHintShown = s.bowHintShown === true;
   out.skillTipShown = s.skillTipShown === true;
+  out.bossIntroSeen = s.bossIntroSeen === true;
   if (s.nodes && typeof s.nodes === 'object') {
     for (const [k, v] of Object.entries(s.nodes)) if (typeof v === 'number' && v > 0) out.nodes[k] = Math.floor(v);
   }

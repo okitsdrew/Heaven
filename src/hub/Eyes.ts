@@ -103,6 +103,16 @@ export class Eyes {
     }
   }
 
+  setScroll(v: number): void {
+    this.g.setScrollFactor(v);
+    for (const i of this.glow) i.setScrollFactor(v);
+  }
+
+  destroy(): void {
+    this.g.destroy();
+    for (const i of this.glow) i.destroy();
+  }
+
   setVisible(v: boolean): void {
     this.g.setVisible(v);
     for (const i of this.glow) i.setVisible(v);

@@ -141,6 +141,11 @@ In-game overlay, toggled with backtick. Must include:
 - Tree nodes can no longer be moved (layout tools removed). Skill buttons are all 300x128 so they match whatever the text.
 - Buying a skill (not Teleport) the first time shows "click a skill and assign it a slot" for 2s, then it blows away (`skillTipShown`). Buying no longer equips. Double click or right-click a slot to unequip. Drag a skill from the tree onto a slot, or one slot onto another to swap; a coloured placeholder button follows the pointer and the real node stays put.
 
+### Round 10
+- The throne's eyes stay hidden in the hub until the first book cutscene wakes them.
+- Shade spawns at 80s (`boss.spawnTime`). At 78s (`waveTime`, once per run) a purple wave rolls out from the player and kills every enemy it reaches; spawning is off until 90s (`resumeTime`). The very first time ever (`bossIntroSeen`) the game freezes and the throne's eyes speak 5 click-to-skip lines in a box at the top, then play resumes.
+- Only enemies the player kills give xp and souls. Kills by the boss or the wave give nothing.
+
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.
