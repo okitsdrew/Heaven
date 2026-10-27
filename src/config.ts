@@ -60,13 +60,13 @@ export const defaults = {
     width: 150,
     length: 50,
     speed: 1000,
-    cooldown: 5,
+    cooldown: 8,
     tongueSpacing: 6,
     embers: 180,
     burnDps: 5,
     burnTime: 5,
     burnTick: 1,
-    groundTime: 5,
+    groundTime: 3,
     groundSpacing: 40,
   },
   swordSlash: {
@@ -373,6 +373,7 @@ export const defaults = {
     showHitboxes: false,
     showStats: true,
     godMode: false,
+    skillMove: false,
     unlockAll: false,
   },
 };
@@ -746,6 +747,7 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     showHitboxes: 'bool',
     showStats: 'bool',
     godMode: 'bool',
+    skillMove: 'bool',
     unlockAll: 'bool',
   },
 };

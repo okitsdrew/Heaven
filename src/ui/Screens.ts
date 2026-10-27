@@ -49,6 +49,7 @@ const css = `
 #tree svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 #tree line { stroke: #4a4166; stroke-width: 3; }
 #tree line.on { stroke: #c9b6ff; }
+#tree .node.dragging { opacity: 0.85; border-style: dashed; z-index: 2; }
 #tree .node { position: absolute; width: 132px; padding: 6px 8px; box-sizing: border-box; text-align: center;
   background: #1b1628; border: 2px solid #4a4166; border-radius: 10px; cursor: pointer; touch-action: none; }
 #tree .node.canbuy { border-color: #c9b6ff; }
@@ -218,14 +219,17 @@ export class Screens {
     return nodes.filter((n) => (n.tree ?? 'main') === this.mode);
   }
 
+  private skillLayout = loadSkillLayout();
+
   private position(n: SkillNode): { x: number; y: number } {
-    return { x: n.x, y: n.y };
+    return this.skillLayout[n.id] ?? { x: n.x, y: n.y };
   }
 
   private makeNode(n: SkillNode): HTMLDivElement {
     const el = this.div('node', undefined, this.world);
-    let start: { px: number; py: number } | null = null;
+    let start: { px: number; py: number; x: number; y: number } | null = null;
     let ghost: HTMLDivElement | null = null;
+    let moved = false;
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       if (refund(n)) {
@@ -237,10 +241,23 @@ export class Screens {
       e.stopPropagation();
       if (e.button !== 0) return;
       el.setPointerCapture(e.pointerId);
-      start = { px: e.clientX, py: e.clientY };
+      const p = this.position(n);
+      start = { px: e.clientX, py: e.clientY, x: p.x, y: p.y };
+      moved = false;
     });
     el.addEventListener('pointermove', (e) => {
       if (!start) return;
+      // Skill move (dev): skill nodes slide around instead of being dragged into slots.
+      if (cfg.debug.skillMove && isSkill(n.id)) {
+        const dx = e.clientX - start.px;
+        const dy = e.clientY - start.py;
+        if (!moved && Math.hypot(dx, dy) < 5) return;
+        moved = true;
+        el.classList.add('dragging');
+        this.skillLayout[n.id] = { x: Math.round(start.x + dx / this.view.scale), y: Math.round(start.y + dy / this.view.scale) };
+        this.layoutNodes();
+        return;
+      }
       if (ghost) {
         this.moveGhost(ghost, e);
         return;
@@ -254,6 +271,12 @@ export class Screens {
     const end = (e: PointerEvent) => {
       if (!start) return;
       start = null;
+      el.classList.remove('dragging');
+      if (moved) {
+        moved = false;
+        saveSkillLayout(this.skillLayout);
+        return;
+      }
       if (ghost) {
         ghost.remove();
         ghost = null;
@@ -456,7 +479,7 @@ export class Screens {
       box.addEventListener('pointermove', (e) => {
         if (!down) return;
         if (ghost) this.moveGhost(ghost, e);
-        else if (node && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 5) {
+        else if (node && !cfg.debug.skillMove && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 5) {
           ghost = this.makeGhost(node);
           this.moveGhost(ghost, e);
         }
@@ -556,5 +579,23 @@ export class Screens {
     b.className = cls;
     b.addEventListener('click', run);
     return b;
+  }
+}
+
+const SKILL_LAYOUT_KEY = 'heaven.skillLayout.v1';
+
+function loadSkillLayout(): Record<string, { x: number; y: number }> {
+  try {
+    return JSON.parse(localStorage.getItem(SKILL_LAYOUT_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveSkillLayout(l: Record<string, { x: number; y: number }>): void {
+  try {
+    localStorage.setItem(SKILL_LAYOUT_KEY, JSON.stringify(l));
+  } catch {
+    // Storage can be unavailable; the move still holds for this session.
   }
 }

@@ -37,6 +37,7 @@ interface Patch {
   start: number;
   end: number;
   age: number;
+  seed: number;
 }
 
 const screen = { x: 0, y: 0 };
@@ -218,7 +219,7 @@ export class Abilities {
       // Leave burning ground behind the wave.
       const reach = Math.min(hi, w.dist);
       while (reach - w.lastPatch >= c.groundSpacing && c.groundTime > 0) {
-        this.patches.push({ ox: w.ox, oy: w.oy, dirX: w.dirX, dirY: w.dirY, start: w.lastPatch, end: w.lastPatch + c.groundSpacing, age: 0 });
+        this.patches.push({ ox: w.ox, oy: w.oy, dirX: w.dirX, dirY: w.dirY, start: w.lastPatch, end: w.lastPatch + c.groundSpacing, age: 0, seed: Math.floor(Math.random() * 4294967296) });
         w.lastPatch += c.groundSpacing;
       }
 
@@ -423,20 +424,64 @@ export class Abilities {
     }
   }
 
-  // The ground a wave has passed glows a faint warm tint that cools as the patch ages.
+  // Scorched ground: ragged blotches of black, red and orange with cracks, some straying past the wave's width.
   private drawPatch(ground: Phaser.GameObjects.Graphics, p: Patch): void {
     const c = cfg.fireWave;
     const mid = (p.start + p.end) / 2;
     const cx = p.ox + p.dirX * mid;
     const cy = p.oy + p.dirY * mid;
     if (Math.hypot(cx - this.focus.x, cy - this.focus.y) > 1500) return;
-    const life = 1 - p.age / Math.max(c.groundTime, 1e-3);
+    const fade = Math.min(1, (1 - p.age / Math.max(c.groundTime, 1e-3)) * 3);
     const perpX = -p.dirY;
     const perpY = p.dirX;
     const hw = c.width / 2;
-    const corner = (s: number, l: number) => toScreen(p.ox + perpX * hw * s + p.dirX * l, p.oy + perpY * hw * s + p.dirY * l);
-    ground.fillStyle(0xb84a1c, 0.11 * Math.min(1, life * 3));
-    ground.fillPoints([corner(-1, p.start), corner(1, p.start), corner(1, p.end), corner(-1, p.end)], true);
+    const len = p.end - p.start;
+    let seed = p.seed;
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const at = (side: number, along: number) => toScreen(p.ox + perpX * side + p.dirX * along, p.oy + perpY * side + p.dirY * along);
+    const blotch = (side: number, along: number, r: number, color: number, alpha: number) => {
+      const pts = [];
+      const n = 9;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        const rr = r * (0.55 + 0.7 * rnd());
+        pts.push(at(side + Math.cos(a) * rr, along + Math.sin(a) * rr));
+      }
+      ground.fillStyle(color, alpha * fade);
+      ground.fillPoints(pts, true);
+    };
+    const colors = [0x1a0a08, 0x4a1008, 0x8a2410, 0xc4501a];
+    for (let k = 0; k < 6; k++) {
+      // Mostly inside the zone, with the odd blotch drifting out past either edge.
+      const side = (rnd() * 2 - 1) * hw * (rnd() < 0.25 ? 1.25 : 0.9);
+      const along = p.start + rnd() * len;
+      const ci = Math.floor(rnd() * colors.length);
+      blotch(side, along, 14 + rnd() * 22, colors[ci], 0.1 + 0.07 * ci);
+    }
+    ground.lineStyle(1.5, 0xff7a20, 0.45 * fade);
+    for (let k = 0; k < 3; k++) {
+      let side = (rnd() * 2 - 1) * hw;
+      let along = p.start + rnd() * len;
+      let a0 = at(side, along);
+      for (let j = 0; j < 4; j++) {
+        side += (rnd() - 0.5) * 24;
+        along += (rnd() - 0.5) * 24;
+        const a1 = at(side, along);
+        ground.lineBetween(a0.x, a0.y, a1.x, a1.y);
+        a0 = a1;
+      }
+    }
+    ground.lineStyle(1, 0x000000, 0.5 * fade);
+    for (let k = 0; k < 2; k++) {
+      const side = (rnd() * 2 - 1) * hw;
+      const along = p.start + rnd() * len;
+      const a0 = at(side, along);
+      const a1 = at(side + (rnd() - 0.5) * 40, along + (rnd() - 0.5) * 40);
+      ground.lineBetween(a0.x, a0.y, a1.x, a1.y);
+    }
   }
 
   private drawStorm(g: Phaser.GameObjects.Graphics, s: Storm): void {

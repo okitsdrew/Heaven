@@ -147,6 +147,8 @@ In-game overlay, toggled with backtick. Must include:
 - Only enemies the player kills give xp and souls. Kills by the boss or the wave give nothing.
 - The wave finishes clearing the screen first, then the first-time throne speech freezes the game.
 - Fire Wave no longer leaves burning ground or ignites anything on it: it leaves a faint warm ground tint in 40-unit segments (`groundSpacing`) that cools over `groundTime`, culled at 1500 units so it doesn't pop in big chunks.
+- Fire Wave cooldown 8s, ground time 3s. The ground is now ragged black/red/orange blotches with cracks, no straight outline, some drifting outside the wave's width (visual only, damage still uses the width). Skill costs: Fire Wave 1 sp, other skills 2 sp, Teleport 1 sp.
+- Dev option `debug.skillMove` (under God mode): skill nodes in the book can be dragged around (saved in `heaven.skillLayout.v1`) and skill drag-and-drop into slots is off while it is on.
 
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
