@@ -64,6 +64,7 @@ const css = `
 #tree .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 #tree .tools button { padding: 3px 8px; font-size: 12px; }
 #tree .bottom { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 12px; z-index: 3; }
+#tree .skills { position: fixed; top: 64px; right: 16px; z-index: 4; }
 #tree .hint { position: absolute; left: 16px; bottom: 16px; color: #6f6788; font-size: 11px; z-index: 3; }
 `;
 
@@ -116,6 +117,12 @@ export class Screens {
       });
     }
     this.bindStage();
+    // Dev menu tweaks (such as Show lines) apply to an open tree straight away.
+    const live = () => {
+      if (this.tree.classList.contains('open')) this.refresh();
+    };
+    document.addEventListener('change', live);
+    document.addEventListener('input', live);
   }
 
   get open(): boolean {
@@ -127,7 +134,7 @@ export class Screens {
     this.tree.classList.remove('open');
   }
 
-  showSummary(s: RunSummary, onRestart: () => void, onTree: () => void): void {
+  showSummary(s: RunSummary, onRestart: () => void, onTree: () => void, onHome: () => void): void {
     this.hide();
     const mins = Math.floor(s.time / 60);
     const secs = Math.floor(s.time % 60);
@@ -147,13 +154,17 @@ export class Screens {
       row.innerHTML = `<span>${k}</span><b>${v}</b>`;
     }
     const buttons = this.div('buttons', undefined, card);
-    buttons.append(this.button('Restart', onRestart, 'big go'), this.button('Skill Tree', onTree, 'big'));
+    buttons.append(this.button('Restart', onRestart, 'big go'), this.button('Skill Tree', onTree, 'big'), this.button('Home', onHome, 'big'));
     this.summary.classList.add('open');
   }
 
   showTree(onBattle: () => void, onHome: () => void): void {
     this.openMode('main');
     this.bottom.replaceChildren(this.button('Home', onHome, 'big'), this.button('Battle', onBattle, 'big go'));
+    // Once the book is unlocked, a big button up here opens its skills and Close comes back to the tree.
+    if (profile.bookUnlocked) {
+      this.bottom.appendChild(this.button('Skills', () => this.showBook(() => this.showTree(onBattle, onHome)), 'big skills'));
+    }
   }
 
   // The book holds the skills; it opens over whatever scene is behind it.
@@ -327,12 +338,17 @@ export class Screens {
     this.topInfo.innerHTML = (this.mode === 'book' ? '<span><b>The Book</b></span>' : '') + `<span>Souls <b>${profile.gold}</b></span><span>Skill points <b>${profile.skillPoints}</b></span>` +
       `<span>Level <b>${profile.level}</b> <span class="xpbar"><i style="width:${pct}%"></i></span> ${Math.floor(profile.xp)}/${need}</span>`;
     const tools = this.div('tools', undefined, this.topInfo);
+    const lines = this.button(cfg.tree.showLines ? 'Hide lines' : 'Show lines', () => {
+      cfg.tree.showLines = !cfg.tree.showLines;
+      this.refresh();
+    });
     const reveal = this.button(cfg.tree.revealAll ? 'Hide locked nodes' : 'Show all nodes', () => {
       cfg.tree.revealAll = !cfg.tree.revealAll;
       this.refresh();
     });
     tools.append(
       reveal,
+      lines,
       this.button('Reset layout', () => {
         this.layout = {};
         clearLayout();

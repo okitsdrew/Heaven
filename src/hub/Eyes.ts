@@ -14,6 +14,8 @@ export class Eyes {
   glance = { x: 0, y: 0 };
   private look = { x: 0, y: 0 };
   private time = 0;
+  private blinkIn = 3;
+  private blinkT = -1;
   readonly sep = 92;
 
   constructor(scene: Phaser.Scene, public x: number, public y: number, depth: number) {
@@ -25,6 +27,19 @@ export class Eyes {
 
   update(dt: number, targetX: number, targetY: number, following: boolean): void {
     this.time += dt;
+    // A slow blink every three seconds or so, once the eyes are open.
+    this.blinkIn -= dt;
+    if (this.blinkIn <= 0 && this.open > 0.5) {
+      this.blinkT = 0;
+      this.blinkIn = 2.6 + Math.random() * 0.8;
+    }
+    let blink = 0;
+    if (this.blinkT >= 0) {
+      this.blinkT += dt;
+      const k = this.blinkT / 0.28;
+      if (k >= 1) this.blinkT = -1;
+      else blink = Math.sin(Math.PI * k);
+    }
     const g = this.g;
     g.clear();
     const dx = targetX - this.x;
@@ -39,7 +54,7 @@ export class Eyes {
       const side = i === 0 ? -1 : 1;
       const cx = this.x + side * this.sep / 2;
       const tilt = side * 0.2;
-      const lid = o * (1 + this.wide * 0.8);
+      const lid = o * (1 + this.wide * 0.8) * (1 - 0.92 * blink);
       const hw = 30 * (1 + this.wide * 0.15);
       const hu = 16 * lid;
       const hl = 14 * lid;

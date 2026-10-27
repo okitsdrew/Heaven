@@ -542,13 +542,15 @@ export class GameScene extends Phaser.Scene {
       { title: this.endTitle, kills: this.run.kills, gold: this.run.gold, xp: this.run.xp, levelsGained: this.run.levels, time: this.clock - this.clockStart },
       () => this.startRun(),
       () => this.openTree(),
+      () => this.goHome(),
     );
   }
 
   private goHome(): void {
     this.screens.hide();
     persistNow();
-    this.scene.start('hub');
+    // Phaser keeps the last start data when none is passed, so pass an empty object or the unlock scene replays.
+    this.scene.start('hub', {});
   }
 
   private openTree(): void {

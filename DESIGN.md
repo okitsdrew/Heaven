@@ -127,6 +127,10 @@ In-game overlay, toggled with backtick. Must include:
 - The book unlock scene is marked seen and unlocked the moment the death sends him there, so it cannot repeat.
 - Tree: More MORE Time is Endless Misery (1000, each kill adds `upgrade.killTime` 0.5s). More Damage 3 levels (500, 750, 1000, +10 each). More Fire Rate 2 levels (500, 1000, +50% each). Quadruple Souls is gone: Double Souls has 2 levels (500, 1000), x2 then x4. Old saves are clamped and refunded.
 
+### Round 7
+- The unlock scene kept replaying because Phaser reuses the last start data when `scene.start` gets none, so the hub kept seeing `bookIntro`. Every hub start now passes explicit data.
+- The throne's eyes blink about every 3s. The tree has a Hide/Show lines button and reacts to dev menu changes while open. After the book unlocks, the tree has a big Skills button (top right) that opens the book. The death summary has a Home button.
+
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.
