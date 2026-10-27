@@ -67,6 +67,8 @@ export class GameScene extends Phaser.Scene {
   private vignette!: Phaser.GameObjects.Image;
   private camCenter = { x: 0, y: 0 };
   private diveIn = false;
+  // Seconds after the first landing with no spawns and no clock, while the controls hint shows.
+  private grace = 0;
   private entry: { t: number; x: number; y: number; img: Phaser.GameObjects.Image; shadow: Phaser.GameObjects.Ellipse } | null = null;
   private blast!: LandingBlast;
 
@@ -77,6 +79,7 @@ export class GameScene extends Phaser.Scene {
   init(data?: { dive?: boolean }): void {
     this.diveIn = data?.dive === true;
     this.entry = null;
+    this.grace = 0;
   }
 
   create(): void {
@@ -342,6 +345,7 @@ export class GameScene extends Phaser.Scene {
       if (!profile.bowHintShown) {
         profile.bowHintShown = true;
         persistNow();
+        this.grace = cfg.entry.hintTime;
         ghostHint(this, this.fx, ['Void Bow: Click to shoot', 'Collect souls to grow stronger', 'Level up to unlock new skills'], { x: cam.width / 2, y: cam.height * 0.68, depth: 4e6, hold: cfg.entry.hintTime + 0.7, screenSpace: true });
       }
     }
@@ -392,7 +396,8 @@ export class GameScene extends Phaser.Scene {
       pushOut(body, this.chunks.obstacles);
       this.player.x = body.x;
       this.player.y = body.y;
-      this.clock += dt;
+      if (this.grace > 0) this.grace -= dt;
+      else this.clock += dt;
       tickBuffs(dt);
       if (cfg.boss.enabled && !this.bossSpawned && this.clock >= cfg.boss.spawnTime) this.spawnBoss();
       if (this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
@@ -400,7 +405,7 @@ export class GameScene extends Phaser.Scene {
 
     const view = { halfW: cam.width / 2, halfH: cam.height / 2, heading: this.heading() };
     const slowAt = (x: number, y: number, r: number) => this.abilities.slowAt(x, y, r);
-    this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, slowAt, !this.dead);
+    this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, slowAt, !this.dead && this.grace <= 0);
     this.gold.update(dt, this.player.x, this.player.y, !this.dead);
     this.enemies.insertInto(this.targets);
     this.targetList.length = 0;
@@ -526,6 +531,9 @@ export class GameScene extends Phaser.Scene {
     // The first death after earning a skill point leads straight to the throne room, where the book is offered.
     if (this.endDied && profile.introDone && !profile.bookUnlocked && !profile.bookIntroSeen && profile.skillPoints > 0) {
       this.screens.hide();
+      // Marked done up front so it can only ever play once, however the scene ends.
+      profile.bookIntroSeen = true;
+      profile.bookUnlocked = true;
       persistNow();
       this.scene.start('hub', { bookIntro: true });
       return;
@@ -563,6 +571,7 @@ export class GameScene extends Phaser.Scene {
     this.abilities.reset();
     this.doomsday.reset();
     this.hitStop = 0;
+    this.grace = 0;
     this.swordSlash.cancel();
     this.swordSlash.cooldown = 0;
     Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0, dashTime: 0, teleportTime: 0, lockTime: 0 });

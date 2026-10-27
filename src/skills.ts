@@ -37,17 +37,15 @@ export const nodes: SkillNode[] = [
   { id: 'damage', name: 'Damage', desc: (p) => `+${p} damage`, parents: ['pierce'], currency: 'gold', levels: 5, base: 1, effect: 'damage', x: -240, y: -85 },
   { id: 'range', name: 'More Range', desc: (p) => `+${pct(p)} arrow range`, parents: ['damage'], currency: 'gold', levels: 1, base: 100, costs: [100], effect: 'range', x: -480, y: -170 },
 
-  { id: 'moreFireRate', name: 'More Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['moreDamage'], currency: 'gold', levels: 5, base: 250, effect: 'moreFireRate', x: -960, y: -170 },
+  { id: 'moreFireRate', name: 'More Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['moreDamage'], currency: 'gold', levels: 2, base: 500, costs: [500, 1000], effect: 'moreFireRate', x: -960, y: -170 },
   { id: 'moreBullets', name: 'More Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['pierce'], currency: 'gold', levels: 2, base: 1, effect: 'moreBullets', x: -240, y: 110 },
-  { id: 'moreTime', name: 'More MORE Time', desc: (p) => `+${p}s run time`, parents: ['goldValue'], currency: 'gold', levels: 5, base: 500, effect: 'moreTime', x: 720, y: -130 },
-  { id: 'moreDamage', name: 'More Damage', desc: (p) => `+${p} damage`, parents: ['fireRate'], currency: 'gold', levels: 6, base: 500, effect: 'moreDamage', x: -720, y: 0 },
+  { id: 'moreTime', name: 'Endless Misery', desc: () => `Each kill adds ${cfg.upgrade.killTime}s of run time`, parents: ['goldValue'], currency: 'gold', levels: 1, base: 1000, costs: [1000], effect: null, x: 720, y: -130 },
+  { id: 'moreDamage', name: 'More Damage', desc: (p) => `+${p} damage`, parents: ['fireRate'], currency: 'gold', levels: 3, base: 500, costs: [500, 750, 1000], effect: 'moreDamage', x: -720, y: 0 },
   { id: 'moreMoreBullets', name: 'More MORE Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['moreDamage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMoreBullets', x: -960, y: 190 },
 
   { id: 'goldValue', name: 'Soul Value', desc: (p) => `+${p} souls per kill`, parents: ['time'], currency: 'gold', levels: 5, base: 25, effect: 'goldValue', x: 480, y: 0 },
   { id: 'pickupRadius', name: 'Pickup Radius', desc: (p) => `+${pct(p)} pickup radius`, parents: ['time'], currency: 'gold', levels: 2, base: 100, costs: [100, 200], effect: 'pickupRadius', x: 480, y: -240 },
-  { id: 'doubleGold', name: 'Double Souls', desc: (p) => `x${1 + p} souls per kill`, parents: ['goldValue'], currency: 'gold', levels: 1, base: 500, effect: 'doubleGold', x: 720, y: 110 },
-
-  { id: 'quadGold', name: 'Quadruple Souls', desc: (p) => `+${pct(p)} souls per kill (x4 with Double Souls)`, parents: ['doubleGold'], currency: 'gold', levels: 1, base: 1000, effect: 'quadGold', x: 960, y: 110 },
+  { id: 'doubleGold', name: 'Double Souls', desc: () => `x${1 + cfg.upgrade.doubleGold} souls per kill, then x${1 + cfg.upgrade.doubleGold + cfg.upgrade.quadGold}`, parents: ['goldValue'], currency: 'gold', levels: 2, base: 500, costs: [500, 1000], effect: null, x: 720, y: 110 },
 
   { id: 'moreMorePierce', name: 'more MORE Pierce', desc: (p) => `+${p} pierce`, parents: ['moreDamage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMorePierce', x: -960, y: 0 },
   { id: 'biggerArrows', name: 'Better Arrows', desc: (p) => `+${pct(p)} arrow size and range`, parents: ['moreMorePierce'], currency: 'gold', levels: 5, base: 500, effect: 'biggerArrows', x: -1200, y: -70 },
@@ -143,9 +141,10 @@ export function canUse(a: Gated): boolean {
 }
 
 // Per-run buffs that reset on restart. A kill refreshes the hold, then the stacks run out after the countdown.
-export const runBuffs = { dust: 0, hold: 0, left: 0 };
+export const runBuffs = { dust: 0, hold: 0, left: 0, bonusTime: 0 };
 
 export function onKillBuffs(): void {
+  if (level('moreTime') >= 1) runBuffs.bonusTime += cfg.upgrade.killTime;
   if (level('dustDevil') < 1) return;
   runBuffs.dust = Math.min(cfg.upgrade.dustCap, runBuffs.dust + cfg.upgrade.dustPerKill);
   runBuffs.hold = cfg.upgrade.dustHold;
@@ -166,6 +165,7 @@ export function resetBuffs(): void {
   runBuffs.dust = 0;
   runBuffs.hold = 0;
   runBuffs.left = 0;
+  runBuffs.bonusTime = 0;
 }
 
 // 1 while the stacks are held or fully fresh, draining to 0 as they run out.
@@ -184,7 +184,7 @@ export const stats = {
   arrowSize: () => 1 + sum(['biggerArrows']),
   arrows: () => Math.max(1, Math.round(cfg.bow.arrowsPerShot + sum(['moreBullets', 'moreMoreBullets']))),
   range: () => cfg.bow.arrowRange * (1 + sum(['range', 'biggerArrows'])),
-  goldValue: () => Math.max(0, cfg.gold.perKill + sum(['goldValue'])) * (1 + sum(['doubleGold', 'quadGold'])),
+  goldValue: () => Math.max(0, cfg.gold.perKill + sum(['goldValue'])) * (1 + (level('doubleGold') >= 1 ? cfg.upgrade.doubleGold : 0) + (level('doubleGold') >= 2 ? cfg.upgrade.quadGold : 0)),
   moveSpeed: () => cfg.player.moveSpeed * (1 + sum(['moveSpeed']) + dust()),
-  runTime: () => (cfg.run.lengthOverride > 0 ? cfg.run.lengthOverride : cfg.run.baseTime + sum(['time', 'moreTime'])),
+  runTime: () => (cfg.run.lengthOverride > 0 ? cfg.run.lengthOverride : cfg.run.baseTime + sum(['time']) + runBuffs.bonusTime),
 };

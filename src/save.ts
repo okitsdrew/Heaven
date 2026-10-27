@@ -72,6 +72,16 @@ function sanitize(src: unknown): SaveData {
     delete out.nodes.dash;
     out.skillPoints += 1;
   }
+  // Rebalanced nodes: clamp to the new maximum and refund the old price of the dropped levels.
+  for (const [id, max, base] of [['moreDamage', 3, 500], ['moreFireRate', 2, 250], ['moreTime', 1, 500]] as const) {
+    for (let i = max; i < (out.nodes[id] ?? 0); i++) out.gold += Math.ceil(base * Math.pow(1.5, i) - 1e-9);
+    if ((out.nodes[id] ?? 0) > max) out.nodes[id] = max;
+  }
+  // Quadruple Souls became the second level of Double Souls.
+  if (out.nodes.quadGold) {
+    delete out.nodes.quadGold;
+    out.nodes.doubleGold = 2;
+  }
   // Abilities used to be unlocked from a separate list; they are tree nodes now.
   const old = (src as { skills?: Record<string, unknown> }).skills;
   if (old && typeof old === 'object') {

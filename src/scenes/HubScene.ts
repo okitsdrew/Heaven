@@ -173,6 +173,10 @@ export class HubScene extends Phaser.Scene {
     this.view = new PlayerView(this, this.player, this.fx);
     this.view.hero = true;
     this.view.hideBow = true;
+    // Dashes and teleports look the same here as in a run.
+    this.player.onDashStart = () => this.view.onDashStart();
+    this.player.onTeleport = (x0, y0, x1, y1, t) => this.view.onTeleport(x0, y0, x1, y1, t);
+    this.player.onTeleportArrive = (x, y) => this.view.onTeleportArrive(x, y);
     this.dark = new Darkness(this, DEPTH_DARK);
 
     this.rooms = { hall: this.buildHall(), throne: this.buildThrone() };
@@ -778,7 +782,7 @@ export class HubScene extends Phaser.Scene {
     this.drawRings(dt);
     // Once he has been sent to the book it flashes a white outline until he opens it.
     const flash = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(t * 6));
-    const bookLit = (profile.bookUnlocked || this.bookPointed) && !profile.bookOpened;
+    const bookLit = (this.bookPointed || (profile.bookUnlocked && !this.bookIntro)) && !profile.bookOpened;
     this.bookOutline.setPosition(this.bookGfx.x, this.bookGfx.y).setScale(this.bookGfx.scale).setAngle(this.bookGfx.angle).setAlpha(bookLit ? flash : 0);
 
     // The severed head pulses a sick green.
