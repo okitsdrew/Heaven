@@ -80,6 +80,7 @@ export class GameScene extends Phaser.Scene {
   private waveFired = false;
   private throne!: ThroneBox;
   private throneTalking = false;
+  private speechPending = false;
   // False while the boss or the wave is doing the killing: those kills give no xp and no souls.
   private credit = true;
 
@@ -101,6 +102,7 @@ export class GameScene extends Phaser.Scene {
     this.bossSpawned = false;
     this.waveFired = false;
     this.throneTalking = false;
+    this.speechPending = false;
     this.hitStop = 0;
     this.run = { kills: 0, gold: 0, xp: 0, levels: 0 };
     resetBuffs();
@@ -553,22 +555,26 @@ export class GameScene extends Phaser.Scene {
     this.waveX = this.player.x;
     this.waveY = this.player.y;
     this.wave.start(this.waveX, this.waveY);
-    if (!profile.bossIntroSeen) {
-      profile.bossIntroSeen = true;
-      persist();
-      this.throneTalking = true;
-      this.throne
-        .play([
-          'impressive growth',
-          "but im not convinced",
-          'these dregs will not be your only opponents',
-          'if you seek to best anathema as an equal',
-          'then you should have no problems with the Shade',
-        ])
-        .then(() => {
-          this.throneTalking = false;
-        });
-    }
+    this.speechPending = !profile.bossIntroSeen;
+  }
+
+  // The throne speaks once the wave has cleared the field, with the whole game held still.
+  private startSpeech(): void {
+    this.speechPending = false;
+    profile.bossIntroSeen = true;
+    persist();
+    this.throneTalking = true;
+    this.throne
+      .play([
+        'impressive growth',
+        "but im not convinced",
+        'these dregs will not be your only opponents',
+        'if you seek to best anathema as an equal',
+        'then you should have no problems with the Shade',
+      ])
+      .then(() => {
+        this.throneTalking = false;
+      });
   }
 
   private updateWave(dt: number): void {
@@ -582,7 +588,7 @@ export class GameScene extends Phaser.Scene {
         if (e.alive && Math.hypot(e.x - this.waveX, e.y - this.waveY) <= r) this.enemies.damage(e, 1e9, this.waveX, this.waveY);
       }
     });
-    this.wave.update(dt, this.cameras.main);
+    if (this.wave.update(dt, this.cameras.main) && this.speechPending) this.startSpeech();
   }
 
   private spawnBoss(): void {

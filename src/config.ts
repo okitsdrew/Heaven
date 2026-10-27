@@ -67,8 +67,7 @@ export const defaults = {
     burnTime: 5,
     burnTick: 1,
     groundTime: 5,
-    groundSpacing: 100,
-    groundTongue: 16,
+    groundSpacing: 40,
   },
   swordSlash: {
     coneDamage: 100,
@@ -463,7 +462,6 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     burnTick: { min: 0.1, max: 3, step: 0.1 },
     groundTime: { min: 0, max: 30, step: 0.5 },
     groundSpacing: { min: 20, max: 300, step: 10 },
-    groundTongue: { min: 6, max: 60, step: 1 },
   },
   swordSlash: {
     coneDamage: { min: 1, max: 2000, step: 1 },
