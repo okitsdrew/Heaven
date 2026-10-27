@@ -52,10 +52,10 @@ const groups: [string, string[]][] = [
   ['player', ['player', 'bow', 'dash', 'teleport', 'abilities']],
   ['skills', ['swordSlash', 'fireWave', 'iceStorm', 'doomsday', 'fairy']],
   ['enemies and boss', ['spawn', 'enemy', 'wraith', 'shade', 'husk', 'boss']],
-  ['progression', ['run', 'xp', 'gold', 'upgrade', 'tree']],
+  ['progression', ['run', 'xp', 'gold', 'upgrade', 'tree', 'stun']],
   ['world', ['world', 'map', 'dummy']],
   ['look and feel', ['camera', 'feel', 'render']],
-  ['system', ['time', 'debug', 'story']],
+  ['system', ['time', 'debug', 'hub']],
 ];
 
 function labelFor(key: string): string {
@@ -63,11 +63,19 @@ function labelFor(key: string): string {
 }
 
 export class DevMenu {
+  private static inst: DevMenu | null = null;
+
+  // One menu serves every scene; each scene supplies its own action buttons.
+  static get(): DevMenu {
+    return (DevMenu.inst ??= new DevMenu());
+  }
+
+  private actionBar!: HTMLElement;
   private root: HTMLDivElement;
   private refreshers: (() => void)[] = [];
   private presetSelect!: HTMLSelectElement;
 
-  constructor(actions: DevAction[]) {
+  private constructor() {
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
@@ -95,7 +103,12 @@ export class DevMenu {
       if (e.key === 'Escape') this.toggle(false);
     });
 
-    this.build(actions);
+    this.build();
+  }
+
+  setActions(actions: DevAction[]): void {
+    this.actionBar.querySelectorAll('button').forEach((b) => b.remove());
+    for (const a of actions) this.actionBar.appendChild(this.button(a.label, a.run));
   }
 
   get open(): boolean {
@@ -109,7 +122,7 @@ export class DevMenu {
     else (document.activeElement as HTMLElement | null)?.blur();
   }
 
-  private build(actions: DevAction[]): void {
+  private build(): void {
     const title = document.createElement('h1');
     title.innerHTML = 'Dev menu <small>` to close</small>';
     this.root.appendChild(title);
@@ -170,8 +183,7 @@ export class DevMenu {
       }),
     );
 
-    const actionBar = this.section('actions', true, this.root, 'group');
-    for (const a of actions) actionBar.appendChild(this.button(a.label, a.run));
+    this.actionBar = this.section('actions', true, this.root, 'group');
 
     const known = new Set(groups.flatMap(([, names]) => names));
     const all = [...groups, ['other', Object.keys(meta).filter((n) => !known.has(n))] as [string, string[]]];

@@ -48,4 +48,5 @@ An incremental isometric bullet-heaven (think *20 Minutes Till Dawn*). Full desi
 - `src/dev/DevMenu.ts`: DOM overlay built from `meta`. Scene-specific buttons are passed in as actions.
 - `src/art/placeholders.ts`: code-drawn textures under the keys in `Tex`.
 - `src/game/`: simulation (`Player`, `Arrows`, `Dummies`, `Abilities`) and rendering (`PlayerView`, `Fairies`, `Hud`, `Fx`, `Ground`). `Abilities` damages any `Hittable` and exposes `slowAt()` for enemies to read.
-- `src/scenes/GameScene.ts`: wires systems together and owns the camera.
+- `src/scenes/GameScene.ts`: wires systems together and owns the camera for a run.
+- `src/scenes/HubScene.ts`: the hallway and throne room, the opening and the book cutscene. `src/hub/` holds its code-drawn art (`draw.ts`, `props.ts`), `Hand`, `Eyes`, `Crayon` text and the `Darkness` lighting veil.

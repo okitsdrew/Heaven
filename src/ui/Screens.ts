@@ -67,7 +67,16 @@ const css = `
 #tree .hint { position: absolute; left: 16px; bottom: 16px; color: #6f6788; font-size: 11px; z-index: 3; }
 `;
 
+type Mode = 'main' | 'book';
+
 export class Screens {
+  private static inst: Screens | null = null;
+
+  // One set of DOM overlays serves every scene.
+  static get(): Screens {
+    return (Screens.inst ??= new Screens());
+  }
+
   private summary: HTMLDivElement;
   private tree: HTMLDivElement;
   private stage: HTMLDivElement;
@@ -76,11 +85,13 @@ export class Screens {
   private topInfo: HTMLDivElement;
   private els = new Map<string, HTMLDivElement>();
   private layout: Layout = loadLayout();
+  private mode: Mode = 'main';
+  private views: Record<Mode, { x: number; y: number; scale: number } | null> = { main: null, book: null };
   private view = { x: 0, y: 0, scale: 1 };
-  private viewReady = false;
-  private onBattle: () => void = () => {};
+  private bottom: HTMLDivElement;
+  private opened = false;
 
-  constructor() {
+  private constructor() {
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
@@ -95,8 +106,7 @@ export class Screens {
 
     for (const n of nodes) this.els.set(n.id, this.makeNode(n));
 
-    const bottom = this.div('bottom', undefined, this.tree);
-    bottom.append(this.button('Battle', () => this.onBattle(), 'big go'));
+    this.bottom = this.div('bottom', undefined, this.tree);
     this.div('hint', undefined, this.tree).textContent =
       'Drag background to pan, wheel to zoom, drag a node to move it, click a node to buy, right-click to refund.';
 
@@ -141,15 +151,29 @@ export class Screens {
     this.summary.classList.add('open');
   }
 
-  showTree(onBattle: () => void): void {
+  showTree(onBattle: () => void, onHome: () => void): void {
+    this.openMode('main');
+    this.bottom.replaceChildren(this.button('Home', onHome, 'big'), this.button('Battle', onBattle, 'big go'));
+  }
+
+  // The book holds the skills; it opens over whatever scene is behind it.
+  showBook(onClose: () => void): void {
+    this.openMode('book');
+    this.bottom.replaceChildren(this.button('Close', onClose, 'big go'));
+  }
+
+  private openMode(mode: Mode): void {
     this.hide();
-    this.onBattle = onBattle;
+    if (this.opened) this.views[this.mode] = this.view;
+    this.opened = true;
+    this.mode = mode;
+    this.view = this.views[mode] ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 - (mode === 'book' ? 100 : 0), scale: mode === 'book' ? 1 : 0.9 };
     this.tree.classList.add('open');
-    if (!this.viewReady) {
-      this.view = { x: window.innerWidth / 2, y: window.innerHeight / 2, scale: 0.9 };
-      this.viewReady = true;
-    }
     this.refresh();
+  }
+
+  private shown(): SkillNode[] {
+    return nodes.filter((n) => (n.tree ?? 'main') === this.mode);
   }
 
   private position(n: SkillNode): { x: number; y: number } {
@@ -247,7 +271,7 @@ export class Screens {
 
   private layoutNodes(): void {
     const ns = cfg.tree.nodeSize;
-    for (const n of nodes) {
+    for (const n of this.shown()) {
       const el = this.els.get(n.id);
       if (!el) continue;
       const p = this.position(n);
@@ -257,7 +281,7 @@ export class Screens {
     }
     this.lines.innerHTML = '';
     if (!cfg.tree.showLines) return;
-    for (const n of nodes) {
+    for (const n of this.shown()) {
       if (!isVisible(n)) continue;
       for (const parentId of n.parents) {
         const parent = nodeById.get(parentId);
@@ -278,7 +302,8 @@ export class Screens {
   private refresh(): void {
     this.applyView();
     this.renderTop();
-    for (const n of nodes) {
+    for (const [id, el] of this.els) if ((nodeById.get(id)?.tree ?? 'main') !== this.mode) el.style.display = 'none';
+    for (const n of this.shown()) {
       const el = this.els.get(n.id);
       if (!el) continue;
       const lvl = level(n.id);
@@ -299,7 +324,7 @@ export class Screens {
   private renderTop(): void {
     const need = xpToNext(profile.level);
     const pct = Math.min(100, (profile.xp / need) * 100);
-    this.topInfo.innerHTML = `<span>Gold <b>${profile.gold}</b></span><span>Skill points <b>${profile.skillPoints}</b></span>` +
+    this.topInfo.innerHTML = (this.mode === 'book' ? '<span><b>The Book</b></span>' : '') + `<span>Gold <b>${profile.gold}</b></span><span>Skill points <b>${profile.skillPoints}</b></span>` +
       `<span>Level <b>${profile.level}</b> <span class="xpbar"><i style="width:${pct}%"></i></span> ${Math.floor(profile.xp)}/${need}</span>`;
     const tools = this.div('tools', undefined, this.topInfo);
     const reveal = this.button(cfg.tree.revealAll ? 'Hide locked nodes' : 'Show all nodes', () => {

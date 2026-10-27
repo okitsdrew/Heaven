@@ -59,6 +59,9 @@ export class PlayerView {
   sizeMult = 1;
   flicker = 0;
   rise = 1;
+  // The hub reaches out with empty hands, slowly: no bow, and a longer raise.
+  hideBow = false;
+  armsRate = 0.06;
   private flashTime = 0;
 
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
@@ -220,7 +223,7 @@ export class PlayerView {
     this.raise = Phaser.Math.Clamp(this.raise + rate, 0, 1);
     const t = this.raise * this.raise * (3 - 2 * this.raise);
     this.time += dt;
-    this.armsUp = Phaser.Math.Clamp(this.armsUp + (p.armsUpTimer > 0 ? dt : -dt) / 0.06, 0, 1);
+    this.armsUp = Phaser.Math.Clamp(this.armsUp + (p.armsUpTimer > 0 ? dt : -dt) / this.armsRate, 0, 1);
     const poseT = Math.max(t, this.armsUp * this.armsUp * (3 - 2 * this.armsUp));
 
     this.kick = Math.max(0, this.kick - dt);
@@ -306,7 +309,10 @@ export class PlayerView {
 
     this.drawGauntlet(rightHand, px);
     if (sliding) this.slideDust(dt);
-    this.drawBow(bowPos, bowAngle, bs, vis, prevVis, p.drawProgress, p.readyTimer > 0, dirY < 0 ? -0.5 : 0.5, dt);
+    if (this.hideBow) {
+      this.bowGfx.clear();
+      this.bowGlow.clear();
+    } else this.drawBow(bowPos, bowAngle, bs, vis, prevVis, p.drawProgress, p.readyTimer > 0, dirY < 0 ? -0.5 : 0.5, dt);
 
     // Hands glow purple while he is shooting.
     this.handGlow.forEach((img, i) => {

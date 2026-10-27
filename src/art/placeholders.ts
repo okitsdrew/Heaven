@@ -97,7 +97,11 @@ function vignette(scene: Phaser.Scene): void {
   tex.refresh();
 }
 
+let made = false;
+
 export function makePlaceholderArt(scene: Phaser.Scene): void {
+  if (made) return;
+  made = true;
   // Robed rogue, hood up, cloak in muted wine. Arms are drawn separately by PlayerView.
   const legs = [
     ['...ll..ll...', '...ll..ll...'],

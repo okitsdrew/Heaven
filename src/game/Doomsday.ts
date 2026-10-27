@@ -183,7 +183,7 @@ export class Doomsday {
       const dy = t.y - oy;
       const d = Math.hypot(dx, dy);
       if (d > wide + t.radius) continue;
-      this.onStun(t, c.stunTime);
+      this.onStun(t, cfg.stun.duration);
       if (t.kind === 'boss') continue;
       const nx = d > 1e-3 ? dx / d : Math.cos(Math.random() * Math.PI * 2);
       const ny = d > 1e-3 ? dy / d : Math.sin(Math.random() * Math.PI * 2);

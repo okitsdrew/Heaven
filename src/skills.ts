@@ -21,6 +21,8 @@ export interface SkillNode {
   // Default position in px around the root. Players can drag nodes; their layout is saved separately.
   x: number;
   y: number;
+  // Which tree shows the node. The book holds the skills; everything else is on the main tree.
+  tree?: 'book';
 }
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -28,7 +30,6 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 // Adding a node is just a new entry here plus, for a new stat, an effect value in config and a reader below.
 export const nodes: SkillNode[] = [
   { id: 'pierce', name: 'Pierce', desc: (p) => `+${p} pierce`, parents: [], currency: 'gold', levels: 1, base: 1, effect: 'pierce', x: 0, y: 0 },
-  { id: 'dash', name: 'Dash', desc: () => 'Unlocks the dash', parents: ['pierce'], currency: 'sp', levels: 1, base: 1, effect: null, x: 0, y: 190 },
 
   { id: 'fireRate', name: 'Fire Rate', desc: (p) => `+${pct(p)} fire rate`, parents: ['damage'], currency: 'gold', levels: 2, base: 50, costs: [50, 100], effect: 'fireRate', x: -480, y: 0 },
   { id: 'time', name: 'Time', desc: (p) => `+${p}s run time`, parents: ['pierce'], currency: 'gold', levels: 5, base: 1, effect: 'time', x: 240, y: 0 },
@@ -51,12 +52,12 @@ export const nodes: SkillNode[] = [
   { id: 'moreMorePierce', name: 'more MORE Pierce', desc: (p) => `+${p} pierce`, parents: ['moreDamage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMorePierce', x: -960, y: 0 },
   { id: 'biggerArrows', name: 'Better Arrows', desc: (p) => `+${pct(p)} arrow size and range`, parents: ['moreMorePierce'], currency: 'gold', levels: 5, base: 500, effect: 'biggerArrows', x: -1200, y: -70 },
   { id: 'dustDevil', name: 'Dust Devil', desc: () => `Each kill: +${pct(cfg.upgrade.dustPerKill)} move and attack speed (max ${pct(cfg.upgrade.dustCap)}), lasts ${cfg.upgrade.dustHold + cfg.upgrade.dustDuration}s, reset by kills`, parents: ['pierce'], currency: 'gold', levels: 1, base: 500, effect: null, x: 0, y: -190 },
-  { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: ['dash'], currency: 'sp', levels: 1, base: 2, effect: null, x: 0, y: 380 },
+  { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: [], currency: 'sp', levels: 1, base: 2, effect: null, x: 0, y: 0, tree: 'book' },
 
-  { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -240, y: 530 },
-  { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 0, y: 530 },
-  { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 240, y: 530 },
-  { id: 'doomsday', name: 'Doomsday Scenario', desc: () => 'Unlocks F: teleport and detonate a huge explosion', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 480, y: 530 },
+  { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -360, y: 190, tree: 'book' },
+  { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -120, y: 190, tree: 'book' },
+  { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 120, y: 190, tree: 'book' },
+  { id: 'doomsday', name: 'Doomsday Scenario', desc: () => 'Unlocks F: teleport and detonate a huge explosion', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 360, y: 190, tree: 'book' },
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -132,10 +133,12 @@ function sum(effects: Effect[]): number {
 
 export type Gated = 'dash' | 'teleport' | SkillId;
 
+export const bookSkills = nodes.filter((n) => n.tree === 'book');
+
 // Dev toggles in `cfg.abilities` can force an ability off; otherwise it must be unlocked in the profile.
 export function canUse(a: Gated): boolean {
   if (!cfg.abilities[a]) return false;
-  if (cfg.debug.unlockAll) return true;
+  if (a === 'dash' || cfg.debug.unlockAll) return true;
   return level(a) >= 1;
 }
 

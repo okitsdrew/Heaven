@@ -21,7 +21,6 @@ import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
 import { canUse, dustFraction, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
-import { Cutscene } from '../ui/Cutscene';
 import { Screens } from '../ui/Screens';
 import { SpatialHash } from '../util/spatialHash';
 import { addXp, setLevel, xpToNext } from '../xp';
@@ -50,7 +49,6 @@ export class GameScene extends Phaser.Scene {
   private gold!: Gold;
   private runHud!: RunHud;
   private screens!: Screens;
-  private cutscene!: Cutscene;
   private fx!: Fx;
   private ground!: Ground;
   private abilities!: Abilities;
@@ -60,7 +58,7 @@ export class GameScene extends Phaser.Scene {
   private hitStop = 0;
   private hud!: Hud;
   private targets = new SpatialHash<Hittable>(64);
-  private devMenu!: DevMenu;
+  private devMenu = DevMenu.get();
   private debugGfx!: Phaser.GameObjects.Graphics;
   private stats!: Phaser.GameObjects.Text;
   private vignette!: Phaser.GameObjects.Image;
@@ -72,6 +70,12 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     makePlaceholderArt(this);
+    this.menu = false;
+    this.dead = false;
+    this.bossSpawned = false;
+    this.hitStop = 0;
+    this.run = { kills: 0, gold: 0, xp: 0, levels: 0 };
+    resetBuffs();
 
     this.input2 = new Input([new KeyboardMouseSource(this.game.canvas)]);
     this.ground = new Ground(this);
@@ -87,8 +91,7 @@ export class GameScene extends Phaser.Scene {
     this.boss.onSlay = (t) => this.damage(t, slayDamage);
     this.gold = new Gold(this);
     this.runHud = new RunHud(this);
-    this.screens = new Screens();
-    this.cutscene = new Cutscene();
+    this.screens = Screens.get();
     this.gold.onCollect = (v) => {
       profile.gold += v;
       this.run.gold += v;
@@ -137,14 +140,15 @@ export class GameScene extends Phaser.Scene {
       toScreen(x, y, screen);
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
-    this.doomsday.onStun = (target, seconds) => {
-      if (target.kind === 'boss') this.boss.stun(seconds);
-      else this.enemies.stun(target, seconds);
+    this.doomsday.onStun = (target) => {
+      if (target.kind === 'boss') this.boss.stun(cfg.stun.duration);
+      else this.enemies.stun(target, cfg.stun.duration);
     };
     this.doomsday.onKnock = (target, dx, dy, force) => this.enemies.knock(target, dx, dy, force);
     this.swordSlash.onDamage = (target, amount, x, y) => {
       this.damage(target, amount);
-      if (target.kind === 'boss') this.boss.stun(cfg.swordSlash.bossStun);
+      if (target.kind === 'boss') this.boss.stun(cfg.stun.duration);
+      else this.enemies.stun(target, cfg.stun.duration);
       toScreen(x, y, screen);
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
@@ -212,7 +216,7 @@ export class GameScene extends Phaser.Scene {
       this.clock = t;
     };
     const jump = (s: number) => () => setClock(Math.max(0, this.clock + s));
-    this.devMenu = new DevMenu([
+    this.devMenu.setActions([
       { label: 'Clock +30s', run: jump(30) },
       { label: 'Clock +60s', run: jump(60) },
       { label: 'Clock to 5:00', run: () => setClock(300) },
@@ -222,7 +226,7 @@ export class GameScene extends Phaser.Scene {
       { label: 'Clock to boss spawn -5s', run: () => setClock(cfg.boss.spawnTime - 5) },
       { label: 'Spawn 50 enemies', run: () => this.spawnBurst(50) },
       { label: 'Clear enemies', run: () => this.enemies.clear() },
-      { label: 'Play intro cutscene', run: () => this.playIntro() },
+      { label: 'Go home (hub)', run: () => this.goHome() },
       { label: 'Restart run', run: () => this.startRun() },
       { label: 'End run (show summary)', run: () => this.endRun('Run ended') },
       { label: 'Open skill tree', run: () => this.openTree() },
@@ -233,6 +237,13 @@ export class GameScene extends Phaser.Scene {
         run: () => {
           const v = Number(prompt('Set level', String(profile.level)));
           if (Number.isFinite(v) && v >= 1) setLevel(v);
+        },
+      },
+      {
+        label: 'Unlock the book',
+        run: () => {
+          profile.bookUnlocked = true;
+          persistNow();
         },
       },
       {
@@ -276,8 +287,6 @@ export class GameScene extends Phaser.Scene {
 
     this.clockStart = 0;
     this.clock = this.clockStart;
-
-    if (cfg.story.introEnabled && !profile.seenIntro) this.playIntro();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input2.destroy());
   }
@@ -451,19 +460,15 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  private playIntro(): void {
-    this.menu = true;
+  private goHome(): void {
     this.screens.hide();
-    this.cutscene.play(() => {
-      profile.seenIntro = true;
-      persistNow();
-      this.startRun();
-    });
+    persistNow();
+    this.scene.start('hub');
   }
 
   private openTree(): void {
     this.menu = true;
-    this.screens.showTree(() => this.startRun());
+    this.screens.showTree(() => this.startRun(), () => this.goHome());
   }
 
   private startRun(): void {

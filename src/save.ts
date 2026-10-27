@@ -1,10 +1,10 @@
 // Persistent player progress. Versioned so old saves can be migrated as the schema grows.
 
 const SAVE_KEY = 'heaven.save.v1';
-const LAYOUT_KEY = 'heaven.treeLayout.v3';
-const OLD_LAYOUT_KEY = 'heaven.treeLayout.v2';
+const LAYOUT_KEY = 'heaven.treeLayout.v4';
+const OLD_LAYOUT_KEYS = ['heaven.treeLayout.v3', 'heaven.treeLayout.v2'];
 // Nodes whose default spot moved; their saved drags from the old layout are dropped.
-const MOVED = ['pierce', 'dash', 'dustDevil', 'teleport', 'fireFairy', 'iceFairy', 'swordSlash'];
+const MOVED = ['pierce', 'dash', 'dustDevil', 'teleport', 'fireFairy', 'iceFairy', 'swordSlash', 'doomsday'];
 const VERSION = 1;
 
 export interface SaveData {
@@ -14,11 +14,13 @@ export interface SaveData {
   level: number;
   xp: number;
   nodes: Record<string, number>;
-  seenIntro: boolean;
+  // Story progress: the opening has played, and the book's pages can be opened.
+  introDone: boolean;
+  bookUnlocked: boolean;
 }
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, seenIntro: false };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false };
 }
 
 function storageGet(key: string): string | null {
@@ -49,9 +51,15 @@ function sanitize(src: unknown): SaveData {
   out.skillPoints = Math.floor(num(s.skillPoints, 0, 0));
   out.level = Math.floor(num(s.level, 1, 1));
   out.xp = num(s.xp, 0, 0);
-  out.seenIntro = s.seenIntro === true;
+  out.introDone = s.introDone === true;
+  out.bookUnlocked = s.bookUnlocked === true;
   if (s.nodes && typeof s.nodes === 'object') {
     for (const [k, v] of Object.entries(s.nodes)) if (typeof v === 'number' && v > 0) out.nodes[k] = Math.floor(v);
+  }
+  // Dash is unlocked from the start now; refund the point spent on its old node.
+  if (out.nodes.dash) {
+    delete out.nodes.dash;
+    out.skillPoints += 1;
   }
   // Abilities used to be unlocked from a separate list; they are tree nodes now.
   const old = (src as { skills?: Record<string, unknown> }).skills;
@@ -107,7 +115,10 @@ export function loadLayout(): Layout {
     let raw = storageGet(LAYOUT_KEY);
     let migrated = false;
     if (raw === null) {
-      raw = storageGet(OLD_LAYOUT_KEY);
+      for (const key of OLD_LAYOUT_KEYS) {
+        raw = storageGet(key);
+        if (raw !== null) break;
+      }
       migrated = raw !== null;
     }
     const v = JSON.parse(raw ?? '{}');

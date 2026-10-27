@@ -160,6 +160,11 @@ export class Input {
     return this.sources.some((s) => s.pressed.has(action));
   }
 
+  // Marks a press as handled so the player doesn't also act on it (Space interacts instead of dashing).
+  consume(action: Action): void {
+    for (const s of this.sources) s.pressed.delete(action);
+  }
+
   justReleased(action: Action): boolean {
     return this.sources.some((s) => s.released.has(action));
   }
