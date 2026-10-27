@@ -41,6 +41,7 @@ export const defaults = {
     iceFairy: true,
     swordSlash: true,
     doomsday: true,
+    aegis: true,
   },
   teleport: {
     distance: 200,
@@ -235,6 +236,15 @@ export const defaults = {
     windup: 0.55,
     shake: 28,
     flash: 0.6,
+  },
+  aegis: {
+    duration: 5,
+    cooldown: 20,
+    damage: 100,
+    radiusMult: 0.5,
+    freeze: 0.1,
+    orbitRadius: 34,
+    orbitSpeed: 2,
   },
   fairy: {
     orbitRadius: 30,
@@ -436,6 +446,7 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     iceFairy: 'bool',
     swordSlash: 'bool',
     doomsday: 'bool',
+    aegis: 'bool',
   },
   teleport: {
     distance: { min: 50, max: 1000, step: 10 },
@@ -609,6 +620,15 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     windup: { min: 0.05, max: 2, step: 0.05 },
     shake: { min: 0, max: 80, step: 1 },
     flash: { min: 0, max: 1, step: 0.05 },
+  },
+  aegis: {
+    duration: { min: 0.5, max: 30, step: 0.5 },
+    cooldown: { min: 0, max: 120, step: 0.5 },
+    damage: { min: 1, max: 10000, step: 10 },
+    radiusMult: { min: 0.1, max: 2, step: 0.05 },
+    freeze: { min: 0, max: 1, step: 0.01 },
+    orbitRadius: { min: 10, max: 120, step: 1 },
+    orbitSpeed: { min: 0, max: 8, step: 0.1 },
   },
   fairy: {
     orbitRadius: { min: 10, max: 120, step: 1 },

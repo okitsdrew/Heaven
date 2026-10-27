@@ -148,6 +148,8 @@ In-game overlay, toggled with backtick. Must include:
 - The wave finishes clearing the screen first, then the first-time throne speech freezes the game.
 - Fire Wave no longer leaves burning ground or ignites anything on it: it leaves a faint warm ground tint in 40-unit segments (`groundSpacing`) that cools over `groundTime`, culled at 1500 units so it doesn't pop in big chunks.
 - Fire Wave cooldown 8s, ground time 3s. The ground is now ragged black/red/orange blotches with cracks, no straight outline, some drifting outside the wave's width (visual only, damage still uses the width). Skill costs: Fire Wave 1 sp, other skills 2 sp, Teleport 1 sp.
+- Skill book layout follows Drew's screenshot (Teleport centre, parent of all): Fire Wave top, Ice Storm upper left, Doomsday upper right, Sword Slash lower right, Worldbreaker Aegis bottom; the lower-left slot is held for another skill.
+- Worldbreaker Aegis (2 sp, white node, key G with unlockAll): a black/purple shield orbits the player. Using it raises it for 5s (glows white/gold). The next hit (enemy touch or boss) is negated, the game freezes 0.10s with the player glowing white, then a white/gold blast (100 damage, 50% of Doomsday's radius, same stun/knockback rules) goes off. Cooldown 20s from use. Tunables in `aegis`.
 - Dev option `debug.skillMove` (under God mode): skill nodes in the book can be dragged around (saved in `heaven.skillLayout.v1`) and skill drag-and-drop into slots is off while it is on.
 
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)

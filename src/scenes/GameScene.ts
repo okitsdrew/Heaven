@@ -17,6 +17,8 @@ import { Hud, RunHud } from '../game/Hud';
 import { LandingBlast } from '../game/LandingBlast';
 import { Player } from '../game/Player';
 import { SwordSlash } from '../game/SwordSlash';
+import { Aegis } from '../game/Aegis';
+import { HOLY } from '../game/Doomsday';
 import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
@@ -60,6 +62,9 @@ export class GameScene extends Phaser.Scene {
   private abilities!: Abilities;
   private fairies!: Fairies;
   private swordSlash!: SwordSlash;
+  private aegis!: Aegis;
+  // Seconds the game is held still while the Aegis takes a hit, just before its counter-blast.
+  private aegisFreeze = 0;
   private doomsday!: Doomsday;
   private hitStop = 0;
   private hud!: Hud;
@@ -130,6 +135,7 @@ export class GameScene extends Phaser.Scene {
     };
     this.fairies = new Fairies(this, this.fx);
     this.abilities = new Abilities(this, this.fx, () => this.targetList);
+    this.aegis = new Aegis(this);
     this.swordSlash = new SwordSlash(this, this.fx, () => this.targetList);
     this.doomsday = new Doomsday(this, this.fx, () => this.targetList);
     this.hud = new Hud(this, 4);
@@ -395,6 +401,13 @@ export class GameScene extends Phaser.Scene {
       input.endFrame();
       return;
     }
+    if (this.aegisFreeze > 0) {
+      this.aegisFreeze -= dt;
+      this.aegis.flash(this.player);
+      if (this.aegisFreeze <= 0) this.aegisBlast();
+      input.endFrame();
+      return;
+    }
     // The throne speaks with the whole game held still.
     if (this.throneTalking) {
       const cam = this.cameras.main;
@@ -452,14 +465,15 @@ export class GameScene extends Phaser.Scene {
     this.arrows.update(dt, this.targets, Math.max(cfg.dummy.radius, this.enemies.maxRadius, this.boss.radius), this.chunks.obstacles);
     this.abilities.update(dt, this.player, input, cursor);
     this.swordSlash.update(dt, this.player, input);
+    this.aegis.update(dt, this.player, input, this.dead);
     this.playerView.gauntlet = canUse('doomsday');
     this.playerView.handRaise = this.doomsday.raise;
     this.doomsday.update(dt, this.player, input, cursor, this.playerView.handPos, { width: cam.width, height: cam.height });
     if (!this.dead && !this.player.safe && !cfg.debug.godMode) {
-      if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius)) this.endRun('You died', true);
+      if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius) && !this.aegisBlock()) this.endRun('You died', true);
     }
     const bossHit = this.boss.update(dt, this.player.x, this.player.y, this.player.safe || this.dead, cfg.player.hitRadius);
-    if (bossHit && !this.dead && !cfg.debug.godMode) this.endRun('Cut down by your shade', true);
+    if (bossHit && !this.dead && !cfg.debug.godMode && !this.aegisBlock()) this.endRun('Cut down by your shade', true);
     if (this.dead) {
       this.endTimer -= dt;
       if (this.endTimer <= 0) this.showSummary();
@@ -499,6 +513,7 @@ export class GameScene extends Phaser.Scene {
       fireFairy: { remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
       iceFairy: { remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown, active: this.abilities.aiming === 'ice' },
       doomsday: { remaining: this.doomsday.cooldown, total: cfg.doomsday.cooldown, active: this.doomsday.aiming || this.doomsday.busy },
+      aegis: { remaining: this.aegis.cooldown, total: cfg.aegis.cooldown, active: this.aegis.active },
       swordSlash: { remaining: this.swordSlash.cooldown, total: cfg.swordSlash.cooldown, active: this.swordSlash.armed || this.swordSlash.active },
     };
     this.hud.update(
@@ -536,6 +551,21 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const view = { halfW: cam.width / 2, halfH: cam.height / 2, heading: this.heading() };
     for (let i = 0; i < n; i++) this.enemies.spawn(this.clock, this.player.x, this.player.y, view);
+  }
+
+  // A raised Aegis swallows the hit: the game holds still for a beat, then it detonates.
+  private aegisBlock(): boolean {
+    if (!this.aegis.active) return false;
+    this.aegis.consume();
+    this.player.graceTime = Math.max(this.player.graceTime, 0.8);
+    this.aegisFreeze = cfg.aegis.freeze;
+    return true;
+  }
+
+  private aegisBlast(): void {
+    toScreen(this.player.x, this.player.y, screen);
+    const hand = { x: screen.x, y: screen.y - 10 * cfg.render.pixelScale };
+    this.doomsday.blastAt(this.player.x, this.player.y, hand, cfg.doomsday.radius * cfg.aegis.radiusMult, cfg.aegis.damage, HOLY);
   }
 
   private creditless(fn: () => void): void {
@@ -673,6 +703,8 @@ export class GameScene extends Phaser.Scene {
     this.grace = 0;
     this.swordSlash.cancel();
     this.swordSlash.cooldown = 0;
+    this.aegis.reset();
+    this.aegisFreeze = 0;
     Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0, dashTime: 0, teleportTime: 0, lockTime: 0 });
     toScreen(0, 0, this.camCenter);
     this.playerView.setVisible(true);

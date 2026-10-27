@@ -32,7 +32,7 @@ export interface SaveData {
   binds: (string | null)[];
 }
 
-const SKILL_IDS = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday'];
+const SKILL_IDS = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'aegis'];
 
 function fresh(): SaveData {
   return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, skillTipShown: false, bossIntroSeen: false, binds: [null, null, null] };
@@ -107,7 +107,7 @@ function sanitize(src: unknown): SaveData {
   const clean = (v: unknown) => (typeof v === 'string' && SKILL_IDS.includes(v) && owned(v) && !seen.has(v) && seen.add(v) ? v : null);
   out.binds = given ? [clean(given[0]), clean(given[1]), clean(given[2])] : [null, null, null];
   if (!given) {
-    for (const id of ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday']) {
+    for (const id of ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'aegis']) {
       const free = out.binds.indexOf(null);
       if (owned(id) && free >= 0) out.binds[free] = id;
     }

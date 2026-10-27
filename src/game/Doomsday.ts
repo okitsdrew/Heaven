@@ -14,7 +14,24 @@ interface Blast {
   hx: number;
   hy: number;
   age: number;
+  radius: number;
+  pal: Palette;
 }
+
+export interface Palette {
+  hot: number[];
+  outer: number;
+  mid: number;
+  core: number;
+  ground: number;
+  ground2: number;
+  ring: number;
+  smoke: [number, number];
+}
+
+const FIRE: Palette = { hot: [0xffd21a, 0xffe680, 0xffffff, 0xff9a10], outer: 0xff7a10, mid: 0xffd21a, core: 0xfff2b0, ground: 0xff9a10, ground2: 0xffe680, ring: 0xfff2b0, smoke: [0x1a1408, 0x4a3a10] };
+// The Worldbreaker Aegis counter-blast: the same explosion in white and gold.
+export const HOLY: Palette = { hot: [0xffffff, 0xfff2b0, 0xffd21a, 0xffe680], outer: 0xffd070, mid: 0xfff0b0, core: 0xffffff, ground: 0xffd21a, ground2: 0xffffff, ring: 0xffffff, smoke: [0x3a3320, 0x6a5a30] };
 
 const screen = { x: 0, y: 0 };
 const YELLOW = 0xffd21a;
@@ -169,14 +186,17 @@ export class Doomsday {
 
   // The explosion proper: damage inside the circle, knockback and stun in the wider ring, then the show.
   private detonate(hand: Vec2): void {
+    this.blastAt(this.origin.x, this.origin.y, hand, cfg.doomsday.radius, cfg.doomsday.damage, FIRE);
+  }
+
+  // Any blast of this kind: damage inside the radius, knockback and stun in the wider ring.
+  blastAt(ox: number, oy: number, hand: Vec2, radius: number, damage: number, pal: Palette): void {
     const c = cfg.doomsday;
-    const ox = this.origin.x;
-    const oy = this.origin.y;
-    const wide = c.radius * c.stunRadiusMult;
+    const wide = radius * c.stunRadiusMult;
     // Damage first, so survivors are caught by the second ring too.
     for (const t of this.targets()) {
       if (!t.alive) continue;
-      if (Math.hypot(t.x - ox, t.y - oy) <= c.radius + t.radius) this.onDamage(t, c.damage, t.x, t.y);
+      if (Math.hypot(t.x - ox, t.y - oy) <= radius + t.radius) this.onDamage(t, damage, t.x, t.y);
     }
     for (const t of this.targets()) {
       if (!t.alive) continue;
@@ -191,15 +211,14 @@ export class Doomsday {
       this.onKnock(t, nx, ny, c.knockback * (1 - 0.5 * Math.min(1, d / wide)));
     }
 
-    this.blasts.push({ ox, oy, hx: hand.x, hy: hand.y, age: 0 });
+    this.blasts.push({ ox, oy, hx: hand.x, hy: hand.y, age: 0, radius, pal });
     this.flashAlpha = 1;
     this.fx.addShake(c.shake);
     this.onImpact();
-    this.debris(ox, oy, hand);
+    this.debris(ox, oy, hand, radius, pal);
   }
 
-  private debris(ox: number, oy: number, hand: Vec2): void {
-    const c = cfg.doomsday;
+  private debris(ox: number, oy: number, hand: Vec2, radius: number, pal: Palette): void {
     const px = cfg.render.pixelScale;
     for (let i = 0; i < 160; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -211,7 +230,7 @@ export class Doomsday {
         from: 0.5 + Math.random() * 0.6,
         to: 0.05,
         alpha: 1,
-        tint: HOT[Math.floor(Math.random() * HOT.length)],
+        tint: pal.hot[Math.floor(Math.random() * pal.hot.length)],
         vx: Math.cos(a) * speed,
         vy: Math.sin(a) * speed * 0.55 - 120,
         depth: 1e6,
@@ -219,7 +238,7 @@ export class Doomsday {
     }
     for (let i = 0; i < 70; i++) {
       const a = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(Math.random()) * c.radius;
+      const r = Math.sqrt(Math.random()) * radius;
       toScreen(ox + Math.cos(a) * r, oy + Math.sin(a) * r, screen);
       this.fx.particle({
         texture: Tex.smoke,
@@ -229,7 +248,7 @@ export class Doomsday {
         from: px * 0.8,
         to: px * (2.5 + Math.random() * 2),
         alpha: 0.9,
-        tint: Math.random() < 0.5 ? 0x1a1408 : 0x4a3a10,
+        tint: Math.random() < 0.5 ? pal.smoke[0] : pal.smoke[1],
         additive: false,
         vx: (Math.random() - 0.5) * 120,
         vy: -60 - Math.random() * 140,
@@ -277,8 +296,9 @@ export class Doomsday {
 
   private drawBlast(g: Phaser.GameObjects.Graphics, fg: Phaser.GameObjects.Graphics, b: Blast): void {
     const c = cfg.doomsday;
+    const pal = b.pal;
     const t = b.age / LIFE;
-    const wide = c.radius * c.stunRadiusMult;
+    const wide = b.radius * c.stunRadiusMult;
     toScreen(b.ox, b.oy, screen);
     const gx = screen.x;
     const gy = screen.y;
@@ -286,10 +306,10 @@ export class Doomsday {
     const ease = (v: number) => 1 - Math.pow(1 - Math.min(1, v), 3);
 
     // Scorched ground that glows and slowly cools.
-    const hot = ellipseHalfSize(c.radius);
-    g.fillStyle(0xff9a10, 0.5 * (1 - t));
+    const hot = ellipseHalfSize(b.radius);
+    g.fillStyle(pal.ground, 0.5 * (1 - t));
     g.fillEllipse(gx, gy, hot.x * 2 * ease(b.age / 0.15), hot.y * 2 * ease(b.age / 0.15));
-    g.fillStyle(0xffe680, 0.35 * Math.max(0, 1 - t * 2));
+    g.fillStyle(pal.ground2, 0.35 * Math.max(0, 1 - t * 2));
     g.fillEllipse(gx, gy, hot.x * 1.4, hot.y * 1.4);
 
     // Two shockwave rings rolling out across the ground to the stun radius.
@@ -297,7 +317,7 @@ export class Doomsday {
       const w = (b.age - delay) / 0.45;
       if (w < 0 || w > 1) continue;
       const h = ellipseHalfSize(wide * ease(w));
-      g.lineStyle(10 * (1 - w) + 2, 0xfff2b0, 0.9 * (1 - w));
+      g.lineStyle(10 * (1 - w) + 2, pal.ring, 0.9 * (1 - w));
       g.strokeEllipse(gx, gy, h.x * 2, h.y * 2);
     }
 
@@ -305,12 +325,12 @@ export class Doomsday {
     const swell = ease(b.age / 0.22);
     const fade = Math.max(0, 1 - b.age / 0.75);
     if (fade > 0) {
-      const rx = ellipseHalfSize(c.radius).x * swell;
+      const rx = ellipseHalfSize(b.radius).x * swell;
       const cy = gy - 22 * px * swell + (b.hy - (gy - 40 * px)) * (1 - swell) * 0.6;
       const cx = gx + (b.hx - gx) * (1 - swell);
-      fg.fillStyle(0xff7a10, 0.35 * fade).fillCircle(cx, cy, rx * 1.15);
-      fg.fillStyle(YELLOW, 0.55 * fade).fillCircle(cx, cy, rx * 0.85);
-      fg.fillStyle(0xfff2b0, 0.8 * fade).fillCircle(cx, cy, rx * 0.55);
+      fg.fillStyle(pal.outer, 0.35 * fade).fillCircle(cx, cy, rx * 1.15);
+      fg.fillStyle(pal.mid, 0.55 * fade).fillCircle(cx, cy, rx * 0.85);
+      fg.fillStyle(pal.core, 0.8 * fade).fillCircle(cx, cy, rx * 0.55);
       fg.fillStyle(0xffffff, 0.9 * fade).fillCircle(cx, cy, rx * 0.28);
     }
   }

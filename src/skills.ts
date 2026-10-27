@@ -63,38 +63,44 @@ export const nodes: SkillNode[] = [
     id: 'fireFairy',
     name: 'Fire Wave',
     desc: () => `Unleash a fire wave in front, burning enemies for ${cfg.fireWave.burnTime} seconds.${small(`Cooldown ${cfg.fireWave.cooldown}s, damage ${cfg.fireWave.damage}`)}`,
-    parents: ['teleport'], currency: 'sp', levels: 1, base: 1, effect: null, x: -495, y: 190, tree: 'book', color: 0xff7a20,
+    parents: ['teleport'], currency: 'sp', levels: 1, base: 1, effect: null, x: 0, y: -215, tree: 'book', color: 0xff7a20,
   },
   {
     id: 'iceFairy',
     name: 'Ice Storm',
     desc: () => `Direct an ice storm onto an area for ${cfg.iceStorm.duration} seconds. Damages and slows enemies. Freezes bosses for ${cfg.iceStorm.bossFreeze} second.${small(`Cooldown ${cfg.iceStorm.cooldown}s, damage ${cfg.iceStorm.damage} x${cfg.iceStorm.ticksPerSecond}/s`)}`,
-    parents: ['teleport'], currency: 'sp', levels: 1, base: 2, effect: null, x: -165, y: 190, tree: 'book', color: 0x7fd4ff,
+    parents: ['teleport'], currency: 'sp', levels: 1, base: 2, effect: null, x: -280, y: -103, tree: 'book', color: 0x7fd4ff,
   },
   {
     id: 'doomsday',
     name: 'Doomsday Scenario',
     desc: () => `Teleport to an area and unleashes an explosion. Damages, stuns, and knocks back enemies. Damages and stuns bosses.${small(`Cooldown ${cfg.doomsday.cooldown}s, damage ${cfg.doomsday.damage}`)}`,
-    parents: ['teleport'], currency: 'sp', levels: 1, base: 2, effect: null, x: 165, y: 190, tree: 'book', color: 0xffe14a,
+    parents: ['teleport'], currency: 'sp', levels: 1, base: 2, effect: null, x: 300, y: -135, tree: 'book', color: 0xffe14a,
   },
   {
     id: 'swordSlash',
     name: 'Sword Slash',
     desc: () => `Convert your next ${cfg.swordSlash.charges} attacks into a sword slash combo. Damages enemies and stuns bosses.${small(`Cooldown ${cfg.swordSlash.cooldown}s, damage ${cfg.swordSlash.coneDamage} cone, ${cfg.swordSlash.slamDamage} slam`)}`,
-    parents: ['teleport'], currency: 'sp', levels: 1, base: 2, effect: null, x: 495, y: 190, tree: 'book', color: 0xb070ff,
+    parents: ['teleport'], currency: 'sp', levels: 1, base: 2, effect: null, x: 305, y: 107, tree: 'book', color: 0xb070ff,
+  },
+  {
+    id: 'aegis',
+    name: 'Worldbreaker Aegis',
+    desc: () => `Defends yourself against the next attack for ${cfg.aegis.duration} seconds. Counterattack, detonating an area around you and stunning enemies and bosses.${small(`Cooldown ${cfg.aegis.cooldown}s, damage ${cfg.aegis.damage}`)}`,
+    parents: ['teleport'], currency: 'sp', levels: 1, base: 2, effect: null, x: 0, y: 230, tree: 'book', color: 0xffffff,
   },
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
-export type SkillId = 'fireFairy' | 'iceFairy' | 'swordSlash' | 'doomsday';
-export const skillIds: SkillId[] = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday'];
-export type AbilityAction = 'abilityQ' | 'abilityE' | 'abilityR' | 'abilityF';
+export type SkillId = 'fireFairy' | 'iceFairy' | 'swordSlash' | 'doomsday' | 'aegis';
+export const skillIds: SkillId[] = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'aegis'];
+export type AbilityAction = 'abilityQ' | 'abilityE' | 'abilityR' | 'abilityF' | 'abilityG';
 
 // Skills are not tied to a key: the three slots hold whichever skills the player has equipped.
 export const slotActions: AbilityAction[] = ['abilityQ', 'abilityE', 'abilityR'];
 export const slotKeys = ['Q', 'E', 'R'];
-const FALLBACK: Record<SkillId, AbilityAction> = { fireFairy: 'abilityQ', iceFairy: 'abilityE', swordSlash: 'abilityR', doomsday: 'abilityF' };
+const FALLBACK: Record<SkillId, AbilityAction> = { fireFairy: 'abilityQ', iceFairy: 'abilityE', swordSlash: 'abilityR', doomsday: 'abilityF', aegis: 'abilityG' };
 
 export function isSkill(id: string): id is SkillId {
   return (skillIds as string[]).includes(id);
