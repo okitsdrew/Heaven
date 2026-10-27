@@ -21,7 +21,7 @@ import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
-import { canUse, dustFraction, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
+import { canUse, dustFraction, nodeById, skillIds, slotKeys, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
 import { ghostHint } from '../ui/ghostHint';
 import { Screens } from '../ui/Screens';
 import { SpatialHash } from '../util/spatialHash';
@@ -463,12 +463,22 @@ export class GameScene extends Phaser.Scene {
       need: xpToNext(profile.level),
       dust: runBuffs.dust,
     });
-    this.hud.update(cam.width, cam.height, [
-      { key: 'Q', color: 0xff7a20, enabled: canUse('fireFairy'), remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
-      { key: 'E', color: 0x7fd4ff, enabled: canUse('iceFairy'), remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown, active: this.abilities.aiming === 'ice' },
-      { key: 'F', color: 0xffd21a, enabled: canUse('doomsday'), remaining: this.doomsday.cooldown, total: cfg.doomsday.cooldown, active: this.doomsday.aiming || this.doomsday.busy },
-      { key: 'R', color: 0xb070ff, enabled: canUse('swordSlash'), remaining: this.swordSlash.cooldown, total: cfg.swordSlash.cooldown, active: this.swordSlash.armed || this.swordSlash.active },
-    ]);
+    const info = {
+      fireFairy: { remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
+      iceFairy: { remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown, active: this.abilities.aiming === 'ice' },
+      doomsday: { remaining: this.doomsday.cooldown, total: cfg.doomsday.cooldown, active: this.doomsday.aiming || this.doomsday.busy },
+      swordSlash: { remaining: this.swordSlash.cooldown, total: cfg.swordSlash.cooldown, active: this.swordSlash.armed || this.swordSlash.active },
+    };
+    this.hud.update(
+      cam.width,
+      cam.height,
+      slotKeys.map((key, i) => {
+        const id = profile.binds[i];
+        const skill = id && (skillIds as string[]).includes(id) ? (id as keyof typeof info) : null;
+        if (!skill || !canUse(skill)) return { key, color: 0, enabled: false, remaining: 0, total: 0 };
+        return { key, color: nodeById.get(skill)?.color ?? 0xffffff, enabled: true, ...info[skill] };
+      }),
+    );
     this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
     this.drawDebug();
 

@@ -1158,7 +1158,7 @@ export class HubScene extends Phaser.Scene {
     persistNow();
     await this.sleep(1.2);
     await this.say('oh dear oh dear', 'right');
-    await this.say("you're getting much stronger", 'right');
+    await this.say("you're getting stronger", 'right');
     await this.sleep(1);
     await this.say('but so are they', 'right');
     await this.sleep(1);
@@ -1259,7 +1259,7 @@ export class HubScene extends Phaser.Scene {
 
     await this.say('let us show them the true scope of war', 'right');
     await this.sleep(1);
-    await this.say("alas, you're too weak to be a threat", 'right');
+    await this.say("but, you're too weak at this moment", 'right');
 
     // He is sent to the head in the corner and walks there himself, stopping short of its glow.
     this.headLit = true;

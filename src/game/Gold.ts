@@ -159,7 +159,7 @@ export class Gold {
       toScreen(x, y, screen);
       if (screen.x < cam.scrollX - 40 || screen.x > cam.scrollX + cam.width + 40) return;
       if (screen.y < cam.scrollY - 80 || screen.y > cam.scrollY + cam.height + 80) return;
-      const size = px * cfg.gold.scale * (1 + Math.log2(value) * 0.25) * 0.6;
+      const size = px * cfg.gold.scale * (1 + Math.log2(value) * cfg.gold.valueScale) * 0.6;
       const sprite = (this.sprites[used] ??= this.scene.add.image(0, 0, Tex.coin));
       const glow = (this.glows[used] ??= this.scene.add
         .image(0, 0, Tex.glow)
@@ -169,7 +169,7 @@ export class Gold {
       glow
         .setVisible(true)
         .setPosition(screen.x, screen.y - lift)
-        .setScale(size * 0.7)
+        .setScale(size * cfg.gold.glowSize)
         .setAlpha(cfg.gold.glow)
         .setDepth(screen.y - 0.6);
       used++;

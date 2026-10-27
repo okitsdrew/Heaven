@@ -14,7 +14,7 @@ export class Eyes {
   glance = { x: 0, y: 0 };
   private look = { x: 0, y: 0 };
   private time = 0;
-  private blinkIn = 3;
+  private blinkIn = 5;
   private blinkT = -1;
   readonly sep = 92;
 
@@ -31,7 +31,7 @@ export class Eyes {
     this.blinkIn -= dt;
     if (this.blinkIn <= 0 && this.open > 0.5) {
       this.blinkT = 0;
-      this.blinkIn = 2.6 + Math.random() * 0.8;
+      this.blinkIn = 5.2 + Math.random() * 1.6;
     }
     let blink = 0;
     if (this.blinkT >= 0) {

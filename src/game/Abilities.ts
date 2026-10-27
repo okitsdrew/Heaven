@@ -4,7 +4,7 @@ import { Input } from '../input';
 import { ellipseHalfSize, toScreen, Vec2 } from '../iso';
 import { Hittable } from './Arrows';
 import { Fx } from './Fx';
-import { canUse } from '../skills';
+import { actionFor, canUse, slotActions } from '../skills';
 import type { Obstacle } from './Chunks';
 import { Player } from './Player';
 
@@ -122,9 +122,14 @@ export class Abilities {
     // Pressing a spell key aims it (pressing it again cancels); clicking casts.
     const target = cursor ?? { x: player.x + player.aimX * 200, y: player.y + player.aimY * 200 };
     const was = this.aiming;
-    if (input.justPressed('abilityQ')) this.aiming = this.aiming === 'fire' ? null : 'fire';
-    if (input.justPressed('abilityE')) this.aiming = this.aiming === 'ice' ? null : 'ice';
-    if (input.justPressed('abilityR')) this.aiming = null;
+    const fireKey = actionFor('fireFairy');
+    const iceKey = actionFor('iceFairy');
+    for (const key of [...slotActions, 'abilityF'] as const) {
+      if (!input.justPressed(key)) continue;
+      if (key === fireKey) this.aiming = this.aiming === 'fire' ? null : 'fire';
+      else if (key === iceKey) this.aiming = this.aiming === 'ice' ? null : 'ice';
+      else this.aiming = null;
+    }
     if (this.aiming === 'fire' && !canUse('fireFairy')) this.aiming = null;
     if (this.aiming === 'ice' && !canUse('iceFairy')) this.aiming = null;
     if (this.aiming && this.aiming !== was) this.onAimStart();

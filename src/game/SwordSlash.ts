@@ -4,7 +4,7 @@ import { cfg } from '../config';
 import { Input } from '../input';
 import { toScreen, Vec2 } from '../iso';
 import { Hittable } from './Arrows';
-import { canUse } from '../skills';
+import { actionFor, canUse } from '../skills';
 import { Fx } from './Fx';
 import { drawSwordArt, flame, PURPLE_SWORD } from './swordArt';
 import { Player } from './Player';
@@ -99,7 +99,8 @@ export class SwordSlash {
     const shelved = player.invincible;
     if (!canUse('swordSlash')) this.cancel();
     else if (!shelved) {
-      if (input.justPressed('abilityR') && !this.slash) {
+      const key = actionFor('swordSlash');
+      if (key && input.justPressed(key) && !this.slash) {
         if (this.armed) this.cancel();
         else if (this.cooldown <= 0) {
           this.armed = true;

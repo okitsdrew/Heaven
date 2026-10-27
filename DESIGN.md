@@ -131,6 +131,11 @@ In-game overlay, toggled with backtick. Must include:
 - The unlock scene kept replaying because Phaser reuses the last start data when `scene.start` gets none, so the hub kept seeing `bookIntro`. Every hub start now passes explicit data.
 - The throne's eyes blink about every 3s. The tree has a Hide/Show lines button and reacts to dev menu changes while open. After the book unlocks, the tree has a big Skills button (top right) that opens the book. The death summary has a Home button.
 
+### Round 8
+- The main tree is now the **upgrade tree**; the book holds the **skill tree**. Upgrade tree reshaped to Drew's drawing: Pierce in the middle, a column above (Fire Rate, More Fire Rate, Dust Devil) and below (More Bullets, More MORE Bullets), Damage to the left leading to More Range and more MORE Pierce, which both lead to More Damage, and Time to the right with Pickup Radius, Move Speed and Soul Value, which leads to Endless Misery and Double Souls. Better Arrows is removed (refunded). Layout key is now `heaven.treeLayout.v6`.
+- Skills are no longer tied to keys. Q, E and R are three equip slots (`profile.binds`); only equipped skills work and show on the player. In the book, click an owned skill then a slot, or a slot then a skill. Right-click a slot to empty it. New skills fill the first empty slot. The slot box takes the skill's colour. The HUD follows the slots. Fire Wave is orange, Ice Storm blue, Doomsday yellow, Sword Slash purple. Teleport stays on right click.
+- Souls grow less with value (`gold.valueScale`) and have a smaller aura (`gold.glowSize`). The throne blinks half as often.
+
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.

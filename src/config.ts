@@ -114,6 +114,8 @@ export const defaults = {
     cellSize: 128,
     scale: 1,
     glow: 0.9,
+    valueScale: 0.12,
+    glowSize: 0.45,
   },
   upgrade: {
     fireRate: 0.25,
@@ -502,6 +504,8 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     cellSize: { min: 32, max: 512, step: 16 },
     scale: { min: 0.3, max: 4, step: 0.1 },
     glow: { min: 0, max: 2, step: 0.05 },
+    valueScale: { min: 0, max: 1, step: 0.01 },
+    glowSize: { min: 0.1, max: 2, step: 0.05 },
   },
   upgrade: {
     fireRate: { min: 0, max: 2, step: 0.05 },

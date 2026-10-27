@@ -3,7 +3,7 @@ import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { Input } from '../input';
 import { ellipseHalfSize, toScreen, Vec2 } from '../iso';
-import { canUse } from '../skills';
+import { actionFor, canUse, slotActions } from '../skills';
 import { Hittable } from './Arrows';
 import { Fx } from './Fx';
 import { Player } from './Player';
@@ -100,11 +100,12 @@ export class Doomsday {
     if (!canUse('doomsday')) {
       this.aiming = false;
     } else if (!this.casting) {
-      if (input.justPressed('abilityF')) {
+      const key = actionFor('doomsday');
+      if (key && input.justPressed(key)) {
         this.aiming = !this.aiming;
         if (this.aiming) this.onAimStart();
       }
-      if (input.justPressed('abilityQ') || input.justPressed('abilityE') || input.justPressed('abilityR')) this.aiming = false;
+      for (const other of [...slotActions, 'abilityF'] as const) if (other !== key && input.justPressed(other)) this.aiming = false;
       // A click while it is cooling down does nothing and keeps it aimed.
       if (this.aiming && input.justPressed('fire')) {
         this.swallowFire = true;

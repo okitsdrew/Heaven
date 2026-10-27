@@ -1,10 +1,10 @@
 // Persistent player progress. Versioned so old saves can be migrated as the schema grows.
 
 const SAVE_KEY = 'heaven.save.v1';
-const LAYOUT_KEY = 'heaven.treeLayout.v5';
-const OLD_LAYOUT_KEYS = ['heaven.treeLayout.v4', 'heaven.treeLayout.v3', 'heaven.treeLayout.v2'];
+const LAYOUT_KEY = 'heaven.treeLayout.v6';
+const OLD_LAYOUT_KEYS = ['heaven.treeLayout.v5', 'heaven.treeLayout.v4', 'heaven.treeLayout.v3', 'heaven.treeLayout.v2'];
 // Nodes whose default spot moved; their saved drags from the old layout are dropped.
-const MOVED = ['pierce', 'dash', 'dustDevil', 'teleport', 'fireFairy', 'iceFairy', 'swordSlash', 'doomsday'];
+const MOVED = ['pierce', 'dash', 'dustDevil', 'teleport', 'fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'fireRate', 'moreFireRate', 'moreBullets', 'moreMoreBullets', 'damage', 'range', 'moreMorePierce', 'moreDamage', 'time', 'pickupRadius', 'moveSpeed', 'goldValue', 'moreTime', 'doubleGold'];
 const VERSION = 1;
 
 export interface SaveData {
@@ -24,10 +24,14 @@ export interface SaveData {
   // The book unlock scene plays once, and the bow hint shows on the first battle only.
   bookIntroSeen: boolean;
   bowHintShown: boolean;
+  // Which skill sits on Q, E and R (null when empty).
+  binds: (string | null)[];
 }
 
+const SKILL_IDS = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday'];
+
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, binds: [null, null, null] };
 }
 
 function storageGet(key: string): string | null {
@@ -82,10 +86,25 @@ function sanitize(src: unknown): SaveData {
     delete out.nodes.quadGold;
     out.nodes.doubleGold = 2;
   }
+  // Better Arrows is gone: refund what was spent on it.
+  for (let i = 0; i < (out.nodes.biggerArrows ?? 0); i++) out.gold += Math.ceil(500 * Math.pow(1.5, i) - 1e-9);
+  delete out.nodes.biggerArrows;
   // Abilities used to be unlocked from a separate list; they are tree nodes now.
   const old = (src as { skills?: Record<string, unknown> }).skills;
   if (old && typeof old === 'object') {
     for (const [k, v] of Object.entries(old)) if (v === true) out.nodes[k] = Math.max(1, out.nodes[k] ?? 0);
+  }
+  // Equipped skills: validated, no repeats, and only owned ones. Old saves had fixed keys (Q fire, E ice, R sword, F doomsday).
+  const given = Array.isArray(s.binds) ? s.binds : null;
+  const owned = (id: string) => (out.nodes[id] ?? 0) > 0;
+  const seen = new Set<string>();
+  const clean = (v: unknown) => (typeof v === 'string' && SKILL_IDS.includes(v) && owned(v) && !seen.has(v) && seen.add(v) ? v : null);
+  out.binds = given ? [clean(given[0]), clean(given[1]), clean(given[2])] : [null, null, null];
+  if (!given) {
+    for (const id of ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday']) {
+      const free = out.binds.indexOf(null);
+      if (owned(id) && free >= 0) out.binds[free] = id;
+    }
   }
   return out;
 }

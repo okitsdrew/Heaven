@@ -1,8 +1,10 @@
 import { cfg } from '../config';
 import { clearLayout, Layout, loadLayout, persist, profile, saveLayout } from '../save';
 import {
+  bind,
   buy,
   canBuy,
+  isSkill,
   isVisible,
   level,
   maxLevel,
@@ -10,7 +12,9 @@ import {
   refund,
   nodeById,
   nodes,
+  SkillId,
   SkillNode,
+  slotKeys,
 } from '../skills';
 import { xpToNext } from '../xp';
 
@@ -64,11 +68,27 @@ const css = `
 #tree .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 #tree .tools button { padding: 3px 8px; font-size: 12px; }
 #tree .bottom { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 12px; z-index: 3; }
+#tree .node.skill { width: 190px; }
+#tree .node small { display: block; margin-top: 4px; color: #8d85a8; font-size: 10px; }
+#tree .node.selected { outline: 3px solid #ffffff; outline-offset: 3px; }
+#tree .node.pickable { animation: pick 0.9s ease-in-out infinite alternate; }
+@keyframes pick { from { outline: 2px solid rgba(255,255,255,0.1); outline-offset: 3px; } to { outline: 2px solid rgba(255,255,255,0.8); outline-offset: 3px; } }
+#tree .selector { position: absolute; left: 16px; bottom: 56px; display: flex; z-index: 3; }
+#tree .slot { width: 132px; text-align: center; }
+#tree .slot .key { font-size: 24px; color: #e9e3f5; margin-bottom: 4px; }
+#tree .slot .box { height: 84px; border: 3px solid #cfc8e0; margin-left: -3px; display: flex; align-items: center; justify-content: center;
+  padding: 4px; box-sizing: border-box; font-size: 12px; font-weight: bold; color: #f2d7a6; background: #14111c; cursor: pointer; }
+#tree .slot:first-child .box { margin-left: 0; }
+#tree .slot.sel .box { outline: 3px solid #ffffff; outline-offset: 2px; z-index: 1; position: relative; }
+#tree .slot.target .box { animation: pick 0.9s ease-in-out infinite alternate; }
 #tree .skills { position: fixed; top: 64px; right: 16px; z-index: 4; }
 #tree .hint { position: absolute; left: 16px; bottom: 16px; color: #6f6788; font-size: 11px; z-index: 3; }
 `;
 
 type Mode = 'main' | 'book';
+
+const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+const rgba = (c: number, a: number) => `rgba(${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}, ${a})`;
 
 export class Screens {
   private static inst: Screens | null = null;
@@ -91,6 +111,9 @@ export class Screens {
   private view = { x: 0, y: 0, scale: 1 };
   private bottom: HTMLDivElement;
   private opened = false;
+  private selector: HTMLDivElement;
+  private selSkill: SkillId | null = null;
+  private selSlot: number | null = null;
 
   private constructor() {
     const style = document.createElement('style');
@@ -107,6 +130,7 @@ export class Screens {
 
     for (const n of nodes) this.els.set(n.id, this.makeNode(n));
 
+    this.selector = this.div('selector', undefined, this.tree);
     this.bottom = this.div('bottom', undefined, this.tree);
     this.div('hint', undefined, this.tree).textContent =
       'Drag background to pan, wheel to zoom, drag a node to move it, click a node to buy, right-click to refund.';
@@ -175,10 +199,12 @@ export class Screens {
 
   private openMode(mode: Mode): void {
     this.hide();
+    this.selSkill = null;
+    this.selSlot = null;
     if (this.opened) this.views[this.mode] = this.view;
     this.opened = true;
     this.mode = mode;
-    this.view = this.views[mode] ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 - (mode === 'book' ? 100 : 0), scale: mode === 'book' ? 1 : 0.9 };
+    this.view = this.views[mode] ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 + (mode === 'book' ? -100 : 40), scale: mode === 'book' ? 1 : 0.8 };
     this.tree.classList.add('open');
     this.refresh();
   }
@@ -227,6 +253,7 @@ export class Screens {
       start = null;
       el.classList.remove('dragging');
       if (dragged) saveLayout(this.layout);
+      else if (isSkill(n.id) && level(n.id) >= 1) this.pickSkill(n.id);
       else if (buy(n)) {
         persist();
         this.refresh();
@@ -245,6 +272,11 @@ export class Screens {
     this.stage.addEventListener('contextmenu', (e) => e.preventDefault());
     this.stage.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
+      if (this.selSkill || this.selSlot !== null) {
+        this.selSkill = null;
+        this.selSlot = null;
+        this.refresh();
+      }
       this.stage.setPointerCapture(e.pointerId);
       pan = { px: e.clientX, py: e.clientY, x: this.view.x, y: this.view.y };
       this.stage.classList.add('panning');
@@ -310,9 +342,56 @@ export class Screens {
     }
   }
 
+  // Click an owned skill, then a slot (or a slot, then a skill) to equip it there.
+  private pickSkill(id: SkillId): void {
+    if (this.selSlot !== null) {
+      bind(id, this.selSlot);
+      this.selSlot = null;
+      this.selSkill = null;
+      persist();
+    } else this.selSkill = this.selSkill === id ? null : id;
+    this.refresh();
+  }
+
+  private pickSlot(i: number): void {
+    if (this.selSkill) {
+      bind(this.selSkill, i);
+      this.selSkill = null;
+      this.selSlot = null;
+      persist();
+    } else this.selSlot = this.selSlot === i ? null : i;
+    this.refresh();
+  }
+
+  private renderSelector(): void {
+    this.selector.style.display = this.mode === 'book' ? 'flex' : 'none';
+    this.selector.replaceChildren();
+    slotKeys.forEach((key, i) => {
+      const id = profile.binds[i];
+      const node = id ? nodeById.get(id) : undefined;
+      const slot = this.div('slot' + (this.selSlot === i ? ' sel' : '') + (this.selSkill ? ' target' : ''), undefined, this.selector);
+      this.div('key', undefined, slot).textContent = key;
+      const box = this.div('box', undefined, slot);
+      if (node) {
+        const c = hex(node.color ?? 0xffffff);
+        box.textContent = node.name;
+        box.style.borderColor = c;
+        box.style.background = `linear-gradient(rgba(0,0,0,0.5), ${rgba(node.color ?? 0xffffff, 0.3)}), #14111c`;
+      }
+      box.addEventListener('click', () => this.pickSlot(i));
+      box.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        profile.binds[i] = null;
+        persist();
+        this.refresh();
+      });
+    });
+  }
+
   private refresh(): void {
     this.applyView();
     this.renderTop();
+    this.renderSelector();
     for (const [id, el] of this.els) if ((nodeById.get(id)?.tree ?? 'main') !== this.mode) el.style.display = 'none';
     for (const n of this.shown()) {
       const el = this.els.get(n.id);
@@ -323,11 +402,20 @@ export class Screens {
       const per = n.effect ? cfg.upgrade[n.effect] : 0;
       el.style.display = isVisible(n) ? '' : 'none';
       const unlocked = n.parents.every((p) => level(p) >= 1);
-      el.className = 'node' + (lvl > 0 ? ' owned' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim');
+      const equippable = isSkill(n.id) && lvl >= 1;
+      el.className =
+        'node' + (n.color ? ' skill' : '') + (lvl > 0 ? ' owned' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim') +
+        (this.selSkill === n.id ? ' selected' : '') + (equippable && this.selSlot !== null ? ' pickable' : '');
+      if (n.color) {
+        el.style.borderColor = hex(n.color);
+        el.style.background = `linear-gradient(rgba(0,0,0,0.55), ${rgba(n.color, 0.22)}), #14111c`;
+        el.style.boxShadow = lvl > 0 ? `0 0 12px ${rgba(n.color, 0.5)}` : '';
+      }
       const costText =
         cost === null ? 'MAX' : cfg.tree.free ? 'free' : `${cost} ${n.currency === 'gold' ? 'souls' : 'SP'}`;
+      const slot = isSkill(n.id) ? profile.binds.indexOf(n.id) : -1;
       el.innerHTML = `<div class="name">${n.name}</div><div class="desc">${n.desc(per)}</div>` +
-        `<div class="lvl">${lvl}/${max}</div><div class="cost">${costText}</div>`;
+        `<div class="lvl">${slot >= 0 ? `Equipped on ${slotKeys[slot]}` : `${lvl}/${max}`}</div><div class="cost">${costText}</div>`;
     }
     this.layoutNodes();
   }
