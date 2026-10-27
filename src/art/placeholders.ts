@@ -334,9 +334,9 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
   );
 
   fromGrid(scene, Tex.coin, ['.yyyy.', 'yYYYYy', 'yYwwYy', 'yYwYYy', 'yYYYYy', '.yyyy.'], {
-    y: 0x6a2fc0,
-    Y: 0xb47bff,
-    w: 0xeadcff,
+    y: 0x2f78e8,
+    Y: 0x8fd0ff,
+    w: 0xf0faff,
   });
 
   softCircle(scene, Tex.glow, 32, 0xffffff, 0.9);

@@ -342,7 +342,7 @@ export class GameScene extends Phaser.Scene {
       if (!profile.bowHintShown) {
         profile.bowHintShown = true;
         persistNow();
-        ghostHint(this, this.fx, 'Void Bow: Click to shoot', { x: cam.width / 2, y: cam.height * 0.68, depth: 4e6, hold: cfg.entry.hintTime + 0.7, screenSpace: true });
+        ghostHint(this, this.fx, ['Void Bow: Click to shoot', 'Collect souls to grow stronger', 'Level up to unlock new skills'], { x: cam.width / 2, y: cam.height * 0.68, depth: 4e6, hold: cfg.entry.hintTime + 0.7, screenSpace: true });
       }
     }
     this.fx.update(dt);
@@ -568,6 +568,7 @@ export class GameScene extends Phaser.Scene {
     Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0, dashTime: 0, teleportTime: 0, lockTime: 0 });
     toScreen(0, 0, this.camCenter);
     this.playerView.setVisible(true);
+    this.beginDive();
   }
 
   private drawDebug(): void {

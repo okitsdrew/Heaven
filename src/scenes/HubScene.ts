@@ -87,11 +87,11 @@ export class HubScene extends Phaser.Scene {
   private voidGfx!: G;
   private voidK = 0;
   private floatPt = { x: 0, y: 0 };
-  private floatBob = 0;
   private camRot = 0;
   private camRate = 0;
   private iris: G | null = null;
   private skipWaiters: (() => void)[] = [];
+  private clickIcon: G | null = null;
   private headLit = false;
   private bookOutline!: Phaser.GameObjects.RenderTexture;
   private bookPointed = false;
@@ -154,8 +154,8 @@ export class HubScene extends Phaser.Scene {
     this.rings = [];
     this.lines = [];
     this.skipWaiters = [];
+    this.clickIcon = null;
     this.voidK = 0;
-    this.floatBob = 0;
     this.camRot = 0;
     this.camRate = 0;
     this.iris = null;
@@ -647,7 +647,7 @@ export class HubScene extends Phaser.Scene {
 
   private updatePlayer(dt: number, input: Input): void {
     if (this.carry) {
-      this.setFeet(this.floatPt.x, this.floatPt.y + Math.sin(this.clock * 2.2) * this.floatBob);
+      this.setFeet(this.floatPt.x, this.floatPt.y);
       return;
     }
     if (!this.controlled) return;
@@ -800,6 +800,9 @@ export class HubScene extends Phaser.Scene {
     g.clear();
     const k = this.voidK;
     if (k <= 0.001) return;
+    // It travels with him, always drawn beneath his body.
+    const f = this.feet();
+    g.setPosition(f.x, f.y + 3).setDepth(f.y - 30);
     const spin = t * 2;
     g.fillStyle(0x7a2fd0, 0.18 * k).fillEllipse(0, 0, 150 * k, 56 * k);
     g.fillStyle(0x000000, 1).fillEllipse(0, 0, 112 * k, 40 * k);
@@ -973,7 +976,7 @@ export class HubScene extends Phaser.Scene {
     this.controlled = true;
     this.busy = false;
     this.followPlayer();
-    ghostHint(this, this.fx, '(W A S D to move. Space to Dash)', { x: W / 2, y: 372, depth: DEPTH_DARK + 3, hold: (cfg.hub.hintTime + 0.8) / cfg.hub.cutsceneSpeed });
+    ghostHint(this, this.fx, ['(W A S D to move. Space to Dash)'], { x: W / 2, y: 372, depth: DEPTH_DARK + 3, hold: (cfg.hub.hintTime + 0.8) / cfg.hub.cutsceneSpeed });
   }
 
   private dropRock(x: number, y: number, size: number): Promise<void> {
@@ -1078,8 +1081,17 @@ export class HubScene extends Phaser.Scene {
     });
   }
 
-  private waitOrClick(sec: number): Promise<void> {
-    return this.skippable({ targets: { v: 0 }, v: 1, duration: sec * 1000 });
+  // A little mouse on the corner of the text box says the next click moves on; it sits on the border so the text keeps its spacing.
+  private clickToContinue(right: number, bottom: number): Promise<void> {
+    const g = this.add.graphics().setPosition(right - 20, bottom).setDepth(DEPTH_DARK + 3.2);
+    g.fillStyle(0x16121f, 1).fillRoundedRect(-11, -13, 22, 26, 8);
+    g.lineStyle(2, 0xffffff, 0.9).strokeRoundedRect(-8, -10, 16, 20, 6);
+    g.lineBetween(-8, -2, 8, -2);
+    g.lineBetween(0, -10, 0, -2);
+    g.fillStyle(0xffffff, 0.9).fillRoundedRect(-7, -9, 7, 7, 2);
+    this.clickIcon = g;
+    this.tweens.add({ targets: g, alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
+    return new Promise((res) => this.skipWaiters.push(res));
   }
 
   private async clearLines(): Promise<void> {
@@ -1087,6 +1099,11 @@ export class HubScene extends Phaser.Scene {
     const box = this.textBox;
     this.lines = [];
     this.textBox = null;
+    if (this.clickIcon) {
+      this.tweens.killTweensOf(this.clickIcon);
+      this.clickIcon.destroy();
+      this.clickIcon = null;
+    }
     await this.tw({ targets: [...lines.map((l) => l.image), ...(box ? [box] : [])], alpha: 0, duration: 450 });
     for (const l of lines) l.destroy();
     box?.destroy();
@@ -1110,7 +1127,7 @@ export class HubScene extends Phaser.Scene {
   }
 
   // The throne speaks in a text box beside its eyes: wrapped to a column on one side, then wiped away.
-  private async say(text: string, side: 'left' | 'right', hold = 0.32): Promise<void> {
+  private async say(text: string, side: 'left' | 'right'): Promise<void> {
     const size = cfg.hub.textSize;
     const rows = await this.wrapLines(text, size, side === 'left' ? 380 : 410);
     const x = side === 'right' ? 640 : 54;
@@ -1118,7 +1135,7 @@ export class HubScene extends Phaser.Scene {
     const w = Math.max(...rows.map((r) => this.measure(r, size)));
     this.openBox(x - 8, 16, w + 26, rows.length * lh + 22);
     for (let i = 0; i < rows.length; i++) await this.scrawl(rows[i], x, 46 + i * lh, size);
-    await this.waitOrClick(hold + 0.029 * text.length);
+    await this.clickToContinue(x - 8 + w + 26, 16 + rows.length * lh + 22);
     await this.clearLines();
   }
 
@@ -1137,10 +1154,13 @@ export class HubScene extends Phaser.Scene {
     persistNow();
     await this.sleep(1.2);
     await this.say('oh dear oh dear', 'right');
-    await this.say("you're getting stronger. but so are they", 'right');
+    await this.say("you're getting much stronger", 'right');
+    await this.sleep(1);
+    await this.say('but so are they', 'right');
+    await this.sleep(1);
 
-    const walk = this.walkTo(168, 394);
-    await this.say('come, learn the way of my family', 'right', 0.5);
+    const walk = this.walkTo(172, 404);
+    await this.say('come, learn the ways of our family', 'right');
     await walk;
     this.face(-1, 0);
     this.bookPointed = true;
@@ -1183,22 +1203,21 @@ export class HubScene extends Phaser.Scene {
     await this.sleep(0.7);
     await this.say('well now, what have we here', 'right');
 
-    // He is drawn up off the floor toward the eyes, and a black void opens beneath him.
+    // He is drawn up off the floor toward the eyes with a black void opening beneath his feet, and it travels with him.
     this.bookPower = 1;
     const from = this.feet();
     this.floatPt = { x: from.x, y: from.y };
     this.carry = true;
     this.view.armsRate = 0.06;
-    const lift = this.tw({ targets: this.floatPt, x: 560, y: 290, duration: 2800, ease: 'Sine.easeInOut' });
+    void this.tweenValue(0, 1, 700, (v) => (this.voidK = v), 'Back.easeOut');
     void this.sleep(1.2).then(() => {
       this.player.armsUpTimer = 0;
       this.face(0, -1);
     });
-    await Promise.all([lift, this.say('oh, what a blessed boon', 'right')]);
-    this.floatBob = 2;
-    await this.tweenValue(0, 1, 600, (v) => (this.voidK = v), 'Back.easeOut');
+    await this.tw({ targets: this.floatPt, x: 560, y: 290, duration: 2800, ease: 'Sine.easeInOut' });
     await this.sleep(0.5);
 
+    await this.say('oh, what a blessed boon', 'right');
     await this.say('fear not, you are safe in here my friend', 'left');
     await this.say('though, for how long, i cannot say', 'left');
 
@@ -1212,7 +1231,6 @@ export class HubScene extends Phaser.Scene {
 
     // The void closes and he is lowered to the floor.
     await this.tweenValue(1, 0, 450, (v) => (this.voidK = v), 'Quad.easeIn');
-    this.floatBob = 0;
     this.face(1, -0.4);
     await this.tw({ targets: this.floatPt, x: 560, y: 376, duration: 1700, ease: 'Sine.easeInOut' });
     this.carry = false;
@@ -1222,7 +1240,8 @@ export class HubScene extends Phaser.Scene {
     const x = 640;
     const size = cfg.hub.textSize;
     const lh = size * 1.5;
-    this.openBox(x - 8, 16, this.measure('Become my champion', size) + 26, lh * 4 + 22);
+    const boxW = this.measure('Become my champion', size) + 26;
+    this.openBox(x - 8, 16, boxW, lh * 3 + 22);
     await this.scrawl('Learn my ways.', x, 46, size);
     await this.sleep(0.32);
     await this.scrawl('Grow in Power', x, 46 + lh, size);
@@ -1231,23 +1250,21 @@ export class HubScene extends Phaser.Scene {
     this.bump(6);
     void this.tweenValue(0, 1, 300, (v) => (this.eyes.wide = v)).then(() => this.sleep(1.2)).then(() => this.tweenValue(1, 0, 500, (v) => (this.eyes.wide = v)));
     await this.scrawl('Become my champion', x, 46 + lh * 2, size);
-    await this.waitOrClick(1.6);
-    await this.scrawl('...........', x, 46 + lh * 3, size);
-    await this.waitOrClick(1.3);
+    await this.clickToContinue(x - 8 + boxW, 16 + lh * 3 + 22);
     await this.clearLines();
 
     await this.say('let us show them the true scope of war', 'right');
     await this.sleep(1);
     await this.say("alas, you're too weak to be a threat", 'right');
 
-    // He is sent to the head in the corner and walks there himself.
+    // He is sent to the head in the corner and walks there himself, stopping short of its glow.
     this.headLit = true;
     this.focus(W / 2, 300, 1);
-    const walk = this.walkTo(930, 306);
+    const walk = this.walkTo(930, 336);
     await this.say('come, darling, learn from Anathema', 'left');
     await walk;
     this.face(0, -1);
-    await this.say('few can withstand his memories for long...', 'left', 1);
+    await this.say('few can withstand his memories for long...', 'left');
 
     profile.introDone = true;
     persistNow();

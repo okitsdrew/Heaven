@@ -13,7 +13,11 @@ interface HintOptions {
 }
 
 // Ghostly text that hangs in the air for a moment and is then blown away like smoke.
-export function ghostHint(scene: Phaser.Scene, fx: Fx, text: string, o: HintOptions): void {
+export function ghostHint(scene: Phaser.Scene, fx: Fx, lines: string[], o: HintOptions): void {
+  lines.forEach((line, i) => hintLine(scene, fx, line, { ...o, y: o.y + i * 38 }));
+}
+
+function hintLine(scene: Phaser.Scene, fx: Fx, text: string, o: HintOptions): void {
   const size = 26;
   const font = `italic ${size}px Georgia, serif`;
   const ctx = document.createElement('canvas').getContext('2d')!;

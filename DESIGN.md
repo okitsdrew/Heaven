@@ -117,6 +117,10 @@ In-game overlay, toggled with backtick. Must include:
 - Throne text is skippable: a click finishes the line being written, the next click moves on.
 - Entering battle: the view spins in on Anathema with a closing iris (`cfg.entry`), then he dives head first from the sky and lands in a purple and black blast. The first time only, "Void Bow: Click to shoot" appears for 2s and blows away (`bowHintShown`).
 
+### Round 5
+- Souls are blue and brighter. The dive-in plays on every run start, restarts included. The first-battle hint also says "Collect souls to grow stronger" and "Level up to unlock new skills" and stays 3s (`entry.hintTime`).
+- Throne speech waits for a click to move on (a small mouse icon sits on the box corner). The void circle spawns under him and travels with him, drawn under his body. "Become my champion" ends the scrawl without the dots.
+
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.
