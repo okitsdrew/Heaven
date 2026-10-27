@@ -29,6 +29,10 @@ export class Player {
   vy = 0;
   aimX = 1;
   aimY = 0;
+  // Offset from him to the cursor in world space, or null when there is no cursor.
+  private aimOffX = 0;
+  private aimOffY = 0;
+  private hasCursor = false;
 
   fireCooldown = 0;
   dashTime = 0;
@@ -110,7 +114,10 @@ export class Player {
         this.aimX = dx / len;
         this.aimY = dy / len;
       }
+      this.aimOffX = dx;
+      this.aimOffY = dy;
     }
+    this.hasCursor = aimWorld !== null;
 
     if (this.frozenTime > 0) {
       this.frozenTime = Math.max(0, this.frozenTime - dt);
@@ -131,7 +138,7 @@ export class Player {
     this.graceTime = Math.max(0, this.graceTime - dt);
 
     this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
-    if (canUse('teleport') && (input.justPressed('teleport') || input.isDown('teleport')) && this.teleportCooldown <= 0) {
+    if (canUse('teleport') && input.justPressed('teleport') && this.teleportCooldown <= 0) {
       this.teleport();
     }
 
@@ -208,13 +215,20 @@ export class Player {
     const dx = (to.x - from.x) / l;
     const dy = (to.y - from.y) / l;
     screenToWorldVel(dx, dy, cfg.teleport.distance, tmp);
-    const jumpX = tmp.x;
-    const jumpY = tmp.y;
+    let jumpX = tmp.x;
+    let jumpY = tmp.y;
+    // A cursor inside the range is landed on exactly; outside it, he goes the full distance toward it.
+    const full = Math.hypot(jumpX, jumpY);
+    if (this.hasCursor && Math.hypot(this.aimOffX, this.aimOffY) < full) {
+      jumpX = this.aimOffX;
+      jumpY = this.aimOffY;
+    }
+    const jumpLen = Math.hypot(jumpX, jumpY);
     screenToWorldVel(dx, dy, stats.moveSpeed(), tmp);
     this.tpEndVx = tmp.x;
     this.tpEndVy = tmp.y;
 
-    const travel = cfg.teleport.speed > 0 ? cfg.teleport.distance / cfg.teleport.speed : 0;
+    const travel = cfg.teleport.speed > 0 ? jumpLen / cfg.teleport.speed : 0;
     this.teleportCooldown = cfg.teleport.cooldown;
     this.lockTime = 0;
     this.onTeleport(fromX, fromY, fromX + jumpX, fromY + jumpY, travel);
