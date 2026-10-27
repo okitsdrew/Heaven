@@ -17,10 +17,12 @@ export interface SaveData {
   // Story progress: the opening has played, and the book's pages can be opened.
   introDone: boolean;
   bookUnlocked: boolean;
+  // Whether he has gone through Anathema yet (it glows until he does).
+  visitedHead: boolean;
 }
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false };
 }
 
 function storageGet(key: string): string | null {
@@ -53,6 +55,7 @@ function sanitize(src: unknown): SaveData {
   out.xp = num(s.xp, 0, 0);
   out.introDone = s.introDone === true;
   out.bookUnlocked = s.bookUnlocked === true;
+  out.visitedHead = s.visitedHead === true;
   if (s.nodes && typeof s.nodes === 'object') {
     for (const [k, v] of Object.entries(s.nodes)) if (typeof v === 'number' && v > 0) out.nodes[k] = Math.floor(v);
   }

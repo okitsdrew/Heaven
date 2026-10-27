@@ -249,12 +249,12 @@ export const defaults = {
     attachHeight: 14,
   },
   cloak: {
-    segments: 7,
-    length: 24,
-    width: 11,
-    gravity: 520,
-    drag: 3.2,
-    eyeGlow: 0.8,
+    segments: 4,
+    length: 9,
+    width: 8,
+    gravity: 760,
+    drag: 20,
+    eyeGlow: 0.4,
   },
   camera: {
     followRate: 12,
