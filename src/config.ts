@@ -248,6 +248,14 @@ export const defaults = {
     travelRate: 5,
     attachHeight: 14,
   },
+  cloak: {
+    segments: 7,
+    length: 24,
+    width: 11,
+    gravity: 520,
+    drag: 3.2,
+    eyeGlow: 0.8,
+  },
   camera: {
     followRate: 12,
     shakeOnCast: 4,
@@ -338,7 +346,7 @@ export const defaults = {
     ambientHall: 0.28,
     ambientThrone: 0.5,
     lightRadius: 300,
-    handScale: 2.2,
+    handScale: 1.7,
     textSize: 34,
     zoom: 1.25,
   },
@@ -596,6 +604,14 @@ export const meta: { [S in Section]: { [K in keyof Config[S]]: Param } } = {
     flareTime: { min: 0.05, max: 2, step: 0.05 },
     travelRate: { min: 0.5, max: 30, step: 0.5 },
     attachHeight: { min: 0, max: 60, step: 1 },
+  },
+  cloak: {
+    segments: { min: 3, max: 12, step: 1 },
+    length: { min: 8, max: 50, step: 1 },
+    width: { min: 4, max: 30, step: 1 },
+    gravity: { min: 0, max: 2000, step: 20 },
+    drag: { min: 0, max: 20, step: 0.2 },
+    eyeGlow: { min: 0, max: 1.5, step: 0.05 },
   },
   camera: {
     followRate: { min: 1, max: 60, step: 1 },

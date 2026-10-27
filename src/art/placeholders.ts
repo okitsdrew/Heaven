@@ -4,6 +4,7 @@ import Phaser from 'phaser';
 // can be loaded under the same keys later without touching gameplay code.
 export const Tex = {
   player: 'player',
+  hero: 'hero',
   arrow: 'arrow',
   shadow: 'shadow',
   dummy: 'dummy',
@@ -23,6 +24,8 @@ export const enemyFrames = {
   shade: ['enemy_shade_0', 'enemy_shade_1'],
   husk: ['enemy_husk_0', 'enemy_husk_1'],
 };
+
+export const heroWalkFrames = ['hero_walk0', 'hero_walk1', 'hero_walk2', 'hero_walk3'];
 
 export const walkFrames = ['player_walk0', 'player_walk1', 'player_walk2', 'player_walk3'];
 
@@ -140,6 +143,43 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
   ];
   fromGrid(scene, Tex.player, [...torso, ...legs[0]], playerColors);
   walkFrames.forEach((key, i) => fromGrid(scene, key, [...torso, ...legs[i]], playerColors));
+
+  // The hero: a black helm with two glowing purple eyes, purple sleeves, a white tabard over a thick black belt.
+  // Same 12x18 footprint and arm anchors as the shade, so hitbox and animation are unchanged.
+  const heroColors = {
+    k: 0x0b0910,
+    K: 0x1c1826,
+    p: 0x9a50ff,
+    P: 0xf0e0ff,
+    s: 0x6a3ab0,
+    S: 0x8a58d8,
+    w: 0xe9e9f0,
+    W: 0xb4b4c6,
+    e: 0x5a2a9a,
+    b: 0x07070a,
+    B: 0x9a50ff,
+    l: 0x18151f,
+  };
+  const heroTorso = [
+    '...k.kk.k...',
+    '..kkkkkkkk..',
+    '.kkkkkkkkkk.',
+    '.kpPkkkkPpk.',
+    '.kppkkkkppk.',
+    '..kkkkkkkk..',
+    'sSskwwwwkSss',
+    'sSskwWWwkSss',
+    'sSskweewkSss',
+    'sSskwwwwkSss',
+    '..kbbBBbbk..',
+    '..kbbbbbbk..',
+    '..kkwwwwkk..',
+    '..kkwWWwkk..',
+    '..kkwwwwkk..',
+    '..kkwWwWkk..',
+  ];
+  fromGrid(scene, Tex.hero, [...heroTorso, ...legs[0]], heroColors);
+  heroWalkFrames.forEach((key, i) => fromGrid(scene, key, [...heroTorso, ...legs[i]], heroColors));
 
   fromGrid(
     scene,

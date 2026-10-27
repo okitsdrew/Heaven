@@ -3,10 +3,10 @@ import { G } from './draw';
 
 const FINGERS = [
   // Base offset on the palm, resting angle (rad), segment lengths, base width and a crooked bend per joint.
-  { bx: 58, by: -17, a: -0.1, len: [36, 27, 21], w: 10, kink: [0.12, -0.2, 0.14] },
-  { bx: 60, by: -6, a: -0.03, len: [42, 31, 23], w: 10.5, kink: [-0.1, 0.18, -0.16] },
-  { bx: 59, by: 5, a: 0.04, len: [37, 28, 21], w: 10, kink: [0.14, -0.14, 0.2] },
-  { bx: 55, by: 16, a: 0.12, len: [28, 21, 16], w: 8.5, kink: [-0.12, 0.16, -0.14] },
+  { bx: 58, by: -17, a: -0.08, len: [26, 20, 15], w: 12, kink: [0.08, -0.12, 0.1] },
+  { bx: 60, by: -6, a: -0.02, len: [31, 23, 17], w: 12.5, kink: [-0.06, 0.12, -0.1] },
+  { bx: 59, by: 5, a: 0.03, len: [27, 21, 15], w: 12, kink: [0.1, -0.1, 0.12] },
+  { bx: 55, by: 16, a: 0.1, len: [20, 15, 11], w: 10.5, kink: [-0.08, 0.1, -0.1] },
 ];
 const BEND = [1.25, 1.45, 1.1];
 
@@ -52,7 +52,7 @@ export class Hand {
     if (this.alpha <= 0.01) return;
     for (const pass of [0, 1]) {
       const off = pass === 0 ? 0 : 1.6;
-      const fill = pass === 0 ? 0x6a4a90 : 0x050308;
+      const fill = pass === 0 ? 0x34244e : 0x050308;
       const grow = pass === 0 ? 3.4 : 0;
       this.drawArm(g, off, fill, grow);
       this.drawHand(g, off, fill, grow);
@@ -101,7 +101,7 @@ export class Hand {
     g.fillRoundedRect(6 - e, -25 - e, 56 + 2 * e, 50 + 2 * e, 13);
     g.fillEllipse(0, 0, 26 + grow * k, 30 + grow * k);
     FINGERS.forEach((f, i) => this.finger(g, f.bx, f.by, f.a, this.curl[i + 1], f.len, f.w, color, grow * k, f.kink));
-    this.finger(g, 16, 22, 0.95, this.curl[0], [26, 21, 16], 11, color, grow * k, [0.1, -0.12, 0.1]);
+    this.finger(g, 16, 22, 0.95, this.curl[0], [20, 16, 12], 12.5, color, grow * k, [0.1, -0.12, 0.1]);
     if (grow === 0) {
       // Creases and knuckle ridges, barely lighter than the shadow.
       g.lineStyle(1.4, 0x1c1228, 1);
@@ -129,12 +129,12 @@ export class Hand {
       g.lineStyle(w, color, 1);
       g.lineBetween(x, y, x1, y1);
       g.fillStyle(color, 1);
-      g.fillCircle(x1, y1, w * 0.6 + (i < 2 ? 1.8 : 0));
+      g.fillCircle(x1, y1, w * 0.58 + (i < 2 ? 1.2 : 0));
       x = x1;
       y = y1;
     }
     // A long cracked claw.
-    g.fillTriangle(x + Math.cos(a - 1.5) * w0 * 0.34, y + Math.sin(a - 1.5) * w0 * 0.34, x + Math.cos(a + 1.5) * w0 * 0.34, y + Math.sin(a + 1.5) * w0 * 0.34, x + Math.cos(a - 0.2) * 24, y + Math.sin(a - 0.2) * 24);
+    g.fillTriangle(x + Math.cos(a - 1.5) * w0 * 0.34, y + Math.sin(a - 1.5) * w0 * 0.34, x + Math.cos(a + 1.5) * w0 * 0.34, y + Math.sin(a + 1.5) * w0 * 0.34, x + Math.cos(a - 0.2) * 9, y + Math.sin(a - 0.2) * 9);
   }
 
   setVisible(v: boolean): void {

@@ -23,7 +23,7 @@ export interface CrayonLine {
 }
 
 // A line of thick, smudged, child-like crayon lettering drawn into its own canvas texture.
-export function crayonLine(scene: Phaser.Scene, text: string, size: number, color = '#f1ead2'): CrayonLine {
+export function crayonLine(scene: Phaser.Scene, text: string, size: number, color = '#07060a', outline = '#ffffff'): CrayonLine {
   const pad = 18;
   const probe = document.createElement('canvas').getContext('2d')!;
   probe.font = `${size}px ${CRAYON_FONT}`;
@@ -35,53 +35,27 @@ export function crayonLine(scene: Phaser.Scene, text: string, size: number, colo
   const ctx = tex.getContext();
   ctx.font = `${size}px ${CRAYON_FONT}`;
   ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   let x = pad;
   [...text].forEach((c, i) => {
-    const jx = (Math.random() - 0.5) * 3;
-    const jy = (Math.random() - 0.5) * size * 0.22;
-    const rot = (Math.random() - 0.5) * 0.28;
-    const sc = 0.92 + Math.random() * 0.2;
+    const jx = (Math.random() - 0.5) * 1.6;
+    const jy = (Math.random() - 0.5) * size * 0.1;
+    const rot = (Math.random() - 0.5) * 0.12;
     ctx.save();
     ctx.translate(x + widths[i] / 2 + jx, h / 2 + jy);
     ctx.rotate(rot);
-    ctx.scale(sc, sc);
     ctx.textAlign = 'center';
-    // Smudge, then a heavy double-struck outline, then the waxy fill.
-    ctx.globalAlpha = 0.35;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = size * 0.35;
-    ctx.fillStyle = color;
-    ctx.fillText(c, 2, 2);
-    ctx.shadowBlur = 0;
-    ctx.globalAlpha = 0.8;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = size * 0.17;
+    // A white outline first, then thin black strokes on top so it stays readable on anything.
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = size * 0.2;
     ctx.strokeText(c, 0, 0);
-    ctx.lineWidth = size * 0.1;
-    ctx.strokeText(c, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
-    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = color;
     ctx.fillText(c, 0, 0);
     ctx.restore();
     x += widths[i];
   });
-  // Waxy grain: scrape the paper tooth back out of the strokes.
-  ctx.globalCompositeOperation = 'destination-out';
-  for (let i = 0; i < w * h * 0.03; i++) {
-    ctx.globalAlpha = 0.25 + Math.random() * 0.4;
-    ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 1.5);
-  }
-  ctx.globalAlpha = 0.18;
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = '#000';
-  for (let i = 0; i < 30; i++) {
-    const sx = Math.random() * w;
-    ctx.beginPath();
-    ctx.moveTo(sx, Math.random() * h);
-    ctx.lineTo(sx + (Math.random() - 0.5) * 40, Math.random() * h);
-    ctx.stroke();
-  }
   tex.refresh();
   const image = scene.add.image(0, 0, key).setOrigin(0, 0.5);
   image.setCrop(0, 0, 0, h);

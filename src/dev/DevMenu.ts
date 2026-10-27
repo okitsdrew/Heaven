@@ -54,7 +54,7 @@ const groups: [string, string[]][] = [
   ['enemies and boss', ['spawn', 'enemy', 'wraith', 'shade', 'husk', 'boss']],
   ['progression', ['run', 'xp', 'gold', 'upgrade', 'tree', 'stun']],
   ['world', ['world', 'map', 'dummy']],
-  ['look and feel', ['camera', 'feel', 'render']],
+  ['look and feel', ['camera', 'feel', 'render', 'cloak']],
   ['system', ['time', 'debug', 'hub']],
 ];
 

@@ -41,8 +41,8 @@ export class Eyes {
       const tilt = side * 0.2;
       const lid = o * (1 + this.wide * 0.8);
       const hw = 30 * (1 + this.wide * 0.15);
-      const hu = 17 * lid;
-      const hl = 9 * lid;
+      const hu = 16 * lid;
+      const hl = 14 * lid;
       this.glow[i].setPosition(cx, this.y).setScale(1.7 + this.wide, 1 + 0.5 * o).setAlpha(0.7 * o);
       g.save();
       g.translateCanvas(cx, this.y);
@@ -70,12 +70,15 @@ export class Eyes {
         g.fillStyle(0xff9a1c, 0.55);
         g.fillEllipse(0, 0, hw * 1.7, (hu + hl) * 0.8);
         // Pupil: a vertical slit that wanders toward whatever it is watching.
-        const px = this.look.x * 12;
-        const py = this.look.y * Math.min(7, hu * 0.5);
+        // The iris always sits inside the lids: it is sized and kept to the open height, never past it.
+        const inner = Math.min(hu, hl) * 0.9;
+        const ih = Math.min(2 * inner, 22);
+        const px = this.look.x * 10;
+        const py = Phaser.Math.Clamp(this.look.y * 6, -(inner - ih / 2), inner - ih / 2);
         g.fillStyle(0xd05a08, 1);
-        g.fillEllipse(px, py, 20, Math.min(2 * hu, 22));
+        g.fillEllipse(px, py, 20, ih);
         g.fillStyle(0x080303, 1);
-        g.fillEllipse(px, py, 6.5, Math.min(2 * hu + 2, 24));
+        g.fillEllipse(px, py, 6.5, ih);
         g.fillStyle(0xffffff, 0.8);
         g.fillCircle(px - 4, py - 4, 1.8);
         g.lineStyle(3, 0x1a0a04, 1);

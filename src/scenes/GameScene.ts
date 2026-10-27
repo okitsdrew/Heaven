@@ -82,6 +82,7 @@ export class GameScene extends Phaser.Scene {
     this.fx = new Fx(this);
     this.player = new Player();
     this.playerView = new PlayerView(this, this.player, this.fx);
+    this.playerView.hero = true;
     this.playerView.slashArms = () => this.swordSlash.flapArms();
     this.arrows = new Arrows(this, this.fx);
     this.dummies = new Dummies(this);

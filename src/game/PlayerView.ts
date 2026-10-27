@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Tex, walkFrames } from '../art/placeholders';
+import { heroWalkFrames, Tex, walkFrames } from '../art/placeholders';
 import { cfg } from '../config';
 import { ellipseHalfSize, toScreen, toWorld, Vec2 } from '../iso';
 import { Fx } from './Fx';
@@ -20,6 +20,9 @@ const ahead = { x: 0, y: 0 };
 const SLEEVE = 0x3d3754;
 const SLEEVE_EDGE = 0x120f18;
 const SKIN = 0xc8b08a;
+const HERO_SLEEVE = 0x7a46c8;
+const HERO_SLEEVE_EDGE = 0x1a0c30;
+const HERO_GLOVE = 0x17121f;
 const HAND_YELLOW = 0xf2d34a;
 
 export class PlayerView {
@@ -61,12 +64,20 @@ export class PlayerView {
   rise = 1;
   // The hub reaches out with empty hands, slowly: no bow, and a longer raise.
   hideBow = false;
+  // The player's own look (black helm, white tabard, cloak). The boss keeps the shade's original body.
+  hero = false;
+  private cloak: Phaser.GameObjects.Graphics;
+  private cloakPts: Vec2[] = [];
+  private cloakPrev: Vec2[] = [];
+  private eyeGlow: Phaser.GameObjects.Image[];
   armsRate = 0.06;
   private flashTime = 0;
 
   constructor(scene: Phaser.Scene, private player: Player, private fx: Fx) {
     this.shadow = scene.add.image(0, 0, Tex.shadow);
     this.body = scene.add.image(0, 0, Tex.player).setOrigin(0.5, 1);
+    this.cloak = scene.add.graphics();
+    this.eyeGlow = [0, 1].map(() => scene.add.image(0, 0, Tex.glow).setTint(0xa060ff).setBlendMode(Phaser.BlendModes.ADD).setVisible(false));
     this.bowGfx = scene.add.graphics();
     this.bowGlow = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     this.handGlow = [0, 1].map(() =>
@@ -118,8 +129,97 @@ export class PlayerView {
     return cfg.render.pixelScale * this.sizeMult;
   }
 
+  private skin(moving: boolean): string {
+    if (this.hero) return moving ? heroWalkFrames[Math.floor(this.phase * 4) % 4] : Tex.hero;
+    return moving ? walkFrames[Math.floor(this.phase * 4) % 4] : Tex.player;
+  }
+
+  // A black cloak that hangs from the shoulders on a short rope, so it streams behind him as he moves and dashes.
+  private updateCloak(dt: number, cx: number, cy: number, px: number): void {
+    const g = this.cloak;
+    g.clear();
+    const eyes = this.eyeGlow;
+    if (!this.hero) {
+      eyes.forEach((e) => e.setVisible(false));
+      return;
+    }
+    const c = cfg.cloak;
+    const n = Math.max(3, Math.round(c.segments));
+    const seg = (c.length * px) / n;
+    const ax = cx;
+    const ay = cy - (SHOULDER_Y - 1) * px;
+    if (this.cloakPts.length !== n + 1) {
+      this.cloakPts = Array.from({ length: n + 1 }, (_, i) => ({ x: ax, y: ay + i * seg }));
+      this.cloakPrev = this.cloakPts.map((p) => ({ ...p }));
+    }
+    const pts = this.cloakPts;
+    const prev = this.cloakPrev;
+    const damp = Math.exp(-c.drag * dt);
+    pts[0].x = ax;
+    pts[0].y = ay;
+    for (let i = 1; i <= n; i++) {
+      const vx = (pts[i].x - prev[i].x) * damp;
+      const vy = (pts[i].y - prev[i].y) * damp;
+      prev[i].x = pts[i].x;
+      prev[i].y = pts[i].y;
+      pts[i].x += vx;
+      pts[i].y += vy + c.gravity * px * dt * dt * 0.5;
+    }
+    for (let it = 0; it < 4; it++) {
+      for (let i = 1; i <= n; i++) {
+        const dx = pts[i].x - pts[i - 1].x;
+        const dy = pts[i].y - pts[i - 1].y;
+        const d = Math.hypot(dx, dy) || 1e-4;
+        const k = seg / d;
+        pts[i].x = pts[i - 1].x + dx * k;
+        pts[i].y = pts[i - 1].y + dy * k;
+      }
+    }
+    const left: Vec2[] = [];
+    const right: Vec2[] = [];
+    for (let i = 0; i <= n; i++) {
+      const a = pts[Math.max(0, i - 1)];
+      const b = pts[Math.min(n, i + 1)];
+      const tx = b.x - a.x;
+      const ty = b.y - a.y;
+      const len = Math.hypot(tx, ty) || 1;
+      const w = ((c.width * px) / 2) * (0.75 + 0.6 * (i / n));
+      left.push({ x: pts[i].x - (ty / len) * w, y: pts[i].y + (tx / len) * w });
+      right.push({ x: pts[i].x + (ty / len) * w, y: pts[i].y - (tx / len) * w });
+    }
+    const depth = this.body.depth - 0.6;
+    g.setDepth(depth).setAlpha(this.body.alpha);
+    const poly = left.concat(right.slice().reverse());
+    g.fillStyle(this.c(0x050408), 1);
+    g.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true);
+    // A thin purple lining shows along the fold, and the hem is torn into points.
+    g.lineStyle(Math.max(1, px * 0.8), this.c(0x3a1c66), 0.9);
+    g.beginPath();
+    g.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i <= n; i++) g.lineTo(pts[i].x, pts[i].y);
+    g.strokePath();
+    const l = left[n];
+    const r = right[n];
+    const tipX = pts[n].x + (pts[n].x - pts[n - 1].x) * 0.7;
+    const tipY = pts[n].y + (pts[n].y - pts[n - 1].y) * 0.7;
+    g.fillStyle(this.c(0x050408), 1);
+    g.fillTriangle(l.x, l.y, (l.x + r.x) / 2, (l.y + r.y) / 2, (l.x + tipX) / 2 - 2 * px, (l.y + tipY) / 2);
+    g.fillTriangle(r.x, r.y, (l.x + r.x) / 2, (l.y + r.y) / 2, (r.x + tipX) / 2 + 2 * px, (r.y + tipY) / 2);
+    g.fillTriangle(l.x, l.y, r.x, r.y, tipX, tipY);
+
+    // The two glowing eyes, in the teleport's purple.
+    const pulse = 0.85 + 0.15 * Math.sin(this.time * 6);
+    eyes.forEach((e, i) => {
+      e.setVisible(this.body.visible)
+        .setPosition(cx + (i === 0 ? -3 : 3) * px, cy - 14 * px)
+        .setScale(px * 0.17)
+        .setAlpha(c.eyeGlow * pulse * this.body.alpha)
+        .setDepth(this.body.depth + 0.2);
+    });
+  }
+
   setVisible(visible: boolean): void {
-    for (const o of [this.body, this.shadow, this.bowGfx, this.bowGlow, this.arms, this.ring, this.dustRing, this.gauntletGfx, ...this.handGlow]) {
+    for (const o of [this.body, this.shadow, this.cloak, ...this.eyeGlow, this.bowGfx, this.bowGlow, this.arms, this.ring, this.dustRing, this.gauntletGfx, ...this.handGlow]) {
       o.setVisible(visible);
     }
   }
@@ -197,7 +297,7 @@ export class PlayerView {
     const swing = moving ? Math.sin(this.phase * Math.PI * 2) * 2.5 * px : 0;
 
     this.body
-      .setTexture(moving ? walkFrames[Math.floor(this.phase * 4) % 4] : Tex.player)
+      .setTexture(this.skin(moving))
       .setPosition(screen.x, screen.y - bob)
       .setScale(px)
       .setFlipX(facingLeft)
@@ -231,6 +331,7 @@ export class PlayerView {
 
     const cx = screen.x;
     const cy = screen.y - bob + riseDrop;
+    this.updateCloak(dt, cx, cy, px);
     const bowSide = facingLeft ? -1 : 1;
     const dirX = Math.cos(aimAngle);
     const dirY = Math.sin(aimAngle);
@@ -291,8 +392,8 @@ export class PlayerView {
     const g = this.arms;
     g.clear().setDepth(screen.y + 0.3).setAlpha(this.body.alpha * Phaser.Math.Clamp((this.rise - 0.4) / 0.3, 0, 1));
     for (const [width, color] of [
-      [3 * px, this.c(SLEEVE_EDGE)],
-      [2 * px, this.c(SLEEVE)],
+      [3 * px, this.c(this.hero ? HERO_SLEEVE_EDGE : SLEEVE_EDGE)],
+      [2 * px, this.c(this.hero ? HERO_SLEEVE : SLEEVE)],
     ] as const) {
       g.lineStyle(width, color, 1);
       for (const arm of [armA, armB]) {
@@ -303,7 +404,7 @@ export class PlayerView {
         g.strokePath();
       }
     }
-    g.fillStyle(this.c(SKIN), 1);
+    g.fillStyle(this.c(this.hero ? HERO_GLOVE : SKIN), 1);
     g.fillCircle(armA.hand.x, armA.hand.y, 1.2 * px);
     g.fillCircle(armB.hand.x, armB.hand.y, 1.2 * px);
 

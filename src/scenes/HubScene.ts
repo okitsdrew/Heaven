@@ -25,7 +25,7 @@ import {
 } from '../hub/draw';
 import { Eyes } from '../hub/Eyes';
 import { Hand } from '../hub/Hand';
-import { book, brazier, debris, drawFlame, severedHead, throne, throneFigure, torch } from '../hub/props';
+import { book, brazier, debris, drawFlame, severedHead, throne, torch } from '../hub/props';
 import { Input, KeyboardMouseSource } from '../input';
 import { toScreen, toWorld } from '../iso';
 import { persistNow, profile } from '../save';
@@ -41,6 +41,7 @@ interface Interact {
   label: string;
   room: RoomName;
   act: () => void;
+  enabled?: () => boolean;
 }
 
 interface Flame {
@@ -74,7 +75,8 @@ export class HubScene extends Phaser.Scene {
   private flames: Flame[] = [];
   private interacts: Interact[] = [];
   private eyes!: Eyes;
-  private figure!: G;
+  private textBox: G | null = null;
+  private band!: G;
   private follow = true;
   private hands!: [Hand, Hand];
   private bookGfx!: G;
@@ -148,6 +150,7 @@ export class HubScene extends Phaser.Scene {
     this.player = new Player();
     this.player.fireBlocked = true;
     this.view = new PlayerView(this, this.player, this.fx);
+    this.view.hero = true;
     this.view.hideBow = true;
     this.dark = new Darkness(this, DEPTH_DARK);
 
@@ -155,7 +158,7 @@ export class HubScene extends Phaser.Scene {
     this.add.image(0, 0, Tex.vignette).setOrigin(0).setDisplaySize(W, H).setDepth(DEPTH_DARK + 0.5).setAlpha(0.5);
 
     this.prompt = this.add
-      .text(0, 0, '', { fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold', color: '#f2d7a6', stroke: '#0a0710', strokeThickness: 4 })
+      .text(0, 0, '', { fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold', color: '#f2d7a6', stroke: '#0a0710', strokeThickness: 4, align: 'center' })
       .setOrigin(0.5, 1)
       .setDepth(DEPTH_DARK + 4)
       .setVisible(false);
@@ -205,7 +208,7 @@ export class HubScene extends Phaser.Scene {
   }
 
   private flame(room: Room, x: number, y: number, size: number): void {
-    const g = this.gfx(room, x, y, y + 1);
+    const g = this.gfx(room, x, y, DEPTH_DARK + 1.6);
     const glow = this.add.image(x, y - 14 * size, Tex.glow).setTint(0xff8a30).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_DARK + 1);
     room.objs.push(glow);
     this.flames.push({ g, glow, x, y, size, seed: this.flames.length * 1.7, room: room.name });
@@ -279,9 +282,13 @@ export class HubScene extends Phaser.Scene {
     door(back, false);
 
     throne(this.gfx(room, 560, 192, 192), r);
-    this.figure = this.gfx(room, 560, 192, 193);
-    throneFigure(this.figure);
-    this.figure.setAlpha(profile.introDone ? 1 : 0);
+    // The back of the room is solid black that no light reaches; only the eyes and the hands show in it.
+    this.band = this.gfx(room, 0, 0, DEPTH_DARK + 1.5);
+    for (let y = 0; y < 220; y += 2) {
+      const a = y < 150 ? 1 : Math.max(0, 1 - (y - 150) / 70) ** 1.5;
+      this.band.fillStyle(0x000000, a);
+      this.band.fillRect(0, y, W, 2);
+    }
     room.colliders.push({ cx: 560, cy: 178, rx: 172, ry: 30 });
     this.eyes = new Eyes(this, 560, 100, DEPTH_DARK + 2);
 
@@ -314,9 +321,10 @@ export class HubScene extends Phaser.Scene {
       x: 930,
       y: 278,
       r: 105,
-      label: 'Face Anathema',
+      label: 'Delve into the mind',
       room: 'throne',
       act: () => void this.startBattle(),
+      enabled: () => profile.introDone,
     });
 
     // The barricaded door in the east wall.
@@ -503,10 +511,18 @@ export class HubScene extends Phaser.Scene {
     this.tweens.timeScale = cfg.time.timeScale;
     this.clock += dt;
 
+    // Space interacts when something is in reach, and then must not dash.
+    const target = this.controlled ? this.findInteract() : null;
+    let act: (() => void) | null = null;
+    if (target && input.justPressed('dash')) {
+      input.consume('dash');
+      act = target.act;
+    }
     this.updatePlayer(dt, input);
     this.updateRumble(dt);
     this.updateProps(dt);
-    this.updateInteract(input);
+    this.showPrompt(target);
+    if (act && this.controlled) act();
     if (this.view && !this.lying) this.view.update(dt);
     if (this.lying) this.updateLying();
     this.fx.update(dt);
@@ -682,31 +698,27 @@ export class HubScene extends Phaser.Scene {
     }
   }
 
-  private updateInteract(input: Input): void {
-    if (!this.controlled) {
-      this.prompt.setVisible(false);
-      return;
-    }
+  private findInteract(): Interact | null {
     const p = this.feet();
     let best: Interact | null = null;
     let bestD = Infinity;
     for (const it of this.interacts) {
-      if (it.room !== this.room) continue;
+      if (it.room !== this.room || (it.enabled && !it.enabled())) continue;
       const d = Math.hypot((p.x - it.x) / it.r, (p.y - it.y) / (it.r * 0.6));
       if (d < 1 && d < bestD) {
         best = it;
         bestD = d;
       }
     }
-    if (!best) {
+    return best;
+  }
+
+  private showPrompt(it: Interact | null): void {
+    if (!it || !this.controlled) {
       this.prompt.setVisible(false);
       return;
     }
-    this.prompt.setText(`SPACE  ${best.label}`).setPosition(best.x, best.y - 92 - Math.sin(this.clock * 4) * 2).setVisible(true);
-    if (input.justPressed('dash')) {
-      input.consume('dash');
-      best.act();
-    }
+    this.prompt.setText(`${it.label}\n(Space)`).setPosition(it.x, it.y - 92 - Math.sin(this.clock * 4) * 2).setVisible(true);
   }
 
   private updateCamera(dt: number): void {
@@ -789,7 +801,7 @@ export class HubScene extends Phaser.Scene {
     this.setFeet(560, 470);
     this.view.setVisible(false);
     this.lyingShadow = this.add.ellipse(582, 472, 86, 14, 0x000000, 0.5).setDepth(469);
-    this.lying = this.add.image(560, 470, Tex.player).setOrigin(0.5, 1).setScale(px).setAngle(82).setTint(0xb4b0c4).setDepth(470);
+    this.lying = this.add.image(560, 470, Tex.hero).setOrigin(0.5, 1).setScale(px).setAngle(82).setTint(0xb4b0c4).setDepth(470);
     this.rooms.hall.objs.push(this.lyingShadow, this.lying);
     this.tweens.add({ targets: this.fade, alpha: 0, duration: 1800 });
     this.focus(W / 2, H / 2 + 20, 1);
@@ -941,31 +953,54 @@ export class HubScene extends Phaser.Scene {
     return out;
   }
 
-  // Draws one crayon line at the given place, scribbling it in left to right.
+  // Draws one line of scrawl at the given place, writing it in left to right.
   private async scrawl(text: string, x: number, y: number, size: number): Promise<CrayonLine> {
     const line = crayonLine(this, text, size);
     line.image.setPosition(x, y).setDepth(DEPTH_DARK + 3);
     this.lines.push(line);
     const t = { v: 0 };
-    await this.tw({ targets: t, v: 1, duration: 110 * Math.max(4, text.length), ease: 'Sine.easeInOut', onUpdate: () => line.setReveal(t.v) });
+    await this.tw({ targets: t, v: 1, duration: 88 * Math.max(4, text.length), ease: 'Sine.easeInOut', onUpdate: () => line.setReveal(t.v) });
     line.setReveal(1);
     return line;
   }
 
   private async clearLines(): Promise<void> {
     const lines = this.lines.slice();
+    const box = this.textBox;
     this.lines = [];
-    await this.tw({ targets: lines.map((l) => l.image), alpha: 0, duration: 600 });
+    this.textBox = null;
+    await this.tw({ targets: [...lines.map((l) => l.image), ...(box ? [box] : [])], alpha: 0, duration: 450 });
     for (const l of lines) l.destroy();
+    box?.destroy();
   }
 
-  // The throne speaks in crayon beside its eyes: wrapped to a column on one side, then wiped away.
-  private async say(text: string, side: 'left' | 'right', hold = 0.5): Promise<void> {
+  // The panel the throne's words are written on.
+  private openBox(x: number, y: number, w: number, h: number): void {
+    const g = this.add.graphics().setDepth(DEPTH_DARK + 2.8).setAlpha(0);
+    g.fillStyle(0x16121f, 0.9);
+    g.fillRoundedRect(x, y, w, h, 10);
+    g.lineStyle(2, 0xffffff, 0.85);
+    g.strokeRoundedRect(x, y, w, h, 10);
+    this.textBox = g;
+    this.tweens.add({ targets: g, alpha: 1, duration: 200 });
+  }
+
+  private measure(text: string, size: number): number {
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    ctx.font = `${size}px ${CRAYON_FONT}`;
+    return ctx.measureText(text).width + 36;
+  }
+
+  // The throne speaks in a text box beside its eyes: wrapped to a column on one side, then wiped away.
+  private async say(text: string, side: 'left' | 'right', hold = 0.4): Promise<void> {
     const size = cfg.hub.textSize;
-    const rows = await this.wrapLines(text, size, side === 'left' ? 400 : 430);
+    const rows = await this.wrapLines(text, size, side === 'left' ? 380 : 410);
     const x = side === 'right' ? 640 : 54;
-    for (let i = 0; i < rows.length; i++) await this.scrawl(rows[i], x, 38 + i * size * 1.45, size);
-    await this.sleep(hold + 0.045 * text.length);
+    const lh = size * 1.5;
+    const w = Math.max(...rows.map((r) => this.measure(r, size)));
+    this.openBox(x - 8, 16, w + 16, rows.length * lh + 22);
+    for (let i = 0; i < rows.length; i++) await this.scrawl(rows[i], x, 46 + i * lh, size);
+    await this.sleep(hold + 0.036 * text.length);
     await this.clearLines();
   }
 
@@ -1037,7 +1072,6 @@ export class HubScene extends Phaser.Scene {
     this.focus(560, 230, 1.08);
     this.eyesFollow = true;
     this.bump(8);
-    void this.tw({ targets: this.figure, alpha: 1, duration: 2600 });
     await this.tweenValue(0, 0.35, 900, (v) => (this.eyes.open = v));
     await this.tweenValue(0.35, 0.1, 400, (v) => (this.eyes.open = v));
     await this.tweenValue(0.1, 1, 1300, (v) => (this.eyes.open = v));
@@ -1097,16 +1131,18 @@ export class HubScene extends Phaser.Scene {
 
     // A run of short, heavy lines; the eyes go wide on the third.
     const x = 640;
-    const size = cfg.hub.textSize + 4;
-    const l1 = await this.scrawl('Learn my ways.', x, 36, size);
-    await this.sleep(0.5);
-    const l2 = await this.scrawl('Grow in Power', x, 36 + size * 1.5, size);
-    await this.sleep(0.5);
-    const l3 = await this.scrawl('Become my champion', x, 36 + size * 3, size);
+    const size = cfg.hub.textSize;
+    const lh = size * 1.5;
+    this.openBox(x - 8, 16, this.measure('Become my champion', size) + 16, lh * 4 + 22);
+    const l1 = await this.scrawl('Learn my ways.', x, 46, size);
+    await this.sleep(0.4);
+    const l2 = await this.scrawl('Grow in Power', x, 46 + lh, size);
+    await this.sleep(0.4);
+    const l3 = await this.scrawl('Become my champion', x, 46 + lh * 2, size);
     this.bump(6);
     void this.tweenValue(0, 1, 260, (v) => (this.eyes.wide = v)).then(() => this.sleep(1)).then(() => this.tweenValue(1, 0, 500, (v) => (this.eyes.wide = v)));
     await this.sleep(1.6);
-    await this.scrawl('...........', x, 36 + size * 4.5, size);
+    await this.scrawl('...........', x, 46 + lh * 3, size);
     await this.sleep(1.3);
     void [l1, l2, l3];
     await this.clearLines();
@@ -1115,8 +1151,9 @@ export class HubScene extends Phaser.Scene {
 
     // The hand gestures toward the head in the corner.
     h2.point();
-    await this.handIn(h2, 680, 128, 690, 150, -0.9);
-    await this.moveHand(h2, 700, 214, 0.14, 1000, 'Back.easeOut');
+    await this.handIn(h2, 680, 128, 690, 170, -0.5);
+    // Aim the finger at the head in the corner (the mirrored hand's finger sits a touch low).
+    await this.moveHand(h2, 690, 240, Math.atan2(258 - 240, 930 - 690) - 0.08, 1000, 'Back.easeOut');
     await this.say('come, let Anathema teach you.', 'left');
     await this.say('I wonder, how many seconds can you withstand the sheer weight of his memories?', 'left', 1);
     await this.handOut(h2, 900);
