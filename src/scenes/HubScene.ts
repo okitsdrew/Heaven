@@ -427,6 +427,18 @@ export class HubScene extends Phaser.Scene {
       { label: 'Go to throne room', run: () => void this.changeRoom('throne') },
       { label: 'Go to hallway', run: () => void this.changeRoom('hall') },
       { label: 'Start battle', run: () => void this.startBattle() },
+      {
+        label: 'Skip to battle',
+        run: () => {
+          this.input2.destroy();
+          Screens.get().hide();
+          profile.introDone = true;
+          profile.visitedHead = false;
+          profile.bowHintShown = false;
+          persistNow();
+          this.scene.start('game', { dive: true });
+        },
+      },
       { label: 'Open upgrade tree', run: () => this.openUpgradeTree() },
       { label: 'Open the book', run: () => this.openBook() },
       {

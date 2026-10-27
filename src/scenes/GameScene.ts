@@ -270,6 +270,13 @@ export class GameScene extends Phaser.Scene {
       { label: 'Reset throne speech', run: () => { profile.bossIntroSeen = false; persist(); } },
       { label: 'Spawn 50 enemies', run: () => this.spawnBurst(50) },
       { label: 'Clear enemies', run: () => this.enemies.clear() },
+      {
+        label: 'Skip to battle',
+        run: () => {
+          this.skipToBattle();
+          this.startRun();
+        },
+      },
       { label: 'Go home (hub)', run: () => this.goHome() },
       { label: 'Restart run', run: () => this.startRun() },
       { label: 'End run (show summary)', run: () => this.endRun('Run ended') },
@@ -669,6 +676,14 @@ export class GameScene extends Phaser.Scene {
       () => this.openTree(),
       () => this.goHome(),
     );
+  }
+
+  // As if the hallway intro and the throne cutscene are done and this is the first fight.
+  private skipToBattle(): void {
+    profile.introDone = true;
+    profile.visitedHead = false;
+    profile.bowHintShown = false;
+    persistNow();
   }
 
   private goHome(): void {
