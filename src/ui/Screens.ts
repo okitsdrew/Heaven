@@ -1,5 +1,5 @@
 import { cfg } from '../config';
-import { clearLayout, Layout, loadLayout, persist, profile, saveLayout } from '../save';
+import { persist, profile } from '../save';
 import {
   bind,
   buy,
@@ -54,7 +54,6 @@ const css = `
 #tree .node.canbuy { border-color: #c9b6ff; }
 #tree .node.owned { background: #2a2145; border-color: #9a7fe0; }
 #tree .node.maxed { border-color: #f2d7a6; box-shadow: 0 0 12px rgba(242, 215, 166, 0.45); }
-#tree .node.dragging { opacity: 0.85; border-style: dashed; z-index: 2; }
 #tree .node.dim { filter: brightness(0.55); }
 #tree .node .name { color: #f2d7a6; font-weight: bold; font-size: 13px; }
 #tree .node .desc { color: #a79fc0; font-size: 11px; }
@@ -68,7 +67,13 @@ const css = `
 #tree .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 #tree .tools button { padding: 3px 8px; font-size: 12px; }
 #tree .bottom { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 12px; z-index: 3; }
-#tree .node.skill { width: 190px; }
+#tree .node.skill { width: 300px; height: 128px; display: flex; flex-direction: column; justify-content: center; }
+.ghost { position: fixed; z-index: 100; transform: translate(-50%, -50%); pointer-events: none; padding: 12px 22px; border: 3px solid #fff;
+  font: bold 14px monospace; color: #f2d7a6; white-space: nowrap; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6); }
+#tree .tip { position: absolute; left: 50%; top: 72%; transform: translateX(-50%); z-index: 6; pointer-events: none; white-space: nowrap;
+  font: italic 28px Georgia, serif; color: #e8f0ff; text-shadow: 0 0 12px #a8c4ff; }
+#tree .tip span { display: inline-block; }
+#tree .slot .box { touch-action: none; }
 #tree .node small { display: block; margin-top: 4px; color: #8d85a8; font-size: 10px; }
 #tree .node.selected { outline: 3px solid #ffffff; outline-offset: 3px; }
 #tree .node.pickable { animation: pick 0.9s ease-in-out infinite alternate; }
@@ -105,7 +110,6 @@ export class Screens {
   private lines: SVGSVGElement;
   private topInfo: HTMLDivElement;
   private els = new Map<string, HTMLDivElement>();
-  private layout: Layout = loadLayout();
   private mode: Mode = 'main';
   private views: Record<Mode, { x: number; y: number; scale: number } | null> = { main: null, book: null };
   private view = { x: 0, y: 0, scale: 1 };
@@ -114,6 +118,7 @@ export class Screens {
   private selector: HTMLDivElement;
   private selSkill: SkillId | null = null;
   private selSlot: number | null = null;
+  private lastSlotClick = { i: -1, t: 0 };
 
   private constructor() {
     const style = document.createElement('style');
@@ -133,7 +138,7 @@ export class Screens {
     this.selector = this.div('selector', undefined, this.tree);
     this.bottom = this.div('bottom', undefined, this.tree);
     this.div('hint', undefined, this.tree).textContent =
-      'Drag background to pan, wheel to zoom, drag a node to move it, click a node to buy, right-click to refund.';
+      'Drag background to pan, wheel to zoom, click a node to buy, right-click to refund.';
 
     for (const el of [this.summary, this.tree]) {
       el.addEventListener('click', (e) => {
@@ -178,7 +183,7 @@ export class Screens {
       row.innerHTML = `<span>${k}</span><b>${v}</b>`;
     }
     const buttons = this.div('buttons', undefined, card);
-    buttons.append(this.button('Restart', onRestart, 'big go'), this.button('Skill Tree', onTree, 'big'), this.button('Home', onHome, 'big'));
+    buttons.append(this.button('Restart', onRestart, 'big go'), this.button('Upgrade Tree', onTree, 'big'), this.button('Home', onHome, 'big'));
     this.summary.classList.add('open');
   }
 
@@ -214,15 +219,13 @@ export class Screens {
   }
 
   private position(n: SkillNode): { x: number; y: number } {
-    const saved = this.layout[n.id];
-    if (saved) return saved;
     return { x: n.x, y: n.y };
   }
 
   private makeNode(n: SkillNode): HTMLDivElement {
     const el = this.div('node', undefined, this.world);
-    let start: { px: number; py: number; x: number; y: number } | null = null;
-    let dragged = false;
+    let start: { px: number; py: number } | null = null;
+    let ghost: HTMLDivElement | null = null;
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       if (refund(n)) {
@@ -234,37 +237,89 @@ export class Screens {
       e.stopPropagation();
       if (e.button !== 0) return;
       el.setPointerCapture(e.pointerId);
-      const p = this.position(n);
-      start = { px: e.clientX, py: e.clientY, x: p.x, y: p.y };
-      dragged = false;
+      start = { px: e.clientX, py: e.clientY };
     });
     el.addEventListener('pointermove', (e) => {
       if (!start) return;
-      const dx = e.clientX - start.px;
-      const dy = e.clientY - start.py;
-      if (!dragged && Math.hypot(dx, dy) < 5) return;
-      dragged = true;
-      el.classList.add('dragging');
-      this.layout[n.id] = { x: Math.round(start.x + dx / this.view.scale), y: Math.round(start.y + dy / this.view.scale) };
-      this.layoutNodes();
+      if (ghost) {
+        this.moveGhost(ghost, e);
+        return;
+      }
+      // An owned skill can be dragged out as a placeholder button; the node itself never moves.
+      if (isSkill(n.id) && level(n.id) >= 1 && Math.hypot(e.clientX - start.px, e.clientY - start.py) >= 5) {
+        ghost = this.makeGhost(n);
+        this.moveGhost(ghost, e);
+      }
     });
-    const end = () => {
+    const end = (e: PointerEvent) => {
       if (!start) return;
       start = null;
-      el.classList.remove('dragging');
-      if (dragged) saveLayout(this.layout);
-      else if (isSkill(n.id) && level(n.id) >= 1) this.pickSkill(n.id);
+      if (ghost) {
+        ghost.remove();
+        ghost = null;
+        const slot = this.slotAt(e);
+        if (slot !== null && isSkill(n.id)) {
+          bind(n.id, slot);
+          persist();
+          this.refresh();
+        }
+      } else if (isSkill(n.id) && level(n.id) >= 1) this.pickSkill(n.id);
       else if (buy(n)) {
         persist();
         this.refresh();
+        if (isSkill(n.id) && !profile.skillTipShown) {
+          profile.skillTipShown = true;
+          persist();
+          this.ghostText('click a skill and assign it a slot', 2000);
+        }
       }
     };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', () => {
       start = null;
-      el.classList.remove('dragging');
+      ghost?.remove();
+      ghost = null;
     });
     return el;
+  }
+
+  // The coloured button that follows the pointer while a skill is dragged.
+  private makeGhost(n: SkillNode): HTMLDivElement {
+    const g = this.div('ghost', undefined, document.body);
+    const c = n.color ?? 0xffffff;
+    g.textContent = n.name;
+    g.style.borderColor = hex(c);
+    g.style.background = `linear-gradient(rgba(0,0,0,0.5), ${rgba(c, 0.35)}), #14111c`;
+    return g;
+  }
+
+  private moveGhost(g: HTMLDivElement, e: PointerEvent): void {
+    g.style.left = `${e.clientX}px`;
+    g.style.top = `${e.clientY}px`;
+  }
+
+  private slotAt(e: PointerEvent): number | null {
+    const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('.slot');
+    return hit instanceof HTMLElement && hit.dataset.i !== undefined ? Number(hit.dataset.i) : null;
+  }
+
+  // Text that hangs for a moment, then each letter is blown away.
+  private ghostText(text: string, holdMs: number): void {
+    const box = this.div('tip', undefined, this.tree);
+    const letters = [...text].map((c) => {
+      const sp = document.createElement('span');
+      sp.textContent = c === ' ' ? '\u00a0' : c;
+      box.appendChild(sp);
+      return sp;
+    });
+    setTimeout(() => {
+      letters.forEach((sp, i) => {
+        sp.style.transition = `transform 1.4s cubic-bezier(.5,0,1,1) ${i * 20}ms, opacity 1.4s ease-in ${i * 20}ms`;
+        sp.style.transform = `translate(${260 + Math.random() * 260}px, ${-30 - Math.random() * 90}px) rotate(${-30 + Math.random() * 90}deg) scale(1.8)`;
+        sp.style.opacity = '0';
+      });
+      setTimeout(() => box.remove(), 2400);
+    }, holdMs);
   }
 
   private bindStage(): void {
@@ -378,12 +433,59 @@ export class Screens {
         box.style.borderColor = c;
         box.style.background = `linear-gradient(rgba(0,0,0,0.5), ${rgba(node.color ?? 0xffffff, 0.3)}), #14111c`;
       }
-      box.addEventListener('click', () => this.pickSlot(i));
-      box.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
+      slot.dataset.i = String(i);
+      const unequip = () => {
         profile.binds[i] = null;
+        this.selSkill = null;
+        this.selSlot = null;
         persist();
         this.refresh();
+      };
+      box.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        unequip();
+      });
+      // Press and release picks the slot; dragging a filled slot onto another one swaps them.
+      let down: { x: number; y: number } | null = null;
+      let ghost: HTMLDivElement | null = null;
+      box.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        box.setPointerCapture(e.pointerId);
+        down = { x: e.clientX, y: e.clientY };
+      });
+      box.addEventListener('pointermove', (e) => {
+        if (!down) return;
+        if (ghost) this.moveGhost(ghost, e);
+        else if (node && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 5) {
+          ghost = this.makeGhost(node);
+          this.moveGhost(ghost, e);
+        }
+      });
+      box.addEventListener('pointerup', (e) => {
+        if (!down) return;
+        down = null;
+        if (ghost) {
+          ghost.remove();
+          ghost = null;
+          const to = this.slotAt(e);
+          if (to !== null && to !== i && id && isSkill(id)) {
+            bind(id, to);
+            persist();
+            this.refresh();
+          }
+        } else if (this.lastSlotClick.i === i && performance.now() - this.lastSlotClick.t < 400) {
+          // The selector is rebuilt on every click, so a double click is timed here rather than left to the browser.
+          this.lastSlotClick = { i: -1, t: 0 };
+          unequip();
+        } else {
+          this.lastSlotClick = { i, t: performance.now() };
+          this.pickSlot(i);
+        }
+      });
+      box.addEventListener('pointercancel', () => {
+        down = null;
+        ghost?.remove();
+        ghost = null;
       });
     });
   }
@@ -404,7 +506,7 @@ export class Screens {
       const unlocked = n.parents.every((p) => level(p) >= 1);
       const equippable = isSkill(n.id) && lvl >= 1;
       el.className =
-        'node' + (n.color ? ' skill' : '') + (lvl > 0 ? ' owned' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim') +
+        'node' + (n.tree === 'book' ? ' skill' : '') + (lvl > 0 ? ' owned' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim') +
         (this.selSkill === n.id ? ' selected' : '') + (equippable && this.selSlot !== null ? ' pickable' : '');
       if (n.color) {
         el.style.borderColor = hex(n.color);
@@ -436,24 +538,8 @@ export class Screens {
     });
     tools.append(
       reveal,
-      lines,
-      this.button('Reset layout', () => {
-        this.layout = {};
-        clearLayout();
-        this.refresh();
-      }),
-      this.button('Copy layout', () => {
-        const text = JSON.stringify(this.currentLayout());
-        navigator.clipboard?.writeText(text).catch(() => {});
-        prompt('Layout JSON (copied if allowed)', text);
-      }),
+      lines
     );
-  }
-
-  private currentLayout(): Layout {
-    const out: Layout = {};
-    for (const n of nodes) out[n.id] = this.position(n);
-    return out;
   }
 
   private div(cls: string, id?: string, parent: HTMLElement = document.body): HTMLDivElement {

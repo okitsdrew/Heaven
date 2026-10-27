@@ -369,8 +369,11 @@ export class HubScene extends Phaser.Scene {
       label: 'Delve into the mind',
       room: 'throne',
       act: () => {
-        profile.visitedHead = true;
-        void this.startBattle();
+        // The first time goes straight into battle; after that the upgrade tree comes first.
+        if (!profile.visitedHead) {
+          profile.visitedHead = true;
+          void this.startBattle();
+        } else this.openUpgradeTree();
       },
       enabled: () => profile.introDone,
     });
@@ -421,16 +424,7 @@ export class HubScene extends Phaser.Scene {
       { label: 'Go to throne room', run: () => void this.changeRoom('throne') },
       { label: 'Go to hallway', run: () => void this.changeRoom('hall') },
       { label: 'Start battle', run: () => void this.startBattle() },
-      {
-        label: 'Open skill tree',
-        run: () => {
-          this.menu = true;
-          Screens.get().showTree(() => void this.startBattle(), () => {
-            Screens.get().hide();
-            this.menu = false;
-          });
-        },
-      },
+      { label: 'Open upgrade tree', run: () => this.openUpgradeTree() },
       { label: 'Open the book', run: () => this.openBook() },
       {
         label: 'Replay book unlock scene',
@@ -460,11 +454,20 @@ export class HubScene extends Phaser.Scene {
           profile.bookOpened = false;
           profile.bookIntroSeen = false;
           profile.bowHintShown = false;
+          profile.skillTipShown = false;
           profile.visitedHead = false;
           persistNow();
         },
       },
     ]);
+  }
+
+  private openUpgradeTree(): void {
+    this.menu = true;
+    Screens.get().showTree(() => void this.startBattle(), () => {
+      Screens.get().hide();
+      this.menu = false;
+    });
   }
 
   private restart(cutsceneOnly: boolean): void {

@@ -245,7 +245,7 @@ export class GameScene extends Phaser.Scene {
       { label: 'Go home (hub)', run: () => this.goHome() },
       { label: 'Restart run', run: () => this.startRun() },
       { label: 'End run (show summary)', run: () => this.endRun('Run ended') },
-      { label: 'Open skill tree', run: () => this.openTree() },
+      { label: 'Open upgrade tree', run: () => this.openTree() },
       { label: 'Add 100 souls', run: () => this.addProfile('gold', 100) },
       { label: 'Add 10 skill points', run: () => this.addProfile('skillPoints', 10) },
       {

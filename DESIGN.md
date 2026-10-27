@@ -136,6 +136,11 @@ In-game overlay, toggled with backtick. Must include:
 - Skills are no longer tied to keys. Q, E and R are three equip slots (`profile.binds`); only equipped skills work and show on the player. In the book, click an owned skill then a slot, or a slot then a skill. Right-click a slot to empty it. New skills fill the first empty slot. The slot box takes the skill's colour. The HUD follows the slots. Fire Wave is orange, Ice Storm blue, Doomsday yellow, Sword Slash purple. Teleport stays on right click.
 - Souls grow less with value (`gold.valueScale`) and have a smaller aura (`gold.glowSize`). The throne blinks half as often.
 
+### Round 9
+- Anathema opens the upgrade tree first (Home or Battle), except the very first entry after the book cutscene, which goes straight to battle.
+- Tree nodes can no longer be moved (layout tools removed). Skill buttons are all 300x128 so they match whatever the text.
+- Buying a skill (not Teleport) the first time shows "click a skill and assign it a slot" for 2s, then it blows away (`skillTipShown`). Buying no longer equips. Double click or right-click a slot to unequip. Drag a skill from the tree onto a slot, or one slot onto another to swap; a coloured placeholder button follows the pointer and the real node stays put.
+
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.

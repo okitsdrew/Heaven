@@ -63,25 +63,25 @@ export const nodes: SkillNode[] = [
     id: 'fireFairy',
     name: 'Fire Wave',
     desc: () => `Unleash a fire wave in front, burning enemies for ${cfg.fireWave.burnTime} seconds.${small(`Cooldown ${cfg.fireWave.cooldown}s, damage ${cfg.fireWave.damage}`)}`,
-    parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -390, y: 190, tree: 'book', color: 0xff7a20,
+    parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -495, y: 190, tree: 'book', color: 0xff7a20,
   },
   {
     id: 'iceFairy',
     name: 'Ice Storm',
     desc: () => `Direct an ice storm onto an area for ${cfg.iceStorm.duration} seconds. Damages and slows enemies. Freezes bosses for ${cfg.iceStorm.bossFreeze} second.${small(`Cooldown ${cfg.iceStorm.cooldown}s, damage ${cfg.iceStorm.damage} x${cfg.iceStorm.ticksPerSecond}/s`)}`,
-    parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -130, y: 190, tree: 'book', color: 0x7fd4ff,
+    parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -165, y: 190, tree: 'book', color: 0x7fd4ff,
   },
   {
     id: 'doomsday',
     name: 'Doomsday Scenario',
     desc: () => `Teleport to an area and unleashes an explosion. Damages, stuns, and knocks back enemies. Damages and stuns bosses.${small(`Cooldown ${cfg.doomsday.cooldown}s, damage ${cfg.doomsday.damage}`)}`,
-    parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 130, y: 190, tree: 'book', color: 0xffe14a,
+    parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 165, y: 190, tree: 'book', color: 0xffe14a,
   },
   {
     id: 'swordSlash',
     name: 'Sword Slash',
     desc: () => `Convert your next ${cfg.swordSlash.charges} attacks into a sword slash combo. Damages enemies and stuns bosses.${small(`Cooldown ${cfg.swordSlash.cooldown}s, damage ${cfg.swordSlash.coneDamage} cone, ${cfg.swordSlash.slamDamage} slam`)}`,
-    parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 390, y: 190, tree: 'book', color: 0xb070ff,
+    parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 495, y: 190, tree: 'book', color: 0xb070ff,
   },
 ];
 
@@ -158,7 +158,6 @@ export function buy(n: SkillNode): boolean {
     else profile.skillPoints -= cost;
   }
   profile.nodes[n.id] = level(n.id) + 1;
-  if (isSkill(n.id)) autoBind(n.id);
   return true;
 }
 
