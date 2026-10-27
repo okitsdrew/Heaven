@@ -21,10 +21,13 @@ export interface SaveData {
   visitedHead: boolean;
   // Whether he has opened the book since it was unlocked (it glows until he does).
   bookOpened: boolean;
+  // The book unlock scene plays once, and the bow hint shows on the first battle only.
+  bookIntroSeen: boolean;
+  bowHintShown: boolean;
 }
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false };
 }
 
 function storageGet(key: string): string | null {
@@ -59,6 +62,8 @@ function sanitize(src: unknown): SaveData {
   out.bookUnlocked = s.bookUnlocked === true;
   out.visitedHead = s.visitedHead === true;
   out.bookOpened = s.bookOpened === true;
+  out.bookIntroSeen = s.bookIntroSeen === true || out.bookUnlocked;
+  out.bowHintShown = s.bowHintShown === true;
   if (s.nodes && typeof s.nodes === 'object') {
     for (const [k, v] of Object.entries(s.nodes)) if (typeof v === 'number' && v > 0) out.nodes[k] = Math.floor(v);
   }

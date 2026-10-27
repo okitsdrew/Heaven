@@ -24,11 +24,11 @@ import {
   WALL,
 } from '../hub/draw';
 import { Eyes } from '../hub/Eyes';
-import { Hand } from '../hub/Hand';
 import { book, brazier, debris, drawFlame, severedHead, throne, torch } from '../hub/props';
 import { Input, KeyboardMouseSource } from '../input';
 import { toScreen, toWorld } from '../iso';
 import { persistNow, profile } from '../save';
+import { ghostHint } from '../ui/ghostHint';
 import { Screens } from '../ui/Screens';
 
 type RoomName = 'hall' | 'throne';
@@ -78,15 +78,22 @@ export class HubScene extends Phaser.Scene {
   private textBox: G | null = null;
   private band!: G;
   private follow = true;
-  private hands!: [Hand, Hand];
   private bookGfx!: G;
   private bookGlow!: Phaser.GameObjects.Image;
   private bookRings!: G;
   private headGfx!: G;
   private headGlow!: Phaser.GameObjects.Image;
-  private headHi!: Phaser.GameObjects.Image;
+  private headOutline!: Phaser.GameObjects.RenderTexture;
+  private voidGfx!: G;
+  private voidK = 0;
+  private floatPt = { x: 0, y: 0 };
+  private floatBob = 0;
+  private camRot = 0;
+  private camRate = 0;
+  private iris: G | null = null;
+  private skipWaiters: (() => void)[] = [];
   private headLit = false;
-  private bookHi!: Phaser.GameObjects.Image;
+  private bookOutline!: Phaser.GameObjects.RenderTexture;
   private bookPointed = false;
   private bookIntro = false;
   private prompt!: Phaser.GameObjects.Text;
@@ -146,6 +153,12 @@ export class HubScene extends Phaser.Scene {
     this.interacts = [];
     this.rings = [];
     this.lines = [];
+    this.skipWaiters = [];
+    this.voidK = 0;
+    this.floatBob = 0;
+    this.camRot = 0;
+    this.camRate = 0;
+    this.iris = null;
     this.lying = null;
     this.lyingShadow = null;
     this.bookPower = 1;
@@ -178,6 +191,11 @@ export class HubScene extends Phaser.Scene {
     this.fade = this.add.rectangle(W / 2, H / 2, W * 4, H * 4, 0x000000).setDepth(2e6).setAlpha(1);
 
     this.setActions();
+    // A click while the throne is speaking finishes the line, and the next one moves on.
+    this.input.on('pointerdown', () => {
+      const waiting = this.skipWaiters.splice(0);
+      for (const w of waiting) w();
+    });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input2.destroy();
       this.tweens.killAll();
@@ -196,6 +214,11 @@ export class HubScene extends Phaser.Scene {
       this.showRoom('hall');
       void this.playIntro();
     } else {
+      // The unlock scene was cut short last time; the book is opened for him rather than playing it again.
+      if (profile.bookIntroSeen && !profile.bookUnlocked) {
+        profile.bookUnlocked = true;
+        persistNow();
+      }
       this.showRoom('throne');
       this.setFeet(560, H - 90);
       this.player.aimX = 0;
@@ -333,8 +356,8 @@ export class HubScene extends Phaser.Scene {
     this.ellipse(room, 930, 252, 64, 20);
     this.headGlow = this.add.image(930, 208, Tex.glow).setTint(0x9cff30).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_DARK + 1);
     room.objs.push(this.headGlow);
-    this.headHi = this.add.image(930, 225, Tex.glow).setTint(0xb070ff).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_DARK + 1.7).setAlpha(0);
-    room.objs.push(this.headHi);
+    this.headOutline = this.outline(this.headGfx, 280, 260, 140, 200).setDepth(DEPTH_DARK + 1.7);
+    room.objs.push(this.headOutline);
     this.interacts.push({
       x: 930,
       y: 278,
@@ -358,18 +381,33 @@ export class HubScene extends Phaser.Scene {
     this.bookRings = this.gfx(room, 0, 0, 380);
     this.bookGfx = this.gfx(room, 94, 340, 372);
     book(this.bookGfx);
-    this.bookHi = this.add.image(94, 345, Tex.glow).setTint(0xb070ff).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_DARK + 1.7).setAlpha(0);
-    room.objs.push(this.bookHi);
+    this.bookOutline = this.outline(this.bookGfx, 110, 130, 55, 65).setDepth(DEPTH_DARK + 1.7);
+    room.objs.push(this.bookOutline);
     this.bookGlow = this.add.image(94, 340, Tex.glow).setTint(0x4a90ff).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_DARK + 1);
     room.objs.push(this.bookGlow);
     const shadow = this.add.ellipse(94, 398, 56, 14, 0x000000, 0.4).setDepth(371);
     room.objs.push(shadow);
     this.interacts.push({ x: 96, y: 392, r: 90, label: 'Reach for the book', room: 'throne', act: () => this.touchBook() });
 
-    this.hands = [new Hand(this), new Hand(this)];
-    this.hands[1].flip = -1;
-    for (const h of this.hands) h.alpha = 0;
+    // The black void he hovers over while the throne speaks to him.
+    this.voidGfx = this.gfx(room, 560, 294, 289);
     return room;
+  }
+
+  // A white rim around a drawn prop: its silhouette stamped around itself, with the prop itself cut out.
+  private outline(src: G, w: number, h: number, ox: number, oy: number): Phaser.GameObjects.RenderTexture {
+    const fill = this.add.renderTexture(0, 0, w, h).setOrigin(0);
+    fill.draw(src, ox, oy);
+    fill.setTintFill(0xffffff);
+    const out = this.add.renderTexture(0, 0, w, h).setOrigin(ox / w, oy / h);
+    const r = 3;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      out.draw(fill, Math.cos(a) * r, Math.sin(a) * r);
+    }
+    out.erase(src, ox, oy);
+    fill.destroy();
+    return out.setAlpha(0);
   }
 
   private setActions(): void {
@@ -398,6 +436,7 @@ export class HubScene extends Phaser.Scene {
           profile.introDone = true;
           profile.bookUnlocked = false;
           profile.bookOpened = false;
+          profile.bookIntroSeen = false;
           persistNow();
           this.scene.restart({ bookIntro: true });
         },
@@ -415,6 +454,8 @@ export class HubScene extends Phaser.Scene {
           profile.introDone = false;
           profile.bookUnlocked = false;
           profile.bookOpened = false;
+          profile.bookIntroSeen = false;
+          profile.bowHintShown = false;
           profile.visitedHead = false;
           persistNow();
         },
@@ -519,14 +560,46 @@ export class HubScene extends Phaser.Scene {
     this.busy = false;
   }
 
+  // Into battle: the view spins in on Anathema until the screen is swallowed, then he drops into the fight.
   private async startBattle(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
     this.controlled = false;
+    this.menu = false;
     persistNow();
     Screens.get().hide();
-    await this.tw({ targets: this.fade, alpha: 1, duration: 700 });
-    this.scene.start('game');
+    this.prompt.setVisible(false);
+    if (this.room !== 'throne') {
+      await this.tw({ targets: this.fade, alpha: 1, duration: 700 });
+      this.scene.start('game', { dive: true });
+      return;
+    }
+    const e = cfg.entry;
+    const iris = this.add.graphics().setDepth(2e6 - 1);
+    this.iris = iris;
+    this.follow = false;
+    this.camRate = 7;
+    this.camTarget = { x: 930, y: 250, zoom: this.cam.zoom * e.swirlZoom };
+    const big = 3000;
+    const cam = this.cameras.main;
+    const fit = Math.min(cam.width / W, cam.height / H);
+    const reach = Math.hypot(cam.width, cam.height) / (2 * fit * this.cam.zoom);
+    await this.tweenValue(0, 1, e.swirlTime * 1000, (k) => {
+      this.camRot = k * k * e.swirlTurns * Math.PI * 2;
+      const r = (1 - k) ** 2 * reach * 1.2;
+      const wob = Math.min(1, r / 150) * 0.16;
+      iris.clear();
+      iris.lineStyle(big, 0x000000, 1);
+      const pts: Phaser.Math.Vector2[] = [];
+      for (let i = 0; i < 96; i++) {
+        const a = (i / 96) * Math.PI * 2;
+        const rr = r * (1 + wob * Math.sin(4 * a + k * 14)) + big / 2;
+        pts.push(new Phaser.Math.Vector2(Math.cos(a) * rr, Math.sin(a) * rr));
+      }
+      iris.strokePoints(pts, true, true);
+    }, 'Sine.easeIn');
+    this.fade.setAlpha(1);
+    this.scene.start('game', { dive: true });
   }
 
   private openEyesNow(): void {
@@ -574,8 +647,7 @@ export class HubScene extends Phaser.Scene {
 
   private updatePlayer(dt: number, input: Input): void {
     if (this.carry) {
-      const h = this.hands[0];
-      this.setFeet(h.x + 32 * h.scale, h.y - 6);
+      this.setFeet(this.floatPt.x, this.floatPt.y + Math.sin(this.clock * 2.2) * this.floatBob);
       return;
     }
     if (!this.controlled) return;
@@ -704,21 +776,38 @@ export class HubScene extends Phaser.Scene {
     this.bookGfx.setPosition(94, 338 + bob).setScale(1 + 0.1 * pulse * this.bookPower).setAngle(Math.sin(t * 0.9) * 3);
     this.bookGlow.setPosition(94, 340 + bob).setScale(2.2 + 1.2 * pulse).setAlpha((0.4 + 0.5 * pulse) * Math.min(1.4, this.bookPower));
     this.drawRings(dt);
-    // Once he has been pointed at the book it glows purple until he opens it.
+    // Once he has been sent to the book it flashes a white outline until he opens it.
+    const flash = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(t * 6));
     const bookLit = (profile.bookUnlocked || this.bookPointed) && !profile.bookOpened;
-    this.bookHi.setPosition(94, 345 + bob).setScale(4.4 + 0.5 * Math.sin(t * 3)).setAlpha(bookLit ? 0.34 + 0.14 * Math.sin(t * 3) : 0);
+    this.bookOutline.setPosition(this.bookGfx.x, this.bookGfx.y).setScale(this.bookGfx.scale).setAngle(this.bookGfx.angle).setAlpha(bookLit ? flash : 0);
 
     // The severed head pulses a sick green.
     const sick = 0.55 + 0.25 * Math.sin(t * 2.3) + 0.1 * Math.sin(t * 7.1);
     this.headGlow.setScale(3.8 + 0.4 * Math.sin(t * 1.4)).setAlpha(0.22 * sick);
-    // Once he has been told where to go, Anathema glows purple until he goes in.
+    // Once he has been told where to go, Anathema flashes a white outline until he goes in.
     const lit = this.headLit && !profile.visitedHead;
-    this.headHi.setScale(5.2 + 0.5 * Math.sin(t * 3)).setAlpha(lit ? 0.3 + 0.12 * Math.sin(t * 3) : 0);
     this.headGfx.setAngle(Math.sin(t * 0.7) * 0.8);
+    this.headOutline.setPosition(this.headGfx.x, this.headGfx.y).setAngle(this.headGfx.angle).setAlpha(lit ? flash : 0);
+    this.drawVoid(t);
 
     const p = this.feet();
     this.eyes.update(dt, p.x, p.y - 22, this.eyesFollow);
-    for (const h of this.hands) h.update(dt);
+  }
+
+  // The void under his feet swells open when he is lifted to the eyes and closes again when he is put down.
+  private drawVoid(t: number): void {
+    const g = this.voidGfx;
+    g.clear();
+    const k = this.voidK;
+    if (k <= 0.001) return;
+    const spin = t * 2;
+    g.fillStyle(0x7a2fd0, 0.18 * k).fillEllipse(0, 0, 150 * k, 56 * k);
+    g.fillStyle(0x000000, 1).fillEllipse(0, 0, 112 * k, 40 * k);
+    g.lineStyle(2, 0xb070ff, 0.7 * k).strokeEllipse(0, 0, 118 * k, 44 * k);
+    for (let i = 0; i < 3; i++) {
+      const a = spin + (i * Math.PI * 2) / 3;
+      g.lineStyle(2, 0x3a0f6a, 0.9 * k).lineBetween(Math.cos(a) * 12 * k, Math.sin(a) * 4.5 * k, Math.cos(a + 0.9) * 50 * k, Math.sin(a + 0.9) * 17 * k);
+    }
   }
 
   private drawRings(dt: number): void {
@@ -773,7 +862,7 @@ export class HubScene extends Phaser.Scene {
       const p = this.feet();
       this.camTarget = { x: p.x, y: p.y - 30, zoom: cfg.hub.zoom };
     }
-    const k = 1 - Math.exp(-(this.follow ? 4 : 2.6) * dt);
+    const k = 1 - Math.exp(-(this.camRate || (this.follow ? 4 : 2.6)) * dt);
     this.cam.x += (this.camTarget.x - this.cam.x) * k;
     this.cam.y += (this.camTarget.y - this.cam.y) * k;
     this.cam.zoom += (this.camTarget.zoom - this.cam.zoom) * k;
@@ -787,7 +876,9 @@ export class HubScene extends Phaser.Scene {
     const sx = Math.sin(this.clock * 47) * this.rumble * 0.5 + this.fx.shakeOffset.x;
     const sy = Math.sin(this.clock * 37 + 1) * this.rumble + this.fx.shakeOffset.y;
     cam.setZoom(fit * this.cam.zoom);
+    cam.setRotation(this.camRot);
     cam.centerOn(cx + sx, cy + sy);
+    this.iris?.setPosition(cx + sx, cy + sy);
   }
 
   private focus(x: number, y: number, zoom: number): void {
@@ -882,7 +973,7 @@ export class HubScene extends Phaser.Scene {
     this.controlled = true;
     this.busy = false;
     this.followPlayer();
-    this.ghostHint('(W A S D to move. Space to Dash)');
+    ghostHint(this, this.fx, '(W A S D to move. Space to Dash)', { x: W / 2, y: 372, depth: DEPTH_DARK + 3, hold: (cfg.hub.hintTime + 0.8) / cfg.hub.cutsceneSpeed });
   }
 
   private dropRock(x: number, y: number, size: number): Promise<void> {
@@ -911,48 +1002,6 @@ export class HubScene extends Phaser.Scene {
           this.rooms.hall.colliders.push({ cx: x, cy: y, rx: size * 1.1, ry: size * 0.55 });
           res();
         },
-      });
-    });
-  }
-
-  // Ghostly text that hangs in the air for a moment and is then blown away like smoke.
-  private ghostHint(text: string): void {
-    const size = 26;
-    const font = `italic ${size}px Georgia, serif`;
-    const ctx = document.createElement('canvas').getContext('2d')!;
-    ctx.font = font;
-    const widths = [...text].map((c) => ctx.measureText(c).width);
-    const total = widths.reduce((a, b) => a + b, 0);
-    let x = W / 2 - total / 2;
-    const y = 372;
-    const chars: Phaser.GameObjects.Text[] = [];
-    [...text].forEach((c, i) => {
-      const t = this.add
-        .text(x, y, c, { fontFamily: 'Georgia, serif', fontSize: `${size}px`, fontStyle: 'italic', color: '#e8f0ff' })
-        .setOrigin(0, 0.5)
-        .setDepth(DEPTH_DARK + 3)
-        .setAlpha(0)
-        .setShadow(0, 0, '#a8c4ff', 12, false, true);
-      chars.push(t);
-      this.tweens.add({ targets: t, alpha: 0.92, duration: 700, delay: i * 18 });
-      x += widths[i];
-    });
-    void this.sleep(cfg.hub.hintTime + 0.8).then(() => {
-      chars.forEach((t, i) => {
-        const delay = i * 28;
-        this.fx.particle({ texture: Tex.smoke, x: t.x + 6, y, life: 1.1, from: 0.5, to: 1.3, alpha: 0.5, tint: 0xd8e4ff, additive: false, vx: 150 + Math.random() * 90, vy: -22 - Math.random() * 24, depth: DEPTH_DARK + 3 });
-        this.tweens.add({
-          targets: t,
-          x: t.x + 260 + Math.random() * 260,
-          y: y - 30 - Math.random() * 90,
-          angle: -30 + Math.random() * 90,
-          scale: 1.8,
-          alpha: 0,
-          delay,
-          duration: 1400 + Math.random() * 500,
-          ease: 'Cubic.easeIn',
-          onComplete: () => t.destroy(),
-        });
       });
     });
   }
@@ -1007,9 +1056,30 @@ export class HubScene extends Phaser.Scene {
     line.image.setPosition(x, y).setDepth(DEPTH_DARK + 3);
     this.lines.push(line);
     const t = { v: 0 };
-    await this.tw({ targets: t, v: 1, duration: 70 * Math.max(4, text.length), ease: 'Sine.easeInOut', onUpdate: () => line.setReveal(t.v) });
+    await this.skippable({ targets: t, v: 1, duration: 70 * Math.max(4, text.length), ease: 'Sine.easeInOut', onUpdate: () => line.setReveal(t.v) });
     line.setReveal(1);
     return line;
+  }
+
+  // A tween that a click finishes early (the caller sets the end state afterwards).
+  private skippable(config: Phaser.Types.Tweens.TweenBuilderConfig): Promise<void> {
+    return new Promise((res) => {
+      let done = false;
+      const finish = (natural: boolean) => {
+        if (done) return;
+        done = true;
+        this.skipWaiters = this.skipWaiters.filter((f) => f !== waiter);
+        if (!natural) tween.stop();
+        res();
+      };
+      const waiter = () => finish(false);
+      const tween = this.tweens.add({ ...config, duration: (config.duration as number) / cfg.hub.cutsceneSpeed, onComplete: () => finish(true) });
+      this.skipWaiters.push(waiter);
+    });
+  }
+
+  private waitOrClick(sec: number): Promise<void> {
+    return this.skippable({ targets: { v: 0 }, v: 1, duration: sec * 1000 });
   }
 
   private async clearLines(): Promise<void> {
@@ -1048,7 +1118,7 @@ export class HubScene extends Phaser.Scene {
     const w = Math.max(...rows.map((r) => this.measure(r, size)));
     this.openBox(x - 8, 16, w + 26, rows.length * lh + 22);
     for (let i = 0; i < rows.length; i++) await this.scrawl(rows[i], x, 46 + i * lh, size);
-    await this.sleep(hold + 0.029 * text.length);
+    await this.waitOrClick(hold + 0.029 * text.length);
     await this.clearLines();
   }
 
@@ -1057,69 +1127,27 @@ export class HubScene extends Phaser.Scene {
     await this.tw({ targets: o, v: to, duration: ms, ease, onUpdate: () => set(o.v) });
   }
 
-  private async moveHand(h: Hand, x: number, y: number, rot: number, ms: number, ease = 'Cubic.easeInOut'): Promise<void> {
-    const o = { x: h.x, y: h.y, rot: h.rot };
-    await this.tw({
-      targets: o,
-      x,
-      y,
-      rot,
-      duration: ms,
-      ease,
-      onUpdate: () => {
-        h.x = o.x;
-        h.y = o.y;
-        h.rot = o.rot;
-      },
-    });
-  }
-
-  private async curlHand(h: Hand, to: number[], ms: number): Promise<void> {
-    const from = h.curl.slice();
-    await this.tweenValue(0, 1, ms, (k) => {
-      h.curl = from.map((v, i) => v + (to[i] - v) * k);
-    });
-  }
-
-  private async handIn(h: Hand, ax: number, ay: number, x: number, y: number, rot: number): Promise<void> {
-    h.anchorX = ax;
-    h.anchorY = ay;
-    h.scale = cfg.hub.handScale;
-    h.rot = rot;
-    h.alpha = 1;
-    // Start far enough back along its own direction that the fingertips are still inside the black, then slide out: fingers first.
-    const back = 170;
-    h.x = x - Math.cos(rot) * back;
-    h.y = y - Math.sin(rot) * back;
-    await this.moveHand(h, x, y, rot, 900, 'Sine.easeOut');
-  }
-
-  private async handOut(h: Hand, ms = 900): Promise<void> {
-    await Promise.all([this.moveHand(h, h.anchorX + 20, h.anchorY - 20, h.rot, ms, 'Cubic.easeIn'), this.tweenValue(1, 0, ms, (v) => (h.alpha = v), 'Quad.easeIn')]);
-  }
-
-  // After the first skill point is earned and lost: he is sent for, and shown where the book's pages are now open.
+  // After the first skill point is earned and lost: he is sent for, and walks to the book, whose pages are now open.
   private async bookUnlockScene(): Promise<void> {
     this.busy = true;
     this.controlled = false;
     this.eyesFollow = true;
     this.openEyesNow();
-    const [, h2] = this.hands;
+    profile.bookIntroSeen = true;
+    persistNow();
     await this.sleep(1.2);
     await this.say('oh dear oh dear', 'right');
     await this.say("you're getting stronger. but so are they", 'right');
 
-    // The hand reaches out and points at the book in the corner.
-    h2.point();
-    h2.g.setDepth(236);
-    await this.handIn(h2, 680, 128, 690, 170, 1.0);
-    await this.moveHand(h2, 640, 240, Math.atan2(345 - 240, 94 - 640) + 0.08, 1000, 'Back.easeOut');
+    const walk = this.walkTo(168, 394);
+    await this.say('come, learn the way of my family', 'right', 0.5);
+    await walk;
+    this.face(-1, 0);
     this.bookPointed = true;
     this.bookPower = 1.8;
     void this.sleep(1.4).then(() => (this.bookPower = 1));
     this.bump(4);
-    await this.say('come, learn the way of my family', 'right', 0.5);
-    await this.handOut(h2, 900);
+    await this.sleep(0.8);
 
     profile.bookUnlocked = true;
     persistNow();
@@ -1133,9 +1161,6 @@ export class HubScene extends Phaser.Scene {
     this.busy = true;
     this.controlled = false;
     this.prompt.setVisible(false);
-    const px = cfg.render.pixelScale;
-    void px;
-    const [h1, h2] = this.hands;
 
     // He walks up to the book and slowly reaches out.
     this.focus(300, 330, 1.25);
@@ -1158,87 +1183,71 @@ export class HubScene extends Phaser.Scene {
     await this.sleep(0.7);
     await this.say('well now, what have we here', 'right');
 
-    // A gnarled hand sweeps out of the dark and takes him.
+    // He is drawn up off the floor toward the eyes, and a black void opens beneath him.
     this.bookPower = 1;
-    await this.handIn(h1, 440, 128, 470, 150, 2.3);
-    h1.g.setDepth(540);
-    this.focus(330, 300, 1.15);
-    const grab = this.feet();
-    await this.moveHand(h1, grab.x + 32 * h1.scale + 10, grab.y - 30, Math.PI - 0.12, 1500, 'Cubic.easeInOut');
-    await this.curlHand(h1, [1, 1, 1, 1, 1], 520);
-    this.view.setVisible(false);
-    await this.sleep(0.25);
-
-    // Up he goes, in front of the eyes, and the hand opens flat beneath him.
-    this.focus(560, 230, 1.08);
-    h1.g.setDepth(248);
-    const lift = this.moveHand(h1, 500, 266, Math.PI * 2, 2300, 'Sine.easeInOut');
-    await this.sleep(1.3);
+    const from = this.feet();
+    this.floatPt = { x: from.x, y: from.y };
     this.carry = true;
-    this.player.armsUpTimer = 0;
     this.view.armsRate = 0.06;
-    this.face(1, 0);
-    await lift;
-    h1.rot = 0;
-    h1.g.setDepth(246);
-    this.setFeet(h1.x + 32 * h1.scale, h1.y - 6);
-    this.view.setVisible(true);
-    await this.curlHand(h1, [0, 0, 0, 0, 0], 700);
+    const lift = this.tw({ targets: this.floatPt, x: 560, y: 290, duration: 2800, ease: 'Sine.easeInOut' });
+    void this.sleep(1.2).then(() => {
+      this.player.armsUpTimer = 0;
+      this.face(0, -1);
+    });
+    await Promise.all([lift, this.say('oh, what a blessed boon', 'right')]);
+    this.floatBob = 2;
+    await this.tweenValue(0, 1, 600, (v) => (this.voidK = v), 'Back.easeOut');
     await this.sleep(0.5);
 
-    await this.say('oh, my sweet, darling angel. my blessed boon', 'left');
-    await this.say('you could not have manifested at a more appropriate time', 'left');
+    await this.say('fear not, you are safe in here my friend', 'left');
+    await this.say('though, for how long, i cannot say', 'left');
 
-    // The other hand points at the ceiling and the eyes follow it up.
-    h2.point();
-    h2.g.setDepth(236);
-    await this.handIn(h2, 680, 128, 700, 170, 1.3);
-    await this.moveHand(h2, 724, 232, -Math.PI / 2, 900, 'Back.easeOut');
+    // The eyes drift up to the ceiling and the fighting above.
+    await this.sleep(1);
     this.eyes.glance.y = -1.4;
-    const sway = this.tweenValue(0, 1, 6000, (v) => (h2.rot = -Math.PI / 2 + Math.sin(v * 40) * 0.04));
-    void sway;
     void this.sleep(1.6).then(() => (this.eyes.glance.y = 0));
-    await this.say('these war-hungry fools. these damned walls.', 'left');
-    void this.handOut(h2, 1100);
-    await this.say('its only a matter of time till these halls are ravaged alongside the face of the earth', 'left');
+    await this.say('these wretched humans...', 'left');
+    await this.say("nary a day passes they aren't at war", 'left');
+    await this.say("we're too precious to be collateral damage", 'left');
 
-    // He is set down and the hand lets go.
-    await this.moveHand(h1, 500, 376, 0, 1700, 'Sine.easeInOut');
-    this.carry = false;
-    await this.handOut(h1, 1100);
-    this.view.armsRate = 0.06;
+    // The void closes and he is lowered to the floor.
+    await this.tweenValue(1, 0, 450, (v) => (this.voidK = v), 'Quad.easeIn');
+    this.floatBob = 0;
     this.face(1, -0.4);
+    await this.tw({ targets: this.floatPt, x: 560, y: 376, duration: 1700, ease: 'Sine.easeInOut' });
+    this.carry = false;
+    this.view.armsRate = 0.06;
 
     // A run of short, heavy lines; the eyes go wide on the third.
     const x = 640;
     const size = cfg.hub.textSize;
     const lh = size * 1.5;
     this.openBox(x - 8, 16, this.measure('Become my champion', size) + 26, lh * 4 + 22);
-    const l1 = await this.scrawl('Learn my ways.', x, 46, size);
+    await this.scrawl('Learn my ways.', x, 46, size);
     await this.sleep(0.32);
-    const l2 = await this.scrawl('Grow in Power', x, 46 + lh, size);
+    await this.scrawl('Grow in Power', x, 46 + lh, size);
     await this.sleep(0.32);
     // The eyes open wide as the line is being written.
     this.bump(6);
     void this.tweenValue(0, 1, 300, (v) => (this.eyes.wide = v)).then(() => this.sleep(1.2)).then(() => this.tweenValue(1, 0, 500, (v) => (this.eyes.wide = v)));
-    const l3 = await this.scrawl('Become my champion', x, 46 + lh * 2, size);
-    await this.sleep(1.6);
+    await this.scrawl('Become my champion', x, 46 + lh * 2, size);
+    await this.waitOrClick(1.6);
     await this.scrawl('...........', x, 46 + lh * 3, size);
-    await this.sleep(1.3);
-    void [l1, l2, l3];
+    await this.waitOrClick(1.3);
     await this.clearLines();
 
-    await this.say("for now, you're too weak to be a threat out there.", 'right');
+    await this.say('let us show them the true scope of war', 'right');
+    await this.sleep(1);
+    await this.say("alas, you're too weak to be a threat", 'right');
 
-    // The hand gestures toward the head in the corner.
-    h2.point();
+    // He is sent to the head in the corner and walks there himself.
     this.headLit = true;
-    await this.handIn(h2, 680, 128, 690, 170, 0.9);
-    // Aim the finger at the head in the corner (the mirrored hand's finger sits a touch low).
-    await this.moveHand(h2, 690, 240, Math.atan2(258 - 240, 930 - 690) - 0.08, 1000, 'Back.easeOut');
-    await this.say('come, let Anathema teach you.', 'left');
-    await this.say('I wonder, how many seconds can you withstand the sheer weight of his memories?', 'left', 1);
-    await this.handOut(h2, 900);
+    this.focus(W / 2, 300, 1);
+    const walk = this.walkTo(930, 306);
+    await this.say('come, darling, learn from Anathema', 'left');
+    await walk;
+    this.face(0, -1);
+    await this.say('few can withstand his memories for long...', 'left', 1);
 
     profile.introDone = true;
     persistNow();

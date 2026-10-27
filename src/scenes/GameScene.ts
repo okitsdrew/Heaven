@@ -14,6 +14,7 @@ import { Fx } from '../game/Fx';
 import { Ground } from '../game/Ground';
 import { Gold } from '../game/Gold';
 import { Hud, RunHud } from '../game/Hud';
+import { LandingBlast } from '../game/LandingBlast';
 import { Player } from '../game/Player';
 import { SwordSlash } from '../game/SwordSlash';
 import { PlayerView } from '../game/PlayerView';
@@ -21,6 +22,7 @@ import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
 import { canUse, dustFraction, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
+import { ghostHint } from '../ui/ghostHint';
 import { Screens } from '../ui/Screens';
 import { SpatialHash } from '../util/spatialHash';
 import { addXp, setLevel, xpToNext } from '../xp';
@@ -64,9 +66,17 @@ export class GameScene extends Phaser.Scene {
   private stats!: Phaser.GameObjects.Text;
   private vignette!: Phaser.GameObjects.Image;
   private camCenter = { x: 0, y: 0 };
+  private diveIn = false;
+  private entry: { t: number; x: number; y: number; img: Phaser.GameObjects.Image; shadow: Phaser.GameObjects.Ellipse } | null = null;
+  private blast!: LandingBlast;
 
   constructor() {
     super('game');
+  }
+
+  init(data?: { dive?: boolean }): void {
+    this.diveIn = data?.dive === true;
+    this.entry = null;
   }
 
   create(): void {
@@ -104,6 +114,7 @@ export class GameScene extends Phaser.Scene {
     this.swordSlash = new SwordSlash(this, this.fx, () => this.targetList);
     this.doomsday = new Doomsday(this, this.fx, () => this.targetList);
     this.hud = new Hud(this, 4);
+    this.blast = new LandingBlast(this, this.fx);
 
     this.player.onFire = (_x, _y, dx, dy) => {
       const m = this.playerView.muzzle();
@@ -291,6 +302,56 @@ export class GameScene extends Phaser.Scene {
     this.clock = this.clockStart;
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input2.destroy());
+    if (this.diveIn) this.beginDive();
+  }
+
+  // Coming in from the hub: he drops out of the sky head first and crashes into the ground.
+  private beginDive(): void {
+    const cam = this.cameras.main;
+    const px = cfg.render.pixelScale;
+    toScreen(this.player.x, this.player.y, screen);
+    this.camCenter.x = screen.x;
+    this.camCenter.y = screen.y;
+    this.playerView.setVisible(false);
+    const img = this.add.image(screen.x, screen.y - cfg.entry.diveHeight, Tex.hero).setScale(px).setAngle(180).setDepth(1e6);
+    const shadow = this.add.ellipse(screen.x, screen.y, 90 * px, 22 * px, 0x000000, 0).setDepth(screen.y - 1);
+    this.entry = { t: 0, x: screen.x, y: screen.y, img, shadow };
+    const veil = this.add.rectangle(cam.width / 2, cam.height / 2, 10000, 10000, 0x000000).setScrollFactor(0).setDepth(5e6);
+    this.tweens.add({ targets: veil, alpha: 0, delay: 100, duration: 300, onComplete: () => veil.destroy() });
+  }
+
+  private updateEntry(dt: number): void {
+    const e = this.entry!;
+    const cam = this.cameras.main;
+    const px = cfg.render.pixelScale;
+    e.t += dt;
+    const k = Math.min(1, e.t / cfg.entry.diveTime);
+    const h = e.img.height * px;
+    const y = e.y - h * 0.5 - cfg.entry.diveHeight * (1 - k * k);
+    e.img.setPosition(e.x, y);
+    e.shadow.setAlpha(0.55 * k).setScale(0.3 + 0.7 * k);
+    this.fx.particle({ x: e.x + (Math.random() - 0.5) * 16 * px, y: y - h * 0.3, life: 0.25, from: 0.35, to: 0.05, tint: 0xb070ff, depth: 1e6 - 1 });
+    this.fx.particle({ texture: Tex.smoke, x: e.x, y: y - h * 0.6, life: 0.35, from: px * 0.5, to: px * 1.4, alpha: 0.5, tint: 0x2a0f4a, additive: false, depth: 1e6 - 2 });
+    if (k >= 1) {
+      e.img.destroy();
+      e.shadow.destroy();
+      this.entry = null;
+      this.blast.trigger(e.x, e.y);
+      this.hitStop = 0.12;
+      this.playerView.setVisible(true);
+      if (!profile.bowHintShown) {
+        profile.bowHintShown = true;
+        persistNow();
+        ghostHint(this, this.fx, 'Void Bow: Click to shoot', { x: cam.width / 2, y: cam.height * 0.68, depth: 4e6, hold: cfg.entry.hintTime + 0.7, screenSpace: true });
+      }
+    }
+    this.fx.update(dt);
+    this.blast.update(dt, { width: cam.width, height: cam.height });
+    cam.scrollX = this.camCenter.x - cam.width / 2 + this.fx.shakeOffset.x;
+    cam.scrollY = this.camCenter.y - cam.height / 2 + this.fx.shakeOffset.y;
+    this.ground.update(cam);
+    this.chunks.update(dt, cam);
+    this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
   }
 
   update(_time: number, deltaMs: number): void {
@@ -303,6 +364,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     let dt = Math.min(deltaMs / 1000, 0.05) * cfg.time.timeScale;
+    if (this.entry) {
+      this.updateEntry(dt);
+      input.endFrame();
+      return;
+    }
     // A brief slow-motion beat on the Doomsday impact.
     if (this.hitStop > 0) {
       this.hitStop -= dt;
@@ -363,6 +429,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.fairies.update(dt, this.player, { fire: this.abilities.fireAttach(), ice: this.abilities.iceAttach() });
     this.fx.update(dt);
+    this.blast.update(dt, { width: cam.width, height: cam.height });
 
     // Camera follows the player's projected position, with screen shake on top.
     toScreen(this.player.x, this.player.y, screen);
@@ -457,7 +524,7 @@ export class GameScene extends Phaser.Scene {
   private showSummary(): void {
     this.menu = true;
     // The first death after earning a skill point leads straight to the throne room, where the book is offered.
-    if (this.endDied && profile.introDone && !profile.bookUnlocked && profile.skillPoints > 0) {
+    if (this.endDied && profile.introDone && !profile.bookUnlocked && !profile.bookIntroSeen && profile.skillPoints > 0) {
       this.screens.hide();
       persistNow();
       this.scene.start('hub', { bookIntro: true });
