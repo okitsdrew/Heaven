@@ -163,7 +163,7 @@ export class Gold {
       const sprite = (this.sprites[used] ??= this.scene.add.image(0, 0, Tex.coin));
       const glow = (this.glows[used] ??= this.scene.add
         .image(0, 0, Tex.glow)
-        .setTint(0xffc83a)
+        .setTint(0xa060ff)
         .setBlendMode(Phaser.BlendModes.ADD));
       sprite.setVisible(true).setPosition(screen.x, screen.y - lift).setScale(size).setDepth(screen.y - 0.5);
       glow

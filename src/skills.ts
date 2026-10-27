@@ -43,21 +43,21 @@ export const nodes: SkillNode[] = [
   { id: 'moreDamage', name: 'More Damage', desc: (p) => `+${p} damage`, parents: ['fireRate'], currency: 'gold', levels: 6, base: 500, effect: 'moreDamage', x: -720, y: 0 },
   { id: 'moreMoreBullets', name: 'More MORE Bullets', desc: (p) => `+${p} arrow per shot`, parents: ['moreDamage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMoreBullets', x: -960, y: 190 },
 
-  { id: 'goldValue', name: 'Gold Value', desc: (p) => `+${p} gold per kill`, parents: ['time'], currency: 'gold', levels: 5, base: 25, effect: 'goldValue', x: 480, y: 0 },
+  { id: 'goldValue', name: 'Soul Value', desc: (p) => `+${p} souls per kill`, parents: ['time'], currency: 'gold', levels: 5, base: 25, effect: 'goldValue', x: 480, y: 0 },
   { id: 'pickupRadius', name: 'Pickup Radius', desc: (p) => `+${pct(p)} pickup radius`, parents: ['time'], currency: 'gold', levels: 2, base: 100, costs: [100, 200], effect: 'pickupRadius', x: 480, y: -240 },
-  { id: 'doubleGold', name: 'Double Gold', desc: (p) => `x${1 + p} gold per kill`, parents: ['goldValue'], currency: 'gold', levels: 1, base: 500, effect: 'doubleGold', x: 720, y: 110 },
+  { id: 'doubleGold', name: 'Double Souls', desc: (p) => `x${1 + p} souls per kill`, parents: ['goldValue'], currency: 'gold', levels: 1, base: 500, effect: 'doubleGold', x: 720, y: 110 },
 
-  { id: 'quadGold', name: 'Quadruple Gold', desc: (p) => `+${pct(p)} gold per kill (x4 with Double Gold)`, parents: ['doubleGold'], currency: 'gold', levels: 1, base: 1000, effect: 'quadGold', x: 960, y: 110 },
+  { id: 'quadGold', name: 'Quadruple Souls', desc: (p) => `+${pct(p)} souls per kill (x4 with Double Souls)`, parents: ['doubleGold'], currency: 'gold', levels: 1, base: 1000, effect: 'quadGold', x: 960, y: 110 },
 
   { id: 'moreMorePierce', name: 'more MORE Pierce', desc: (p) => `+${p} pierce`, parents: ['moreDamage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMorePierce', x: -960, y: 0 },
   { id: 'biggerArrows', name: 'Better Arrows', desc: (p) => `+${pct(p)} arrow size and range`, parents: ['moreMorePierce'], currency: 'gold', levels: 5, base: 500, effect: 'biggerArrows', x: -1200, y: -70 },
   { id: 'dustDevil', name: 'Dust Devil', desc: () => `Each kill: +${pct(cfg.upgrade.dustPerKill)} move and attack speed (max ${pct(cfg.upgrade.dustCap)}), lasts ${cfg.upgrade.dustHold + cfg.upgrade.dustDuration}s, reset by kills`, parents: ['pierce'], currency: 'gold', levels: 1, base: 500, effect: null, x: 0, y: -190 },
-  { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: [], currency: 'sp', levels: 1, base: 2, effect: null, x: 0, y: 0, tree: 'book' },
+  { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: [], currency: 'sp', levels: 1, base: 1, effect: null, x: 0, y: 0, tree: 'book' },
 
-  { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -360, y: 190, tree: 'book' },
-  { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -120, y: 190, tree: 'book' },
-  { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 120, y: 190, tree: 'book' },
-  { id: 'doomsday', name: 'Doomsday Scenario', desc: () => 'Unlocks F: teleport and detonate a huge explosion', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 360, y: 190, tree: 'book' },
+  { id: 'fireFairy', name: 'Fire Fairy', desc: () => 'Unlocks Q: Fire Wave', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -260, y: -180, tree: 'book' },
+  { id: 'iceFairy', name: 'Ice Fairy', desc: () => 'Unlocks E: Ice Storm', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 260, y: -180, tree: 'book' },
+  { id: 'swordSlash', name: 'Sword Slash', desc: () => 'Unlocks R: Sword Slash combo', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: -260, y: 180, tree: 'book' },
+  { id: 'doomsday', name: 'Doomsday Scenario', desc: () => 'Unlocks F: teleport and detonate a huge explosion', parents: ['teleport'], currency: 'sp', levels: 1, base: 3, effect: null, x: 260, y: 180, tree: 'book' },
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));

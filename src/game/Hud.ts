@@ -72,7 +72,7 @@ export class Hud {
   }
 }
 
-// Screen-fixed run info along the top edge: time left, gold, level and an XP bar.
+// Screen-fixed run info along the top edge: time left, souls, level and an XP bar.
 export class RunHud {
   private timer: Phaser.GameObjects.Text;
   private info: Phaser.GameObjects.Text;
@@ -110,7 +110,7 @@ export class RunHud {
     const secs = Math.max(0, Math.ceil(d.left));
     this.timer.setPosition(width / 2, 14).setText(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
     this.timer.setColor(d.left <= 3 ? '#ff7a7a' : '#f2d7a6');
-    this.info.setPosition(width / 2, 50).setText(`gold ${d.gold}   level ${d.level}` + (d.dust > 0 ? `   dust +${Math.round(d.dust * 100)}%` : ''));
+    this.info.setPosition(width / 2, 50).setText(`souls ${d.gold}   level ${d.level}` + (d.dust > 0 ? `   dust +${Math.round(d.dust * 100)}%` : ''));
     const w = 160;
     const x = width / 2 - w / 2;
     this.bar.clear();

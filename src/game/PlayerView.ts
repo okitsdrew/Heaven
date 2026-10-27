@@ -211,7 +211,7 @@ export class PlayerView {
     const pulse = 0.85 + 0.15 * Math.sin(this.time * 6);
     eyes.forEach((e, i) => {
       e.setVisible(this.body.visible)
-        .setPosition(cx + (i === 0 ? -3 : 3) * px, cy - 14 * px)
+        .setPosition(cx + (i === 0 ? -2.5 : 2.5) * px, cy - 15 * px)
         .setScale(px * 0.17)
         .setAlpha(c.eyeGlow * pulse * this.body.alpha)
         .setDepth(this.body.depth + 0.2);

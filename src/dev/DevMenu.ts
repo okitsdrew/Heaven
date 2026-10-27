@@ -59,7 +59,7 @@ const groups: [string, string[]][] = [
 ];
 
 function labelFor(key: string): string {
-  return key.replace(/([A-Z])/g, ' $1').toLowerCase();
+  return key.replace(/([A-Z])/g, ' $1').toLowerCase().replace(/gold/g, 'soul');
 }
 
 export class DevMenu {

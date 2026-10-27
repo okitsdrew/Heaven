@@ -1,8 +1,8 @@
 // Persistent player progress. Versioned so old saves can be migrated as the schema grows.
 
 const SAVE_KEY = 'heaven.save.v1';
-const LAYOUT_KEY = 'heaven.treeLayout.v4';
-const OLD_LAYOUT_KEYS = ['heaven.treeLayout.v3', 'heaven.treeLayout.v2'];
+const LAYOUT_KEY = 'heaven.treeLayout.v5';
+const OLD_LAYOUT_KEYS = ['heaven.treeLayout.v4', 'heaven.treeLayout.v3', 'heaven.treeLayout.v2'];
 // Nodes whose default spot moved; their saved drags from the old layout are dropped.
 const MOVED = ['pierce', 'dash', 'dustDevil', 'teleport', 'fireFairy', 'iceFairy', 'swordSlash', 'doomsday'];
 const VERSION = 1;
@@ -19,10 +19,12 @@ export interface SaveData {
   bookUnlocked: boolean;
   // Whether he has gone through Anathema yet (it glows until he does).
   visitedHead: boolean;
+  // Whether he has opened the book since it was unlocked (it glows until he does).
+  bookOpened: boolean;
 }
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false };
 }
 
 function storageGet(key: string): string | null {
@@ -56,6 +58,7 @@ function sanitize(src: unknown): SaveData {
   out.introDone = s.introDone === true;
   out.bookUnlocked = s.bookUnlocked === true;
   out.visitedHead = s.visitedHead === true;
+  out.bookOpened = s.bookOpened === true;
   if (s.nodes && typeof s.nodes === 'object') {
     for (const [k, v] of Object.entries(s.nodes)) if (typeof v === 'number' && v > 0) out.nodes[k] = Math.floor(v);
   }

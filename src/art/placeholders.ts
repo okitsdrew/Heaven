@@ -163,9 +163,9 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
   const heroTorso = [
     '...k.kk.k...',
     '..kkkkkkkk..',
+    '.kkpPkkPpkk.',
+    '.kkppkkppkk.',
     '.kkkkkkkkkk.',
-    '.kpPkkkkPpk.',
-    '.kppkkkkppk.',
     '..kkkkkkkk..',
     '...kwwwwk...',
     '...kwWWwk...',
@@ -173,10 +173,10 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
     '...kwwwwk...',
     '..kbbBBbbk..',
     '..kbbbbbbk..',
-    '..kkwwwwkk..',
-    '..kkwWWwkk..',
-    '..kkwwwwkk..',
-    '..kkwWwWkk..',
+    '..kkkkkkkk..',
+    '..kkKkkKkk..',
+    '..kkkkkkkk..',
+    '..kkKkkKkk..',
   ];
   fromGrid(scene, Tex.hero, [...heroTorso, ...legs[0]], heroColors);
   heroWalkFrames.forEach((key, i) => fromGrid(scene, key, [...heroTorso, ...legs[i]], heroColors));
@@ -334,9 +334,9 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
   );
 
   fromGrid(scene, Tex.coin, ['.yyyy.', 'yYYYYy', 'yYwwYy', 'yYwYYy', 'yYYYYy', '.yyyy.'], {
-    y: 0xb8821c,
-    Y: 0xf2c94a,
-    w: 0xfff2b0,
+    y: 0x6a2fc0,
+    Y: 0xb47bff,
+    w: 0xeadcff,
   });
 
   softCircle(scene, Tex.glow, 32, 0xffffff, 0.9);

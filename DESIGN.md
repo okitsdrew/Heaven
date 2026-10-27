@@ -102,6 +102,13 @@ In-game overlay, toggled with backtick. Must include:
 - The skill tree has a **Home** button next to Battle that returns to the hub.
 - Round 2: interaction prompts show the label with "(Space)" beneath; Space never dashes while something is in reach. The head ("Delve into the mind") only works after the throne conversation. The back of the throne room is solid black light cannot reach, so the throne's figure is never drawn: only its eyes and its hands (smaller, inky, short fingers) show. Dialogue is black text with a white outline in a text box, 25% faster. The eyes' lids sit inside the eye. The player has a new look (black helm with purple glowing eyes, purple sleeves, white tabard, black belt, dynamic black cloak on a rope sim, `cloak` config); the boss keeps the old shade body (`PlayerView.hero`).
 
+
+### Round 3
+- Gold is now **souls**: same mechanics, purple glow. Only visible names changed; code ids (`profile.gold`, `cfg.gold`, `currency: 'gold'`) are unchanged.
+- The throne figure's hands slide out of the black fingers first, are half the size (`hub.handScale` 0.85) and are drawn as soft, undefined shadow with no claws.
+- The hero lost the lower tabard (legs read clearly) and his eyes sit one pixel higher and closer together.
+- Book unlock trigger: the first death while holding at least one skill point (and with the opening done) skips the summary and sends him to the throne room. The figure says "oh dear oh dear", "you're getting stronger. but so are they", then points at the book with "come, learn the way of my family". The book glows purple until he first opens it (`bookOpened`). Dev action: "Replay book unlock scene".
+- Book tree: Teleport in the centre for 1 SP, with Fire Fairy, Ice Fairy, Sword Slash and Doomsday around it at 3 SP each.
 ## 7d. Tweaks, 2026-10-26 (phase 3 branch)
 - Dust Devil is a child of Dash, just above it. +1% move and attack speed per kill (max 25%). Each kill holds the stacks for 2s, then a 3s countdown runs and all stacks are lost at 0. A small ring at the player's bottom right shows the time left. Time Warp is removed.
 - More Damage has 6 levels (+30 total from that node). Fire Rate: 2 levels, +25% each, 50g then 100g. More Range: 1 level, 100g, +25%. More MORE Range is removed. Bigger Arrows is now Better Arrows (+10% arrow size, hitbox and range, 5 levels). New Quadruple Gold (child of Double Gold, 1000g, x4 total with Double Gold). Fire Wave width 150.

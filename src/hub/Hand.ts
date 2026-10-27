@@ -10,7 +10,7 @@ const FINGERS = [
 ];
 const BEND = [1.25, 1.45, 1.1];
 
-// A gnarled black hand on a long arm that comes out of the dark. The hand's origin is the wrist and its
+// A shadowy, undefined hand on a long arm that comes out of the dark. The hand's origin is the wrist and its
 // fingers point along +x before rotation. Curl runs 0 (open) to 1 (fist) per digit: thumb, index, middle, ring, pinky.
 export class Hand {
   readonly g: G;
@@ -50,12 +50,10 @@ export class Hand {
     g.setAlpha(this.alpha);
     g.setVisible(this.alpha > 0.01);
     if (this.alpha <= 0.01) return;
-    for (const pass of [0, 1]) {
-      const off = pass === 0 ? 0 : 1.6;
-      const fill = pass === 0 ? 0x34244e : 0x050308;
-      const grow = pass === 0 ? 3.4 : 0;
-      this.drawArm(g, off, fill, grow);
-      this.drawHand(g, off, fill, grow);
+    // Stacked halos fade the edge into the dark, so the hand reads as a shape made of shadow.
+    for (const [fill, grow] of [[0x1c1230, 8], [0x120b20, 4.5], [0x050308, 0]]) {
+      this.drawArm(g, 0, fill, grow);
+      this.drawHand(g, 0, fill, grow);
     }
   }
 
@@ -102,17 +100,6 @@ export class Hand {
     g.fillEllipse(0, 0, 26 + grow * k, 30 + grow * k);
     FINGERS.forEach((f, i) => this.finger(g, f.bx, f.by, f.a, this.curl[i + 1], f.len, f.w, color, grow * k, f.kink));
     this.finger(g, 16, 22, 0.95, this.curl[0], [20, 16, 12], 12.5, color, grow * k, [0.1, -0.12, 0.1]);
-    if (grow === 0) {
-      // Creases and knuckle ridges, barely lighter than the shadow.
-      g.lineStyle(1.4, 0x1c1228, 1);
-      g.beginPath();
-      g.arc(30, 4, 17, 0.4, 2.6, false);
-      g.moveTo(22, -22);
-      g.lineTo(26, 4);
-      g.moveTo(46, -22);
-      g.lineTo(40, 20);
-      g.strokePath();
-    }
     g.restore();
   }
 
@@ -129,12 +116,10 @@ export class Hand {
       g.lineStyle(w, color, 1);
       g.lineBetween(x, y, x1, y1);
       g.fillStyle(color, 1);
-      g.fillCircle(x1, y1, w * 0.58 + (i < 2 ? 1.2 : 0));
+      g.fillCircle(x1, y1, w * 0.5 + grow * 0.5);
       x = x1;
       y = y1;
     }
-    // A long cracked claw.
-    g.fillTriangle(x + Math.cos(a - 1.5) * w0 * 0.34, y + Math.sin(a - 1.5) * w0 * 0.34, x + Math.cos(a + 1.5) * w0 * 0.34, y + Math.sin(a + 1.5) * w0 * 0.34, x + Math.cos(a - 0.2) * 9, y + Math.sin(a - 0.2) * 9);
   }
 
   setVisible(v: boolean): void {

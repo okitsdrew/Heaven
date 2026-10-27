@@ -138,7 +138,7 @@ export class Screens {
     card.appendChild(title);
     const rows: [string, string][] = [
       ['Enemies killed', String(s.kills)],
-      ['Gold collected', String(s.gold)],
+      ['Souls collected', String(s.gold)],
       ['XP gained', s.levelsGained > 0 ? `${s.xp} (+${s.levelsGained} level${s.levelsGained > 1 ? 's' : ''}!)` : String(s.xp)],
       ['Time survived', `${mins}:${String(secs).padStart(2, '0')}`],
     ];
@@ -314,7 +314,7 @@ export class Screens {
       const unlocked = n.parents.every((p) => level(p) >= 1);
       el.className = 'node' + (lvl > 0 ? ' owned' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim');
       const costText =
-        cost === null ? 'MAX' : cfg.tree.free ? 'free' : `${cost} ${n.currency === 'gold' ? 'gold' : 'SP'}`;
+        cost === null ? 'MAX' : cfg.tree.free ? 'free' : `${cost} ${n.currency === 'gold' ? 'souls' : 'SP'}`;
       el.innerHTML = `<div class="name">${n.name}</div><div class="desc">${n.desc(per)}</div>` +
         `<div class="lvl">${lvl}/${max}</div><div class="cost">${costText}</div>`;
     }
@@ -324,7 +324,7 @@ export class Screens {
   private renderTop(): void {
     const need = xpToNext(profile.level);
     const pct = Math.min(100, (profile.xp / need) * 100);
-    this.topInfo.innerHTML = (this.mode === 'book' ? '<span><b>The Book</b></span>' : '') + `<span>Gold <b>${profile.gold}</b></span><span>Skill points <b>${profile.skillPoints}</b></span>` +
+    this.topInfo.innerHTML = (this.mode === 'book' ? '<span><b>The Book</b></span>' : '') + `<span>Souls <b>${profile.gold}</b></span><span>Skill points <b>${profile.skillPoints}</b></span>` +
       `<span>Level <b>${profile.level}</b> <span class="xpbar"><i style="width:${pct}%"></i></span> ${Math.floor(profile.xp)}/${need}</span>`;
     const tools = this.div('tools', undefined, this.topInfo);
     const reveal = this.button(cfg.tree.revealAll ? 'Hide locked nodes' : 'Show all nodes', () => {

@@ -44,6 +44,7 @@ export class GameScene extends Phaser.Scene {
   private run = { kills: 0, gold: 0, xp: 0, levels: 0 };
   private endTimer = 0;
   private endTitle = '';
+  private endDied = false;
   private dead = false;
   private menu = false;
   private gold!: Gold;
@@ -231,7 +232,7 @@ export class GameScene extends Phaser.Scene {
       { label: 'Restart run', run: () => this.startRun() },
       { label: 'End run (show summary)', run: () => this.endRun('Run ended') },
       { label: 'Open skill tree', run: () => this.openTree() },
-      { label: 'Add 100 gold', run: () => this.addProfile('gold', 100) },
+      { label: 'Add 100 souls', run: () => this.addProfile('gold', 100) },
       { label: 'Add 10 skill points', run: () => this.addProfile('skillPoints', 10) },
       {
         label: 'Set level...',
@@ -268,9 +269,9 @@ export class GameScene extends Phaser.Scene {
         },
       },
       {
-        label: 'Reset save (gold, level, tree)',
+        label: 'Reset save (souls, level, tree)',
         run: () => {
-          if (confirm('Erase gold, level, XP and every skill tree purchase?')) resetSave();
+          if (confirm('Erase souls, level, XP and every skill tree purchase?')) resetSave();
         },
       },
       { label: 'Spawn target dummies', run: () => this.dummies.spawnRing(this.player.x, this.player.y) },
@@ -440,6 +441,7 @@ export class GameScene extends Phaser.Scene {
     if (this.dead) return;
     this.dead = true;
     this.endTitle = title;
+    this.endDied = died;
     this.endTimer = died ? 0.9 : 0.5;
     this.swordSlash.interrupt();
     persistNow();
@@ -454,6 +456,13 @@ export class GameScene extends Phaser.Scene {
 
   private showSummary(): void {
     this.menu = true;
+    // The first death after earning a skill point leads straight to the throne room, where the book is offered.
+    if (this.endDied && profile.introDone && !profile.bookUnlocked && profile.skillPoints > 0) {
+      this.screens.hide();
+      persistNow();
+      this.scene.start('hub', { bookIntro: true });
+      return;
+    }
     this.screens.showSummary(
       { title: this.endTitle, kills: this.run.kills, gold: this.run.gold, xp: this.run.xp, levelsGained: this.run.levels, time: this.clock - this.clockStart },
       () => this.startRun(),
