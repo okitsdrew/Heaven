@@ -43,6 +43,8 @@ export class Player {
   dashEndVx = 0;
   dashEndVy = 0;
   dashCooldownMax = 0;
+  // Walls and rubble the jump cannot pass through; the scene keeps this current.
+  obstacles: readonly { x: number; y: number; radius: number }[] = [];
   teleportCooldown = 0;
   teleportTime = 0;
   lockTime = 0;
@@ -223,6 +225,9 @@ export class Player {
       jumpX = this.aimOffX;
       jumpY = this.aimOffY;
     }
+    const stop = this.clipJump(jumpX, jumpY);
+    jumpX *= stop;
+    jumpY *= stop;
     const jumpLen = Math.hypot(jumpX, jumpY);
     screenToWorldVel(dx, dy, stats.moveSpeed(), tmp);
     this.tpEndVx = tmp.x;
@@ -241,6 +246,27 @@ export class Player {
       this.y += jumpY;
       this.endTeleport();
     }
+  }
+
+  // How much of a jump he gets (0 to 1) before his body would meet an obstacle on the way.
+  private clipJump(jx: number, jy: number): number {
+    const len = Math.hypot(jx, jy);
+    if (len < 1e-3) return 1;
+    let best = 1;
+    for (const o of this.obstacles) {
+      const r = o.radius + cfg.player.bodyRadius;
+      const fx = this.x - o.x;
+      const fy = this.y - o.y;
+      const c = fx * fx + fy * fy - r * r;
+      if (c <= 0) continue;
+      const a = len * len;
+      const b = 2 * (fx * jx + fy * jy);
+      const disc = b * b - 4 * a * c;
+      if (disc < 0) continue;
+      const t = (-b - Math.sqrt(disc)) / (2 * a);
+      if (t >= 0 && t < best) best = t;
+    }
+    return best < 1 ? Math.max(0, best - 4 / len) : 1;
   }
 
   private updateTeleport(dt: number): void {

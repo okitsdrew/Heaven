@@ -38,6 +38,8 @@ export interface SaveData {
   stage: number;
   // The run clock when the Mimic fell; stage 2 picks up from there.
   stage2Clock: number;
+  // The throne's stage 2 talk has started but is not finished (he went to the book partway through).
+  stage2Talk: boolean;
   // Stage 2 quest: 'find' the Mind's Eye, 'feed' it, then 'follow' the aura to the Resting Ground.
   quest: 'find' | 'feed' | 'follow';
   // Souls the Mind's Eye has taken so far.
@@ -59,7 +61,7 @@ export interface SaveData {
 const SKILL_IDS = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'aegis', 'lotus'];
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, skillTipShown: false, bossIntroSeen: false, warpSeen: false, fireSeen: false, teleportHintShown: false, stage: 1, stage2Clock: 0, quest: 'find', eyeFed: 0, treeTutorialDone: false, skillsFaded: false, stage2TreeShown: false, firewaveUsed: false, skillsRevealed: false, binds: [null, null, null] };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, skillTipShown: false, bossIntroSeen: false, warpSeen: false, fireSeen: false, teleportHintShown: false, stage: 1, stage2Clock: 0, stage2Talk: false, quest: 'find', eyeFed: 0, treeTutorialDone: false, skillsFaded: false, stage2TreeShown: false, firewaveUsed: false, skillsRevealed: false, binds: [null, null, null] };
 }
 
 function storageGet(key: string): string | null {
@@ -103,6 +105,7 @@ function sanitize(src: unknown): SaveData {
   out.teleportHintShown = s.teleportHintShown === true;
   out.stage = s.stage === 2 ? 2 : 1;
   out.stage2Clock = num(s.stage2Clock, 0, 0);
+  out.stage2Talk = s.stage2Talk === true;
   out.quest = s.quest === 'feed' || s.quest === 'follow' ? s.quest : 'find';
   out.eyeFed = num(s.eyeFed, 0, 0);
   out.treeTutorialDone = s.treeTutorialDone === true || out.bookUnlocked || Object.keys(out.nodes).length > 0;
@@ -178,13 +181,19 @@ export function persist(): void {
   timer = window.setTimeout(persistNow, 400);
 }
 
+// While the testing grounds lend out free skills, the real loadout is what reaches storage.
+let saveOverride: (() => Partial<SaveData>) | null = null;
+export function setSaveOverride(fn: (() => Partial<SaveData>) | null): void {
+  saveOverride = fn;
+}
+
 export function persistNow(): void {
   clearTimeout(timer);
-  storageSet(SAVE_KEY, JSON.stringify(profile));
+  storageSet(SAVE_KEY, JSON.stringify(saveOverride ? { ...profile, ...saveOverride() } : profile));
 }
 
 export function exportSave(): string {
-  return JSON.stringify(profile, null, 2);
+  return JSON.stringify(saveOverride ? { ...profile, ...saveOverride() } : profile, null, 2);
 }
 
 export function importSave(text: string): void {

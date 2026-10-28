@@ -4,7 +4,10 @@ import { cfg } from '../config';
 import { Fx } from '../game/Fx';
 import { Player } from '../game/Player';
 import { PlayerView } from '../game/PlayerView';
+import { drawAnathema } from '../hub/anathema';
+import { rng } from '../hub/draw';
 import { Input, KeyboardMouseSource } from '../input';
+import { Tex } from '../art/placeholders';
 import { toScreen, toWorld } from '../iso';
 
 const HALF = 260;
@@ -58,6 +61,14 @@ export class RestScene extends Phaser.Scene {
       .text(0, toScreen(-HALF, -HALF).y - 34, '(placeholder: walk out through the red glow to leave)', { fontFamily: 'monospace', fontSize: '12px', color: '#4a4166' })
       .setOrigin(0.5)
       .setDepth(-1e8);
+
+    // Anathema himself, whole, crawling toward the door from the north end of the room.
+    const at = toScreen(0, -70);
+    const scale = 0.95;
+    this.add.image(at.x - 150 * scale, at.y - 70, Tex.glow).setTint(0xff7a20).setBlendMode(Phaser.BlendModes.ADD).setScale(14, 6).setAlpha(0.28).setDepth(-5e8);
+    this.add.image(at.x + 230 * scale, at.y - 70, Tex.glow).setTint(0x7fd4ff).setBlendMode(Phaser.BlendModes.ADD).setScale(14, 6).setAlpha(0.24).setDepth(-5e8);
+    const boss = this.add.graphics().setPosition(at.x - 220 * scale, at.y + 30).setScale(scale).setDepth(at.y);
+    drawAnathema(boss, rng(7));
 
     const veil = this.add.rectangle(0, 0, 10000, 10000, 0x000000).setDepth(5e6);
     this.tweens.add({ targets: veil, alpha: 0, duration: 600, onComplete: () => veil.destroy() });

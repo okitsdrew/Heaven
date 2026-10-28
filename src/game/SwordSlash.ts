@@ -23,6 +23,8 @@ interface Effect {
   base: number;
   sign: number;
   age: number;
+  // The final swing: the sweep reaches along the slam's lane too.
+  slam?: boolean;
 }
 
 const screen = { x: 0, y: 0 };
@@ -192,7 +194,7 @@ export class SwordSlash {
       }
       if (inSlam || inCone) this.onDamage(t, c.slamDamage * skillDamage('swordSlash'), t.x, t.y);
     }
-    this.effects.push({ kind: 'cone', ox: player.x, oy: player.y, base, sign: 1, age: 0 });
+    this.effects.push({ kind: 'cone', ox: player.x, oy: player.y, base, sign: 1, age: 0, slam: true });
     this.fx.addShake(c.slamShake);
     sfx.play('slam');
     this.slamBurst(player.x, player.y, player.aimX, player.aimY);
@@ -274,28 +276,41 @@ export class SwordSlash {
     const p = Math.min(1, s.t / c.telegraphTime);
     const g = this.ground;
     const base = Math.atan2(player.aimY, player.aimX);
-    const cone = (): Vec2[] => {
-      const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
-      const poly = [toScreen(player.x, player.y)];
-      for (let i = 0; i <= 16; i++) poly.push(this.world(player.x, player.y, base - half + (i / 16) * half * 2, c.coneRange));
-      return poly;
-    };
-    const slam = (): Vec2[] => {
-      const hw = c.slamWidth / 2;
-      const corner = (side: number, along: number) =>
-        toScreen(
-          player.x + player.aimX * along - player.aimY * hw * side,
-          player.y + player.aimY * along + player.aimX * hw * side,
-        );
-      return [corner(-1, 0), corner(1, 0), corner(1, c.slamLength), corner(-1, c.slamLength)];
-    };
-    // The final swing is both shapes at once.
-    for (const poly of s.swing < 2 ? [cone()] : [cone(), slam()]) {
-      g.fillStyle(SLASH_LIGHT, 0.06 + 0.22 * p);
-      g.fillPoints(poly, true);
-      g.lineStyle(2, SLASH_LIGHT, 0.4 + 0.5 * p);
-      g.strokePoints(poly, true);
+    // The final swing is one shape: the circle and the slam's lane, outlined together.
+    const poly = this.hitShape(player.x, player.y, base, s.swing >= 2);
+    g.fillStyle(SLASH_LIGHT, 0.06 + 0.22 * p);
+    g.fillPoints(poly, true);
+    g.lineStyle(2, SLASH_LIGHT, 0.4 + 0.5 * p);
+    g.strokePoints(poly, true);
+  }
+
+  // The area a swing hits, as one outline round the player: the cone, plus the slam's lane on the last swing.
+  // A full circle has no centre point, so there is no seam where its ends meet.
+  private hitShape(x: number, y: number, base: number, withSlam: boolean): Vec2[] {
+    const c = cfg.swordSlash;
+    const full = c.coneAngle >= 359.5;
+    const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
+    const poly: Vec2[] = [];
+    if (!full) poly.push(toScreen(x, y));
+    const steps = 96;
+    for (let i = 0; i <= steps; i++) {
+      if (full && i === steps) break;
+      const a = full ? base + (i / steps) * Math.PI * 2 : base - half + (i / steps) * half * 2;
+      poly.push(this.world(x, y, a, this.reach(a, base, withSlam)));
     }
+    return poly;
+  }
+
+  // How far the hit area reaches along a ray: the cone's range, or further down the slam's lane.
+  private reach(a: number, base: number, withSlam: boolean): number {
+    const c = cfg.swordSlash;
+    let r = c.coneRange;
+    if (withSlam) {
+      const along = Math.cos(a - base);
+      const side = Math.abs(Math.sin(a - base));
+      if (along > 1e-4) r = Math.max(r, Math.min(c.slamLength / along, side > 1e-6 ? c.slamWidth / 2 / side : Infinity));
+    }
+    return r;
   }
 
   private drawEffect(e: Effect): void {
@@ -309,22 +324,27 @@ export class SwordSlash {
       const start = e.base - e.sign * half;
       const span = e.sign * half * 2 * eased;
       const r0 = c.coneRange * 0.4;
-      const r1 = c.coneRange;
-      const slices = 14;
+      const reach = (a: number) => this.reach(a, e.base, e.slam === true);
+      const slices = e.slam ? 40 : 14;
       for (let k = 0; k < slices; k++) {
         const a0 = start + span * (k / slices);
         const a1 = start + span * ((k + 1) / slices);
+        const r10 = reach(a0);
+        const r11 = reach(a1);
         g.fillStyle(SLASH_LIGHT, fade * (0.12 + 0.6 * Math.pow(k / slices, 1.5)));
         g.fillPoints(
-          [this.world(e.ox, e.oy, a0, r1), this.world(e.ox, e.oy, a1, r1), this.world(e.ox, e.oy, a1, r0), this.world(e.ox, e.oy, a0, r0)],
+          [this.world(e.ox, e.oy, a0, r10), this.world(e.ox, e.oy, a1, r11), this.world(e.ox, e.oy, a1, r0), this.world(e.ox, e.oy, a0, r0)],
           true,
         );
       }
-      const lead = start + span;
-      const a = this.world(e.ox, e.oy, lead, r0);
-      const b = this.world(e.ox, e.oy, lead, r1);
-      g.lineStyle(4, SLASH_WHITE, fade);
-      g.lineBetween(a.x, a.y, b.x, b.y);
+      // The bright leading edge, gone once the sweep has closed the circle.
+      if (prog < 1) {
+        const lead = start + span;
+        const a = this.world(e.ox, e.oy, lead, r0);
+        const b = this.world(e.ox, e.oy, lead, reach(lead));
+        g.lineStyle(4, SLASH_WHITE, fade);
+        g.lineBetween(a.x, a.y, b.x, b.y);
+      }
 
       // Purple fire erupting across the swept area, tallest at the leading edge.
       const px = cfg.render.pixelScale;
@@ -333,7 +353,7 @@ export class SwordSlash {
         const f = k / cols;
         const ang = start + span * f;
         for (let j = 0; j < 4; j++) {
-          const r = r0 + (r1 - r0) * ((j + 0.5) / 4);
+          const r = r0 + (reach(ang) - r0) * ((j + 0.5) / 4);
           const p = this.world(e.ox, e.oy, ang, r);
           const flick = 0.6 + 0.4 * Math.sin(this.time * 18 + k * 2.1 + j * 1.3);
           this.flame(g, p.x, p.y, px * (6 + 16 * f * f) * flick, px * 3, k * 3 + j, fade * (0.3 + 0.7 * f));

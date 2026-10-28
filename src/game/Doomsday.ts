@@ -194,7 +194,7 @@ export class Doomsday {
   }
 
   // Any blast of this kind: damage inside the radius, knockback and stun in the wider ring.
-  blastAt(ox: number, oy: number, hand: Vec2, radius: number, damage: number, pal: Palette): void {
+  blastAt(ox: number, oy: number, hand: Vec2, radius: number, damage: number, pal: Palette, knockMult = 1): void {
     const c = cfg.doomsday;
     const wide = radius * c.stunRadiusMult;
     // Damage first, so survivors are caught by the second ring too.
@@ -212,7 +212,7 @@ export class Doomsday {
       if (t.kind === 'boss') continue;
       const nx = d > 1e-3 ? dx / d : Math.cos(Math.random() * Math.PI * 2);
       const ny = d > 1e-3 ? dy / d : Math.sin(Math.random() * Math.PI * 2);
-      this.onKnock(t, nx, ny, c.knockback * (1 - 0.5 * Math.min(1, d / wide)));
+      this.onKnock(t, nx, ny, c.knockback * knockMult * (1 - 0.5 * Math.min(1, d / wide)));
     }
 
     this.blasts.push({ ox, oy, hx: hand.x, hy: hand.y, age: 0, radius, pal });

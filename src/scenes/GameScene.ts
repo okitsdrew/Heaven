@@ -28,7 +28,7 @@ import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
-import { aegisBoost, arrowEffects, canUse, dustFraction, level, skillDamage, nodeById, skillIds, slotKeys, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
+import { enterSandbox, leaveSandbox, aegisBoost, arrowEffects, canUse, dustFraction, level, skillDamage, nodeById, skillIds, slotKeys, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
 import { ghostHint } from '../ui/ghostHint';
 import { ThroneBox } from '../ui/ThroneBox';
 import { PurpleWave } from '../game/PurpleWave';
@@ -79,6 +79,9 @@ export class GameScene extends Phaser.Scene {
   // Seconds until the Mimic's defeat sends him back to the hub.
   private stage2Handoff = 0;
   private hitStop = 0;
+  // A short hard freeze when a sword swing lands, at most once per cooldown.
+  private swordFreeze = 0;
+  private swordFreezeCd = 0;
   private hud!: Hud;
   private mist!: Mist;
   private targets = new SpatialHash<Hittable>(64);
@@ -88,6 +91,8 @@ export class GameScene extends Phaser.Scene {
   private vignette!: Phaser.GameObjects.Image;
   private camCenter = { x: 0, y: 0 };
   private diveIn = false;
+  // The testing grounds: a safe, endless, rewardless fight to try skills on.
+  private training = false;
   // Seconds after the first landing with no spawns and no clock, while the controls hint shows.
   private grace = 0;
   private entry: { t: number; x: number; y: number; img: Phaser.GameObjects.Image; shadow: Phaser.GameObjects.Ellipse } | null = null;
@@ -106,8 +111,9 @@ export class GameScene extends Phaser.Scene {
     super('game');
   }
 
-  init(data?: { dive?: boolean }): void {
+  init(data?: { dive?: boolean; training?: boolean }): void {
     this.diveIn = data?.dive === true;
+    this.training = data?.training === true;
     this.entry = null;
     this.grace = 0;
   }
@@ -200,7 +206,7 @@ export class GameScene extends Phaser.Scene {
       this.fairies.flare(kind);
       sfx.play('meep');
       sfx.play(kind === 'fire' ? 'castFire' : 'castIce');
-      if (kind === 'fire' && !profile.firewaveUsed) {
+      if (kind === 'fire' && !this.training && !profile.firewaveUsed) {
         profile.firewaveUsed = true;
         persist();
       }
@@ -260,6 +266,10 @@ export class GameScene extends Phaser.Scene {
     };
     this.doomsday.onKnock = (target, dx, dy, force) => this.enemies.knock(target, dx, dy, force);
     this.swordSlash.onDamage = (target, amount, x, y) => {
+      if (this.swordFreezeCd <= 0 && cfg.swordSlash.freeze > 0) {
+        this.swordFreeze = cfg.swordSlash.freeze;
+        this.swordFreezeCd = cfg.swordSlash.freezeCooldown;
+      }
       this.damage(target, amount);
       sfx.play('hurt', { pan: this.pan(x, y) });
       if (target.kind === 'boss') this.boss.stun(cfg.stun.duration);
@@ -309,15 +319,16 @@ export class GameScene extends Phaser.Scene {
       if (this.credit) {
         this.run.kills++;
         onKillBuffs();
-        this.run.xp += cfg.xp.perKill;
-        const gained = addXp(cfg.xp.perKill);
+        // No xp or souls in the testing grounds.
+        const gained = this.training ? 0 : addXp(cfg.xp.perKill);
+        if (!this.training) this.run.xp += cfg.xp.perKill;
         if (gained > 0) {
           this.run.levels += gained;
           this.runHud.announce(`LEVEL ${profile.level}!`, false);
           sfx.play('levelUp');
         }
         // Kills inside the Mind's Eye's zone feed it instead of dropping souls.
-        if (!this.stage2.absorb(x, y)) this.gold.drop(x, y, upgrades.goldValue());
+        if (!this.training && !this.stage2.absorb(x, y)) this.gold.drop(x, y, upgrades.goldValue());
       }
       sfx.play('enemyDie', { pan: this.pan(x, y) });
       const px = cfg.render.pixelScale;
@@ -330,6 +341,16 @@ export class GameScene extends Phaser.Scene {
       }
     };
 
+    // A husk's smash kills him if he is still inside the circle, unless the Aegis takes it.
+    this.enemies.onSlam = (x, y, r) => {
+      sfx.play('rockDrop', { pan: this.pan(x, y) });
+      if (this.dead || this.player.safe || cfg.debug.godMode) return;
+      if (Math.hypot(this.player.x - x, this.player.y - y) > r + cfg.player.hitRadius) return;
+      if (this.aegisBlock()) return;
+      if (this.training) this.trainingHit();
+      else this.endRun('Crushed by a husk', true);
+    };
+
     this.boss.onKilled = (x, y) => {
       toScreen(x, y, screen);
       const px = cfg.render.pixelScale;
@@ -340,12 +361,15 @@ export class GameScene extends Phaser.Scene {
       this.gold.drop(x, y, cfg.boss.rewardGold);
       profile.skillPoints += cfg.boss.rewardSkillPoints;
       persist();
-      this.runHud.announce(`BOSS DEFEATED  +${cfg.boss.rewardSkillPoints} skill point`);
+      this.runHud.banner(['Mimic Defeated', 'Perspective Obtained'], 4.2);
       // The battle ends: after a beat he is taken to the throne, and stage 2 picks up from this moment.
       if (profile.stage < 2) {
         profile.stage2Clock = this.clock;
         persistNow();
-        this.stage2Handoff = 2.5;
+        this.stage2Handoff = 5;
+        // Nothing else comes for him: what is on the field goes, and nothing new spawns until the throne has spoken.
+        this.enemies.clear();
+        this.wave.stop();
       }
     };
 
@@ -463,7 +487,11 @@ export class GameScene extends Phaser.Scene {
     this.clock = this.clockStart;
     this.applyStage();
 
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input2.destroy());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input2.destroy();
+      this.screens.setTrainingButtons(null);
+      leaveSandbox();
+    });
     if (this.diveIn) this.beginDive();
   }
 
@@ -517,7 +545,7 @@ export class GameScene extends Phaser.Scene {
     this.ground.update(cam);
     this.chunks.update(dt, cam);
     this.mist.update(dt, cam.width, cam.height);
-    this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
+    this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(this.training ? cfg.render.vignette * 0.35 : cfg.render.vignette);
   }
 
   update(_time: number, deltaMs: number): void {
@@ -539,6 +567,12 @@ export class GameScene extends Phaser.Scene {
       this.aegisFreeze -= dt;
       this.aegis.flash(this.player);
       if (this.aegisFreeze <= 0) this.aegisBlast();
+      input.endFrame();
+      return;
+    }
+    this.swordFreezeCd -= dt;
+    if (this.swordFreeze > 0) {
+      this.swordFreeze -= dt;
       input.endFrame();
       return;
     }
@@ -568,6 +602,9 @@ export class GameScene extends Phaser.Scene {
     this.dummies.update(dt, this.targets);
     this.player.fireBlocked = this.swordSlash.blocksFire || this.abilities.blocksFire || this.doomsday.blocksFire || this.lotus.blocksFire;
     if (!this.dead) {
+      this.player.obstacles = this.chunks.obstacles;
+      // He plants his feet while the swing plays out.
+      if (this.swordSlash.active) this.player.frozenTime = Math.max(this.player.frozenTime, dt * 1.5);
       this.player.update(dt, input, aimWorld);
       const body = { x: this.player.x, y: this.player.y, radius: cfg.player.bodyRadius };
       pushOut(body, this.chunks.obstacles);
@@ -578,7 +615,7 @@ export class GameScene extends Phaser.Scene {
       tickBuffs(dt);
       if (cfg.boss.enabled && !this.waveFired && this.clock >= cfg.boss.waveTime) this.fireWave();
       if (cfg.boss.enabled && !this.bossSpawned && this.clock >= cfg.boss.spawnTime) this.spawnBoss();
-      if (profile.stage < 2 && this.stage2Handoff <= 0 && this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
+      if (!this.training && profile.stage < 2 && this.stage2Handoff <= 0 && this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
     }
 
     this.lotus.dead = this.dead;
@@ -596,7 +633,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.boss.lure = this.lotus.lure;
     const view = { halfW: cam.width / 2, halfH: cam.height / 2, heading: this.heading() };
-    this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, !this.dead && this.grace <= 0 && !this.spawnsHeld(), this.lotus.lure);
+    this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, !this.dead && this.grace <= 0 && this.stage2Handoff <= 0 && !this.spawnsHeld(), this.lotus.lure);
     this.gold.update(dt, this.player.x, this.player.y, !this.dead);
     this.enemies.insertInto(this.targets);
     this.updateWave(dt);
@@ -619,7 +656,10 @@ export class GameScene extends Phaser.Scene {
     this.playerView.handRaise = this.doomsday.raise;
     this.doomsday.update(dt, this.player, input, cursor, this.playerView.handPos, { width: cam.width, height: cam.height });
     if (!this.dead && !this.player.safe && !cfg.debug.godMode) {
-      if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius) && !this.aegisBlock()) this.endRun('You died', true);
+      if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius) && !this.aegisBlock()) {
+        if (this.training) this.trainingHit();
+        else this.endRun('You died', true);
+      }
     }
     const bossHit = this.boss.update(dt, this.player.x, this.player.y, this.player.safe || this.dead, cfg.player.hitRadius, this.dead);
     if (bossHit && !this.dead && !cfg.debug.godMode && !this.aegisBlock()) this.endRun('Cut down by the Accursed Mimic', true);
@@ -658,6 +698,8 @@ export class GameScene extends Phaser.Scene {
       need: xpToNext(profile.level),
       dust: runBuffs.dust,
       untimed: profile.stage >= 2,
+      title: this.training ? 'Training' : undefined,
+      elapsed: this.training ? undefined : this.clock,
     });
     const info = {
       fireFairy: { remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
@@ -678,7 +720,7 @@ export class GameScene extends Phaser.Scene {
       }),
     );
     this.mist.update(dt, cam.width, cam.height);
-    this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
+    this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(this.training ? cfg.render.vignette * 0.35 : cfg.render.vignette);
     this.drawDebug();
 
     input.endFrame();
@@ -743,6 +785,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   // A raised Aegis swallows the hit: the game holds still for a beat, then it detonates.
+  // Nothing can kill him in the testing grounds, but a hit still lands: he is flashed and shaken, then briefly safe.
+  private trainingHit(): void {
+    this.player.graceTime = Math.max(this.player.graceTime, cfg.training.hitGrace);
+    this.fx.addShake(cfg.camera.shakeOnCast * 3);
+    sfx.play('hurt', { pan: 0 });
+  }
+
   private aegisBlock(): boolean {
     if (!this.aegis.active) return false;
     this.aegis.consume();
@@ -755,7 +804,7 @@ export class GameScene extends Phaser.Scene {
   private aegisBlast(): void {
     toScreen(this.player.x, this.player.y, screen);
     const hand = { x: screen.x, y: screen.y - 10 * cfg.render.pixelScale };
-    this.doomsday.blastAt(this.player.x, this.player.y, hand, cfg.doomsday.radius * cfg.aegis.radiusMult * aegisBoost(), cfg.aegis.damage * skillDamage('aegis') * aegisBoost(), HOLY);
+    this.doomsday.blastAt(this.player.x, this.player.y, hand, cfg.doomsday.radius * cfg.aegis.radiusMult * aegisBoost(), cfg.aegis.damage * skillDamage('aegis') * aegisBoost(), HOLY, cfg.aegis.knockbackMult);
   }
 
   private creditless(fn: () => void): void {
@@ -881,31 +930,66 @@ export class GameScene extends Phaser.Scene {
     persistNow();
   }
 
-  private goHome(): void {
+  private goHome(atBook = false): void {
     this.screens.hide();
     persistNow();
     // Phaser keeps the last start data when none is passed, so pass an empty object or the unlock scene replays.
-    this.scene.start('hub', {});
+    this.scene.start('hub', { atBook });
+  }
+
+  // The skills book over the testing grounds: skills are free here, Testing Grounds goes back to the fight, Home leaves.
+  private openSkills(): void {
+    this.menu = true;
+    this.screens.showBook(
+      () => this.goHome(true),
+      () => {
+        this.training = true;
+        this.startRun();
+      },
+      'Home',
+    );
   }
 
   private openTree(): void {
     this.menu = true;
-    this.screens.showTree(() => this.startRun(), () => this.goHome());
+    this.screens.showTree(
+      () => {
+        this.training = false;
+        this.startRun();
+      },
+      () => this.goHome(),
+    );
   }
 
   // Stage 2 carries on from where the Mimic fight left off: no more Mimic, a harder crowd, a red tint and the quest.
   private applyStage(): void {
-    const two = profile.stage >= 2;
+    const two = profile.stage >= 2 && !this.training;
     this.stage2.setActive(two);
     this.stage2Handoff = 0;
-    this.enemies.stageRate = two ? cfg.stage2.enemyMult : 1;
-    this.enemies.stageHp = two ? cfg.stage2.enemyMult : 1;
+    this.chunks.setCourse(two ? { eye: this.stage2.eye, cave: this.stage2.cave } : null);
+    this.enemies.stageRate = 1;
+    this.enemies.stageHp = 1;
+    this.enemies.fixed = this.training
+      ? { rate: cfg.training.spawnRate, hp: cfg.training.enemyHp, max: cfg.training.maxEnemies, wraithsOnly: true }
+      : two
+        ? { rate: cfg.stage2.spawnRate, hp: cfg.stage2.enemyHp, max: cfg.stage2.maxEnemies, wraithsOnly: false }
+        : null;
+    this.ground.setDay(this.training);
+    this.cameras.main.setBackgroundColor(this.training ? 0x6a944a : 0x0b0a10);
+    this.screens.setTrainingButtons(this.training ? { skills: () => this.openSkills(), home: () => this.goHome(true) } : null);
+    if (this.training) enterSandbox();
+    else leaveSandbox();
     this.tint.setVisible(two).setFillStyle(cfg.stage2.tint, cfg.stage2.tintAlpha);
-    if (two) {
+    if (this.training) {
+      // Stage 1 without the Mimic, the wave or a clock to beat.
       this.bossSpawned = true;
       this.waveFired = true;
-      this.clockStart = profile.stage2Clock;
-      this.clock = this.clockStart;
+    } else if (two) {
+      this.bossSpawned = true;
+      this.waveFired = true;
+      // Stage 2 has its own clock from zero: Time Warp and the stage 1 ramp have no say in it.
+      this.clockStart = 0;
+      this.clock = 0;
     }
   }
 

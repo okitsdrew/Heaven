@@ -102,6 +102,9 @@ export class HubScene extends Phaser.Scene {
   private bookOutline!: Phaser.GameObjects.RenderTexture;
   private bookPointed = false;
   private bookIntro = false;
+  // Coming back from the testing grounds, he stands by the book.
+  private atBook = false;
+  private stage2Resume = false;
   private skillsIntro = false;
   private stage2Intro = false;
   // 0 to 1: how far Anathema's deep red stage 2 glow has come up.
@@ -138,11 +141,14 @@ export class HubScene extends Phaser.Scene {
     super('hub');
   }
 
-  init(data?: { skipHall?: boolean; bookIntro?: boolean; skillsIntro?: boolean; stage2Intro?: boolean }): void {
+  init(data?: { skipHall?: boolean; bookIntro?: boolean; skillsIntro?: boolean; stage2Intro?: boolean; atBook?: boolean }): void {
     this.skipHall = data?.skipHall === true;
     this.bookIntro = data?.bookIntro === true;
     this.skillsIntro = data?.skillsIntro === true;
     this.stage2Intro = data?.stage2Intro === true;
+    this.atBook = data?.atBook === true;
+    // He left for the testing grounds partway through the stage 2 talk; it carries on when he is back.
+    this.stage2Resume = profile.stage2Talk && data?.stage2Intro !== true;
     this.redGlow = 0;
     this.bookPointed = false;
   }
@@ -231,15 +237,15 @@ export class HubScene extends Phaser.Scene {
       this.tweens.killAll();
     });
 
-    if (this.bookIntro || this.skillsIntro || this.stage2Intro) {
+    if (this.bookIntro || this.skillsIntro || this.stage2Intro || this.stage2Resume) {
       this.showRoom('throne');
-      this.setFeet(930, 450);
-      this.player.aimX = 0;
-      this.player.aimY = -1;
+      this.setFeet(this.stage2Resume ? 172 : 930, this.stage2Resume ? 404 : 450);
+      this.player.aimX = this.stage2Resume ? -1 : 0;
+      this.player.aimY = this.stage2Resume ? 0 : -1;
       this.ambient = this.rooms.throne.ambient();
       this.focus(560, 300, 1.1);
       this.tweens.add({ targets: this.fade, alpha: 0, duration: 900 });
-      void (this.stage2Intro ? this.stage2Scene() : this.skillsIntro ? this.skillsRevealScene() : this.bookUnlockScene());
+      void (this.stage2Intro || this.stage2Resume ? this.stage2Scene() : this.skillsIntro ? this.skillsRevealScene() : this.bookUnlockScene());
     } else if (!profile.introDone && !cfg.hub.skipIntro && !this.skipHall) {
       this.showRoom('hall');
       void this.playIntro();
@@ -250,9 +256,9 @@ export class HubScene extends Phaser.Scene {
         persistNow();
       }
       this.showRoom('throne');
-      this.setFeet(930, 450);
-      this.player.aimX = 0;
-      this.player.aimY = -1;
+      this.setFeet(this.atBook ? 172 : 930, this.atBook ? 404 : 450);
+      this.player.aimX = this.atBook ? -1 : 0;
+      this.player.aimY = this.atBook ? 0 : -1;
       if (profile.introDone) this.openEyesNow();
       this.ambient = this.rooms.throne.ambient();
       this.controlled = true;
@@ -463,6 +469,14 @@ export class HubScene extends Phaser.Scene {
       { label: 'Go to hallway', run: () => void this.changeRoom('hall') },
       { label: 'Start battle', run: () => void this.startBattle() },
       {
+        label: "Go to Anathema's Resting Ground",
+        run: () => {
+          this.input2.destroy();
+          Screens.get().hide();
+          this.scene.start('rest');
+        },
+      },
+      {
         label: 'Skip to battle',
         run: () => {
           this.input2.destroy();
@@ -536,16 +550,27 @@ export class HubScene extends Phaser.Scene {
 
   private openUpgradeTree(): void {
     this.menu = true;
-    Screens.get().showTree(() => void this.startBattle(), () => {
-      Screens.get().hide();
-      this.menu = false;
-    });
+    Screens.get().showTree(
+      () => void this.startBattle(),
+      () => {
+        Screens.get().hide();
+        this.menu = false;
+      },
+      () => this.startTraining(),
+    );
+  }
+
+  private startTraining(): void {
+    this.input2.destroy();
+    Screens.get().hide();
+    this.scene.start('game', { dive: true, training: true });
   }
 
   private restart(cutsceneOnly: boolean): void {
     this.input2.destroy();
     Screens.get().hide();
     profile.introDone = false;
+    profile.visitedHead = false;
     persistNow();
     this.scene.restart({ skipHall: cutsceneOnly });
   }
@@ -874,7 +899,7 @@ export class HubScene extends Phaser.Scene {
     // The severed head pulses a sick green.
     const sick = 0.55 + 0.25 * Math.sin(t * 2.3) + 0.1 * Math.sin(t * 7.1);
     // Stage 2: his eye turns red, flickering very lightly.
-    const red = profile.stage >= 2 ? Math.max(this.redGlow, this.stage2Intro ? 0 : 1) : 0;
+    const red = profile.stage >= 2 ? Math.max(this.redGlow, this.stage2Intro || profile.stage2Talk ? 0 : 1) : 0;
     this.headGlow.setTint(0x9cff30).setScale(3.8 + 0.4 * Math.sin(t * 1.4)).setAlpha(0.22 * sick);
     // Once he has been told where to go, Anathema flashes a white outline until he goes in.
     const lit = this.headLit && !profile.visitedHead;
@@ -1136,9 +1161,9 @@ export class HubScene extends Phaser.Scene {
       if ((profile.nodes.teleport ?? 0) > 0 && !profile.teleportHintShown) {
         profile.teleportHintShown = true;
         persistNow();
-        ghostHint(this, this.fx, ['Right Click to teleport.'], { x: this.cameras.main.width / 2, y: this.cameras.main.height * 0.68, depth: DEPTH_DARK + 3, hold: 2.5, screenSpace: true });
+        ghostHint(this, this.fx, ['Right Click to teleport.'], { x: this.cameras.main.width / 2, y: this.cameras.main.height * 0.68, depth: DEPTH_DARK + 3, hold: 3.5, screenSpace: true });
       }
-    });
+    }, () => this.startTraining());
   }
 
   private async wrapLines(text: string, size: number, maxW: number): Promise<string[]> {
@@ -1303,10 +1328,45 @@ export class HubScene extends Phaser.Scene {
     this.controlled = false;
     this.eyesFollow = true;
     this.openEyesNow();
-    await this.sleep(1.2);
-    await this.say("now isn't that spectacular", 'right');
-    await this.say('you seem quite comfortable with your new power', 'right');
-    await this.sleep(1);
+    if (!this.stage2Resume) {
+      await this.sleep(1.2);
+      await this.say("now isn't that spectacular", 'right');
+      await this.say('you seem quite comfortable with your new power', 'right');
+      await this.sleep(1);
+      const walk = this.walkTo(172, 404);
+      await this.say('take a look at your skills with a new Perspective', 'right');
+      await walk;
+      this.face(-1, 0);
+      this.bookPointed = true;
+      this.bookPower = 1.8;
+      void this.sleep(1.4).then(() => (this.bookPower = 1));
+      this.bump(4);
+      await this.sleep(0.8);
+      // Stage 2 begins here, so the book shows the enhancements it unlocks; the glow waits for the end of the talk.
+      profile.stage = 2;
+      profile.quest = 'find';
+      profile.eyeFed = 0;
+      profile.stage2Talk = true;
+      profile.bookOpened = true;
+      persistNow();
+      await new Promise<void>((res) => {
+        this.menu = true;
+        Screens.get().showBook(
+          () => {
+            Screens.get().hide();
+            this.menu = false;
+            res();
+          },
+          () => this.startTraining(),
+          'Close',
+          true,
+        );
+      });
+      this.bookPointed = false;
+      await this.sleep(0.8);
+    } else {
+      await this.sleep(1);
+    }
     await this.say('Steel yourself, for it is just beginning', 'right');
     await this.say('Reenter Anathema, but this time, focus', 'right');
     await this.say("Find his Mind's Eye and feed it", 'right');
@@ -1317,13 +1377,12 @@ export class HubScene extends Phaser.Scene {
     await this.say('Do NOT fail me, young one', 'right');
 
     // Anathema starts to glow a large, chaotic, deep red: stage 2.
-    profile.stage = 2;
-    profile.quest = 'find';
-    profile.eyeFed = 0;
-    persistNow();
     this.focus(930, 366, 1.1);
     this.bump(6);
     await this.tweenValue(0, 1, 2500, (v) => (this.redGlow = v));
+    profile.stage2Talk = false;
+    persistNow();
+    this.stage2Resume = false;
     await this.sleep(0.8);
     this.followPlayer();
     this.controlled = true;

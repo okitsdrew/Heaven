@@ -1,5 +1,5 @@
 import { cfg, Config } from './config';
-import { profile } from './save';
+import { profile, setSaveOverride } from './save';
 
 type Currency = 'gold' | 'sp';
 
@@ -49,8 +49,9 @@ export const nodes: SkillNode[] = [
 
   // Left: damage, and the pair that both lead to More Damage.
   { id: 'damage', name: 'More Power', desc: (p) => `+${p} damage`, parents: ['pierce'], currency: 'gold', levels: 5, base: 1, effect: 'damage', x: -180, y: 0 },
-  { id: 'range', name: 'Sniper', desc: (p) => `+${pct(p)} arrow range`, parents: ['damage'], currency: 'gold', levels: 1, base: 100, costs: [100], effect: 'range', x: -340, y: -90 },
-  { id: 'moreMorePierce', name: 'Denser Arrows', desc: (p) => `+${p} pierce`, parents: ['damage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMorePierce', x: -340, y: 90 },
+  { id: 'range', name: 'Sniper', desc: (p) => `+${pct(p)} arrow range`, parents: ['damage'], currency: 'gold', levels: 1, base: 100, costs: [100], effect: 'range', x: -340, y: -170 },
+  { id: 'taunt', name: 'Taunt', desc: () => `Increase enemy spawn rate in the first ${cfg.spawn.holdTime + cfg.spawn.secondHold} seconds.`, parents: ['damage'], currency: 'gold', levels: 1, base: 500, costs: [500], effect: null, x: -340, y: 0 },
+  { id: 'moreMorePierce', name: 'Denser Arrows', desc: (p) => `+${p} pierce`, parents: ['damage'], currency: 'gold', levels: 3, base: 500, effect: 'moreMorePierce', x: -340, y: 170 },
   { id: 'moreDamage', name: 'Destructive Tendencies', desc: (p) => `+${p} damage`, parents: ['range', 'moreMorePierce'], currency: 'gold', levels: 3, base: 500, costs: [500, 750, 1000], effect: 'moreDamage', x: -540, y: 0 },
 
   // Right: time, its two side nodes, and souls.
@@ -58,13 +59,12 @@ export const nodes: SkillNode[] = [
   { id: 'pickupRadius', name: 'Siphon Range', desc: (p) => `+${pct(p)} pickup radius`, parents: ['time'], currency: 'gold', levels: 2, base: 100, costs: [100, 200], effect: 'pickupRadius', x: 260, y: -130 },
   { id: 'moveSpeed', name: 'Fleet Feet', desc: (p) => `+${pct(p)} move speed`, parents: ['time'], currency: 'gold', levels: 2, base: 100, costs: [100, 200], effect: 'moveSpeed', x: 260, y: 130 },
   { id: 'goldValue', name: 'Siphon Strength', desc: (p) => `+${p} souls per kill`, parents: ['time'], currency: 'gold', levels: 5, base: 25, effect: 'goldValue', x: 360, y: 0 },
-  { id: 'moreTime', name: 'Endless Misery', desc: () => `Each kill adds ${cfg.upgrade.killTime}s of run time`, parents: ['goldValue'], currency: 'gold', levels: 1, base: 10000, costs: [10000], effect: null, x: 520, y: -80 },
+  { id: 'moreTime', name: 'Endless Misery', desc: () => `Each kill adds ${cfg.upgrade.killTime}s of run time`, parents: ['goldValue'], currency: 'gold', levels: 1, base: 5000, costs: [5000], effect: null, x: 520, y: -80 },
   { id: 'doubleGold', name: 'Soul Battery', desc: () => `x${1 + cfg.upgrade.doubleGold} souls per kill, then x${1 + cfg.upgrade.doubleGold + cfg.upgrade.quadGold}`, parents: ['goldValue'], currency: 'gold', levels: 2, base: 500, costs: [500, 1000], effect: null, x: 520, y: 80 },
   { id: 'timeWarp', name: 'Time Warp', desc: () => `Battles start ${cfg.upgrade.warpTime} seconds in`, parents: ['moreTime', 'doubleGold'], requires: () => level('doubleGold') >= 2 && profile.bossIntroSeen, currency: 'gold', levels: 1, base: 5000, costs: [5000], effect: null, x: 700, y: 0 },
 
   // Unlocked by stage 2: four more upgrades on the main tree. They fade in together on the first visit to the tree after it.
   { id: 'backshots', name: 'Backshots', desc: () => `Fires a second bow behind you with ${pct(cfg.bow.backshotsMult)} of the shots and pierce`, parents: ['dustDevil'], requires: () => profile.stage >= 2, currency: 'gold', levels: 1, base: 20000, costs: [20000], effect: null, x: 0, y: -570 },
-  { id: 'mrKnowItAll', name: 'Mr. Know it All', desc: () => 'Every skill enhancement works, whether or not its skill is equipped', parents: ['moreMoreBullets'], requires: () => profile.stage >= 2, currency: 'gold', levels: 1, base: 50000, costs: [50000], effect: null, x: 0, y: 440 },
   { id: 'swiftKick', name: 'Swift Kick', desc: () => `Teleport deals ${cfg.upgrade.swiftKickDamage} damage to enemies you pass through`, parents: ['timeWarp'], requires: () => profile.stage >= 2, currency: 'gold', levels: 1, base: 10000, costs: [10000], effect: null, x: 880, y: 0 },
   { id: 'zeroGravity', name: 'Zero Gravity', desc: (p) => `+${pct(p)} arrow range`, parents: ['moreDamage'], requires: () => profile.stage >= 2, currency: 'gold', levels: 1, base: 10000, costs: [10000], effect: 'zeroGravity', x: -720, y: 0 },
 
@@ -80,53 +80,53 @@ export const nodes: SkillNode[] = [
     id: 'iceFairy',
     name: 'Ice Storm',
     desc: () => `Direct an ice storm onto an area for ${cfg.iceStorm.duration} seconds. Damages and slows enemies. Freezes bosses for ${cfg.iceStorm.bossFreeze} second.${small(`Cooldown ${cfg.iceStorm.cooldown}s, damage ${cfg.iceStorm.damage} x${cfg.iceStorm.ticksPerSecond}/s`)}`,
-    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 2, effect: null, x: -410, y: -130, tree: 'book', color: 0x7fd4ff,
+    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 1, effect: null, x: -410, y: -130, tree: 'book', color: 0x7fd4ff,
   },
   {
     id: 'doomsday',
     name: 'Doomsday Scenario',
     desc: () => `Teleport to an area and unleashes an explosion. Damages, stuns, and knocks back enemies. Damages and stuns bosses.${small(`Cooldown ${cfg.doomsday.cooldown}s, damage ${cfg.doomsday.damage}`)}`,
-    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 2, effect: null, x: 410, y: -175, tree: 'book', color: 0xffe14a,
+    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 1, effect: null, x: 410, y: -175, tree: 'book', color: 0xffe14a,
   },
   {
     id: 'swordSlash',
     name: 'Sword Slash',
     desc: () => `Convert your next ${cfg.swordSlash.charges} attacks into a sword slash combo. Damages enemies and stuns bosses.${small(`Cooldown ${cfg.swordSlash.cooldown}s, damage ${cfg.swordSlash.coneDamage} cone, ${cfg.swordSlash.slamDamage} slam`)}`,
-    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 2, effect: null, x: 410, y: 150, tree: 'book', color: 0xb070ff,
+    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 1, effect: null, x: 410, y: 150, tree: 'book', color: 0xb070ff,
   },
   {
     id: 'aegis',
     name: 'Worldbreaker Aegis',
     desc: () => `Defends yourself against the next attack for ${cfg.aegis.duration} seconds. Counterattack, detonating an area around you and stunning enemies and bosses.${small(`Cooldown ${cfg.aegis.cooldown}s, damage ${cfg.aegis.damage}`)}`,
-    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 2, effect: null, x: 0, y: 310, tree: 'book', color: 0xffffff,
+    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 1, effect: null, x: 0, y: 310, tree: 'book', color: 0xffffff,
   },
   {
     id: 'lotus',
     name: 'Festering Lotus',
     desc: () => `Throw out a flower to attract and poison enemies for ${cfg.lotus.life} seconds. Dash/Teleport through the flower to shoot out poisonous leaves.${small(`Cooldown ${cfg.lotus.cooldown}s, damage ${cfg.lotus.damage}`)}`,
-    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 2, effect: null, x: -410, y: 150, tree: 'book', color: 0x8fe04a,
+    parents: ['teleport'], requires: () => profile.skillsRevealed, currency: 'sp', levels: 1, base: 1, effect: null, x: -410, y: 150, tree: 'book', color: 0x8fe04a,
   },
 
-  // Enhancements: each skill has a damage node and one or more special nodes. All cost skill points.
-  { id: 'fireFairyDamage', name: 'Fire Wave: Damage Increase', desc: (p) => `Increase damage of Fire Wave by ${pct(p)}`, parents: ['fireFairy'], currency: 'sp', levels: 2, base: 2, costs: [2, 2], effect: 'skillDamage', x: -200, y: -470, tree: 'book', color: 0xff7a20 },
-  { id: 'fireFairyBurn', name: 'Fire Wave: Searing Arrows', desc: () => 'When Fire Wave is equipped, arrows apply burn on hit', parents: ['fireFairy'], currency: 'sp', levels: 1, base: 5, costs: [5], effect: null, x: 200, y: -470, tree: 'book', color: 0xff7a20 },
-  { id: 'iceFairyDamage', name: 'Ice Storm: Damage Increase', desc: (p) => `Increase damage of Ice Storm by ${pct(p)}`, parents: ['iceFairy'], currency: 'sp', levels: 2, base: 2, costs: [2, 2], effect: 'skillDamage', x: -810, y: -300, tree: 'book', color: 0x7fd4ff },
-  { id: 'iceFairyCold', name: 'Ice Storm: Frostbite Arrows', desc: () => 'When Ice Storm is equipped, arrows apply cold on hit', parents: ['iceFairy'], currency: 'sp', levels: 1, base: 5, costs: [5], effect: null, x: -810, y: -100, tree: 'book', color: 0x7fd4ff },
-  { id: 'lotusDamage', name: 'Festering Lotus: Damage Increase', desc: (p) => `Increase damage of Festering Lotus by ${pct(p)}`, parents: ['lotus'], currency: 'sp', levels: 2, base: 2, costs: [2, 2], effect: 'skillDamage', x: -810, y: 100, tree: 'book', color: 0x8fe04a },
-  { id: 'lotusPoison', name: 'Festering Lotus: Venom Arrows', desc: () => 'When Festering Lotus is equipped, arrows apply poison on hit', parents: ['lotus'], currency: 'sp', levels: 1, base: 5, costs: [5], effect: null, x: -810, y: 300, tree: 'book', color: 0x8fe04a },
-  { id: 'doomsdayDamage', name: 'Doomsday Scenario: Damage Increase', desc: (p) => `Increase damage of Doomsday Scenario by ${pct(p)}`, parents: ['doomsday'], currency: 'sp', levels: 2, base: 2, costs: [2, 2], effect: 'skillDamage', x: 810, y: -300, tree: 'book', color: 0xffe14a },
-  { id: 'efficientDust', name: 'Efficient Dust', desc: () => `When Doomsday Scenario is equipped, ${cfg.upgrade.dustEfficiency}x the efficiency of Dust Devil`, parents: ['doomsday'], currency: 'sp', levels: 1, base: 5, costs: [5], effect: null, x: 810, y: -100, tree: 'book', color: 0xffe14a },
-  { id: 'swordSlashDamage', name: 'Sword Slash: Damage Increase', desc: (p) => `Increase damage of Sword Slash by ${pct(p)}`, parents: ['swordSlash'], currency: 'sp', levels: 2, base: 2, costs: [2, 2], effect: 'skillDamage', x: 810, y: 100, tree: 'book', color: 0xb070ff },
-  { id: 'powerhouse', name: 'Powerhouse', desc: () => `When Sword Slash is equipped, ${cfg.upgrade.powerhouseDamage}x more arrow damage and ${cfg.upgrade.powerhousePierce}x pierce`, parents: ['swordSlash'], currency: 'sp', levels: 1, base: 5, costs: [5], effect: null, x: 810, y: 300, tree: 'book', color: 0xb070ff },
-  { id: 'aegisDamage', name: 'Aegis: Damage Increase', desc: (p) => `Increase damage of Worldbreaker Aegis by ${pct(p)}`, parents: ['aegis'], currency: 'sp', levels: 2, base: 2, costs: [2, 2], effect: 'skillDamage', x: -420, y: 470, tree: 'book', color: 0xffffff },
-  { id: 'bubbleShield', name: 'Bubble Shield', desc: () => `When Aegis is equipped, it is always active, but has ${cfg.upgrade.bubbleCooldownMult}x cooldown when popped. Cannot be combined with Panic Button`, parents: ['aegis'], excludes: ['panicButton'], currency: 'sp', levels: 1, base: 5, costs: [5], effect: null, x: 0, y: 470, tree: 'book', color: 0xffffff },
-  { id: 'panicButton', name: 'Panic Button', desc: () => `When Aegis is equipped, ${cfg.upgrade.panicMult}x damage and range of Aegis. Cannot be combined with Bubble Shield`, parents: ['aegis'], excludes: ['bubbleShield'], currency: 'sp', levels: 1, base: 5, costs: [5], effect: null, x: 420, y: 470, tree: 'book', color: 0xffffff },
+  // Enhancements: each skill has a damage node and one or more special nodes. All cost skill points and open at stage 2.
+  { id: 'fireFairyDamage', name: 'Fire Wave: Damage Increase', desc: (p) => `Increase damage of Fire Wave by ${pct(p)} ${small(`total +${pct(p * level('fireFairyDamage'))}`)}`, parents: ['fireFairy'], requires: () => profile.stage >= 2, currency: 'sp', levels: 2, base: 1, costs: [1, 1], effect: 'skillDamage', x: -200, y: -470, tree: 'book', color: 0xff7a20 },
+  { id: 'fireFairyBurn', name: 'Fire Wave: Searing Arrows', desc: () => 'When Fire Wave is equipped, arrows apply burn on hit', parents: ['fireFairy'], requires: () => profile.stage >= 2, currency: 'sp', levels: 1, base: 1, costs: [1], effect: null, x: 200, y: -470, tree: 'book', color: 0xff7a20 },
+  { id: 'iceFairyDamage', name: 'Ice Storm: Damage Increase', desc: (p) => `Increase damage of Ice Storm by ${pct(p)} ${small(`total +${pct(p * level('iceFairyDamage'))}`)}`, parents: ['iceFairy'], requires: () => profile.stage >= 2, currency: 'sp', levels: 2, base: 1, costs: [1, 1], effect: 'skillDamage', x: -810, y: -300, tree: 'book', color: 0x7fd4ff },
+  { id: 'iceFairyCold', name: 'Ice Storm: Frostbite Arrows', desc: () => 'When Ice Storm is equipped, arrows apply cold on hit', parents: ['iceFairy'], requires: () => profile.stage >= 2, currency: 'sp', levels: 1, base: 1, costs: [1], effect: null, x: -810, y: -100, tree: 'book', color: 0x7fd4ff },
+  { id: 'lotusDamage', name: 'Festering Lotus: Damage Increase', desc: (p) => `Increase damage of Festering Lotus by ${pct(p)} ${small(`total +${pct(p * level('lotusDamage'))}`)}`, parents: ['lotus'], requires: () => profile.stage >= 2, currency: 'sp', levels: 2, base: 1, costs: [1, 1], effect: 'skillDamage', x: -810, y: 100, tree: 'book', color: 0x8fe04a },
+  { id: 'lotusPoison', name: 'Festering Lotus: Venom Arrows', desc: () => 'When Festering Lotus is equipped, arrows apply poison on hit', parents: ['lotus'], requires: () => profile.stage >= 2, currency: 'sp', levels: 1, base: 1, costs: [1], effect: null, x: -810, y: 300, tree: 'book', color: 0x8fe04a },
+  { id: 'doomsdayDamage', name: 'Doomsday Scenario: Damage Increase', desc: (p) => `Increase damage of Doomsday Scenario by ${pct(p)} ${small(`total +${pct(p * level('doomsdayDamage'))}`)}`, parents: ['doomsday'], requires: () => profile.stage >= 2, currency: 'sp', levels: 2, base: 1, costs: [1, 1], effect: 'skillDamage', x: 810, y: -300, tree: 'book', color: 0xffe14a },
+  { id: 'efficientDust', name: 'Efficient Dust', desc: () => `When Doomsday Scenario is equipped, ${cfg.upgrade.dustEfficiency}x the efficiency of Dust Devil`, parents: ['doomsday'], requires: () => profile.stage >= 2, currency: 'sp', levels: 1, base: 1, costs: [1], effect: null, x: 810, y: -100, tree: 'book', color: 0xffe14a },
+  { id: 'swordSlashDamage', name: 'Sword Slash: Damage Increase', desc: (p) => `Increase damage of Sword Slash by ${pct(p)} ${small(`total +${pct(p * level('swordSlashDamage'))}`)}`, parents: ['swordSlash'], requires: () => profile.stage >= 2, currency: 'sp', levels: 2, base: 1, costs: [1, 1], effect: 'skillDamage', x: 810, y: 100, tree: 'book', color: 0xb070ff },
+  { id: 'powerhouse', name: 'Powerhouse', desc: () => `When Sword Slash is equipped, ${cfg.upgrade.powerhouseDamage}x more arrow damage and ${cfg.upgrade.powerhousePierce}x pierce`, parents: ['swordSlash'], requires: () => profile.stage >= 2, currency: 'sp', levels: 1, base: 1, costs: [1], effect: null, x: 810, y: 300, tree: 'book', color: 0xb070ff },
+  { id: 'aegisDamage', name: 'Aegis: Damage Increase', desc: (p) => `Increase damage of Worldbreaker Aegis by ${pct(p)} ${small(`total +${pct(p * level('aegisDamage'))}`)}`, parents: ['aegis'], requires: () => profile.stage >= 2, currency: 'sp', levels: 2, base: 1, costs: [1, 1], effect: 'skillDamage', x: -420, y: 470, tree: 'book', color: 0xffffff },
+  { id: 'bubbleShield', name: 'Bubble Shield', desc: () => `When Aegis is equipped, it is always active, but has ${cfg.upgrade.bubbleCooldownMult}x cooldown when popped. Cannot be combined with Panic Button`, parents: ['aegis'], excludes: ['panicButton'], requires: () => profile.stage >= 2, currency: 'sp', levels: 1, base: 1, costs: [1], effect: null, x: 0, y: 470, tree: 'book', color: 0xffffff },
+  { id: 'panicButton', name: 'Panic Button', desc: () => `When Aegis is equipped, ${cfg.upgrade.panicMult}x damage and range of Aegis. Cannot be combined with Bubble Shield`, parents: ['aegis'], excludes: ['bubbleShield'], requires: () => profile.stage >= 2, currency: 'sp', levels: 1, base: 1, costs: [1], effect: null, x: 420, y: 470, tree: 'book', color: 0xffffff },
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
 // The stage 2 upgrades, which fade onto the tree together.
-export const stage2Nodes = ['backshots', 'mrKnowItAll', 'swiftKick', 'zeroGravity'];
+export const stage2Nodes = ['backshots', 'swiftKick', 'zeroGravity'];
 
 export type SkillId = 'fireFairy' | 'iceFairy' | 'swordSlash' | 'doomsday' | 'aegis' | 'lotus';
 export const skillIds: SkillId[] = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'aegis', 'lotus'];
@@ -162,12 +162,35 @@ function autoBind(id: SkillId): void {
   if (free >= 0) profile.binds[free] = id;
 }
 
+// The testing grounds: skills are free to take and swap, and the real loadout comes back afterwards.
+let backup: { nodes: Record<string, number>; binds: (string | null)[] } | null = null;
+
+export const sandboxed = () => backup !== null;
+const free = () => cfg.tree.free || backup !== null;
+
+export function enterSandbox(): void {
+  if (backup) return;
+  backup = { nodes: { ...profile.nodes }, binds: [...profile.binds] };
+  setSaveOverride(() => (backup ? { nodes: backup.nodes, binds: backup.binds } : {}));
+}
+
+export function leaveSandbox(): void {
+  if (!backup) return;
+  profile.nodes = backup.nodes;
+  profile.binds = backup.binds;
+  backup = null;
+  setSaveOverride(null);
+}
+
 export function level(id: string): number {
   return profile.nodes[id] ?? 0;
 }
 
+// A skill's own upgrades (damage, special arrows and so on), as opposed to the skill itself.
+const isEnhancement = (n: SkillNode) => n.tree === 'book' && n.parents.some((p) => isSkill(p));
+
 export function isVisible(n: SkillNode): boolean {
-  return cfg.tree.revealAll || (n.parents.every((p) => level(p) >= 1) && (n.requires?.() ?? true));
+  return cfg.tree.revealAll || (n.parents.every((p) => level(p) >= 1) && (n.requires?.() ?? true)) && !(backup && isEnhancement(n));
 }
 
 export function maxLevel(n: SkillNode): number {
@@ -189,14 +212,14 @@ export function canBuy(n: SkillNode): boolean {
   if (!n.parents.every((p) => level(p) >= 1)) return false;
   if (n.requires && !n.requires()) return false;
   if (n.excludes?.some((id) => level(id) > 0)) return false;
-  if (cfg.tree.free) return true;
+  if (free()) return true;
   return (n.currency === 'gold' ? profile.gold : profile.skillPoints) >= cost;
 }
 
 export function buy(n: SkillNode): boolean {
   if (!canBuy(n)) return false;
   const cost = nextCost(n) ?? 0;
-  if (!cfg.tree.free) {
+  if (!free()) {
     if (n.currency === 'gold') profile.gold -= cost;
     else profile.skillPoints -= cost;
   }
@@ -211,7 +234,7 @@ export function refund(n: SkillNode): boolean {
   const lvl = level(n.id);
   if (lvl <= 0) return false;
   if (lvl === 1 && nodes.some((c) => c.parents.includes(n.id) && level(c.id) > 0)) return false;
-  if (!cfg.tree.free) {
+  if (!free()) {
     if (n.currency === 'gold') profile.gold += costAt(n, lvl - 1);
     else profile.skillPoints += costAt(n, lvl - 1);
   }
@@ -285,9 +308,9 @@ export function equipped(id: SkillId): boolean {
   return actionFor(id) !== null;
 }
 
-// An enhancement is live while its skill is equipped, or always once Mr. Know it All is owned.
+// An enhancement is live while its skill is equipped.
 function enhanced(id: SkillId): boolean {
-  return equipped(id) || level('mrKnowItAll') >= 1;
+  return equipped(id);
 }
 
 // Panic Button doubles the Aegis counter-blast's damage and range.

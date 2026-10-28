@@ -2,9 +2,9 @@ import Phaser from 'phaser';
 import { nodeById } from '../skills';
 import { G, mix, Rng, shade } from './draw';
 
-const V = (x: number, y: number) => new Phaser.Math.Vector2(x, y);
+export const V = (x: number, y: number) => new Phaser.Math.Vector2(x, y);
 
-function blob(g: G, x: number, y: number, rx: number, ry: number, color: number, alpha = 1, rot = 0): void {
+export function blob(g: G, x: number, y: number, rx: number, ry: number, color: number, alpha = 1, rot = 0): void {
   g.fillStyle(color, alpha);
   if (rot) {
     g.save();
@@ -121,10 +121,10 @@ export function throneFigure(g: G): void {
   }
 }
 
-type P = [number, number];
+export type P = [number, number];
 
 // A smooth closed (or open) curve through the points, sampled into a polygon.
-function spline(pts: P[], closed = true, seg = 6): Phaser.Math.Vector2[] {
+export function spline(pts: P[], closed = true, seg = 6): Phaser.Math.Vector2[] {
   const n = pts.length;
   const at = (i: number) => pts[closed ? (i + n) % n : Math.max(0, Math.min(n - 1, i))];
   const out: Phaser.Math.Vector2[] = [];
@@ -143,7 +143,7 @@ function spline(pts: P[], closed = true, seg = 6): Phaser.Math.Vector2[] {
 }
 
 // A filled shape with a dark rim. Smooth for flesh and bone, sharp for spikes and horns.
-function shape(g: G, pts: P[], fill: number, rim = 0x050804, lw = 3, smooth = true, alpha = 1): void {
+export function shape(g: G, pts: P[], fill: number, rim = 0x050804, lw = 3, smooth = true, alpha = 1): void {
   const poly = smooth ? spline(pts) : pts.map(([x, y]) => V(x, y));
   g.fillStyle(fill, alpha).fillPoints(poly, true);
   if (lw > 0) g.lineStyle(lw, rim, 1).strokePoints(poly, true);
@@ -160,7 +160,7 @@ function inside(pts: P[], x: number, y: number): boolean {
 }
 
 // One feather: a leaf-shaped vane with a centre shaft and barbs, rooted at (x, y) and pointing along `deg`.
-function feather(g: G, x: number, y: number, deg: number, len: number, wid: number, color: number): void {
+export function feather(g: G, x: number, y: number, deg: number, len: number, wid: number, color: number): void {
   const a = (deg * Math.PI) / 180;
   const c = Math.cos(a);
   const s = Math.sin(a);
@@ -185,7 +185,7 @@ function feather(g: G, x: number, y: number, deg: number, len: number, wid: numb
 
 // The six skills' colours, in the order they sit along Anathema's crest.
 const CREST = ['fireFairy', 'doomsday', 'aegis', 'lotus', 'iceFairy', 'swordSlash'] as const;
-const crestColor = (i: number) => nodeById.get(CREST[i % CREST.length])?.color ?? 0xffffff;
+export const crestColor = (i: number) => nodeById.get(CREST[i % CREST.length])?.color ?? 0xffffff;
 
 // The eye alone, in a given colour, to draw over the one in the head (which faces right here before being flipped).
 export function severedHeadEye(g: G, color: number): void {
@@ -290,7 +290,7 @@ export function headWire(top: G, floor: G): void {
 
 // Anathema, severed: a dragon's head with a ragged neck, swept horns, a burnt-gold crest behind it, torn dark fins,
 // cracked scales and a hanging jaw full of teeth. Base of the neck at (0, 0); it faces right and fits (-140..140, -200..60).
-export function severedHead(g: G, r: Rng): void {
+export function severedHead(g: G, r: Rng, whole = false): void {
   const scale = 0x23281a;
   const scaleLight = 0x3e4e28;
   const rim = 0x050804;
@@ -298,7 +298,7 @@ export function severedHead(g: G, r: Rng): void {
   const sick = 0x9ccc3c;
   // Drawn facing right, then flipped so he looks to the left.
   g.scaleCanvas(-1, 1);
-  blob(g, 0, 4, 70, 14, 0x000000, 0.5);
+  if (!whole) blob(g, 0, 4, 70, 14, 0x000000, 0.5);
 
   // Behind everything: the crest of tarnished gold feathers to one side and dark, torn fins on the other.
   // A crest of feathers, one colour for each of the six skills: a short underlay and then the long ones over it.
@@ -307,16 +307,20 @@ export function severedHead(g: G, r: Rng): void {
   // A ruff of smaller ones hanging round the neck.
   for (let i = 0; i < 5; i++) feather(g, -42, -42 + i * 4, 98 + i * 15, 34 + (i % 2) * 6, 7, crestColor(i + 2));
 
-  // The neck: thick scaled flesh cut off raggedly, with the bone showing.
-  shape(g, [[-54, -44], [-60, -14], [-44, 8], [-14, 14], [22, 8], [42, -8], [38, -38]], scale, rim, 3);
-  g.lineStyle(1.5, scaleLight, 0.5);
-  for (let i = 0; i < 5; i++) g.lineBetween(-50 + i * 20, -36, -52 + i * 20 + r() * 6, 2);
-  blob(g, -10, 8, 46, 11, 0x4a0f10);
-  blob(g, -10, 7, 38, 8, 0x8a2220);
-  blob(g, -10, 6, 10, 5, bone);
-  blob(g, -10, 6, 4, 2.4, 0x2a0a0a);
-  g.lineStyle(3, 0x4a0f10, 1);
-  for (let i = 0; i < 6; i++) g.lineBetween(-42 + i * 14, 10, -44 + i * 14 + r() * 8, 22 + r() * 10);
+  // The neck: thick scaled flesh cut off raggedly, with the bone showing. Whole, it runs on down into the body.
+  if (whole) shape(g, [[-54, -44], [-70, 0], [-76, 60], [-30, 100], [50, 90], [58, 20], [42, -8], [38, -38]], scale, rim, 3);
+  else shape(g, [[-54, -44], [-60, -14], [-44, 8], [-14, 14], [22, 8], [42, -8], [38, -38]], scale, rim, 3);
+  if (!whole) {
+    g.lineStyle(1.5, scaleLight, 0.5);
+    for (let i = 0; i < 5; i++) g.lineBetween(-50 + i * 20, -36, -52 + i * 20 + r() * 6, 2);
+    blob(g, -10, 8, 46, 11, 0x4a0f10);
+    blob(g, -10, 7, 38, 8, 0x8a2220);
+    blob(g, -10, 6, 10, 5, bone);
+    blob(g, -10, 6, 4, 2.4, 0x2a0a0a);
+    g.lineStyle(3, 0x4a0f10, 1);
+    for (let i = 0; i < 6; i++) g.lineBetween(-42 + i * 14, 10, -44 + i * 14 + r() * 8, 22 + r() * 10);
+
+  }
 
   // The inside of the mouth, the tongue, then the hanging lower jaw.
   // The back of the mouth is dark throat with a little red; further forward the jaws are open, so the floor shows
@@ -386,12 +390,14 @@ export function severedHead(g: G, r: Rng): void {
   g.lineStyle(1.5, 0xcfe8b0, 0.55);
   for (const x of [101, 118]) g.lineBetween(x, -12, x + 1, 12 + r() * 10);
 
-  // Ichor and blood dripping from the neck.
-  g.fillStyle(sick, 0.85);
-  for (const [x, y, h] of [[-38, 14, 16], [-6, 18, 26], [26, 12, 14]] as const) {
-    g.fillRect(x, y, 3, h);
-    g.fillCircle(x + 1.5, y + h, 3.4);
-  }
+  if (!whole) {
+    // Ichor and blood dripping from the neck.
+    g.fillStyle(sick, 0.85);
+    for (const [x, y, h] of [[-38, 14, 16], [-6, 18, 26], [26, 12, 14]] as const) {
+      g.fillRect(x, y, 3, h);
+      g.fillCircle(x + 1.5, y + h, 3.4);
+    }
+}
 }
 
 // The floating book: a closed tome with a glowing seal. Centre at (0, 0).

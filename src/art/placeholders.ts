@@ -16,6 +16,11 @@ export const Tex = {
   siege: 'decor_siege',
   wreck: 'decor_wreck',
   rubble: 'obstacle_rubble',
+  wall: 'ruin_wall',
+  pillar: 'ruin_pillar',
+  ribs: 'bones_ribs',
+  femur: 'bones_femur',
+  skull: 'bones_skull',
   coin: 'coin',
 } as const;
 
@@ -250,9 +255,12 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
     shade: { k: 0x154f61, K: 0x1f6e86, E: 0xffe14a, e: 0xb08a10, O: 0x8a8a98 },
     husk: { k: 0x221818, K: 0x4a3030, E: 0xffa040, e: 0xa04a18, O: 0x8a8a98 },
   };
-  for (const kind of ['wraith', 'shade', 'husk'] as const) {
+  for (const kind of ['wraith', 'shade'] as const) {
     wraithHem.forEach((hem, i) => fromGrid(scene, enemyFrames[kind][i], outlined([...wraithTop, ...hem], 'O'), wraithColors[kind]));
   }
+
+  huskArt(scene);
+  ruinArt(scene);
 
   const charred = { b: 0x2a2018, B: 0x3d2e22, a: 0x1a1714, e: 0x8a3a1a, o: 0x342820 };
   fromGrid(
@@ -343,4 +351,114 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
   softCircle(scene, Tex.shadow, 16, 0x000000, 0.6);
   softCircle(scene, Tex.smoke, 12, 0x8a8698, 0.9);
   vignette(scene);
+}
+
+
+type Rect = [number, number, number, number];
+
+function paint(scene: Phaser.Scene, key: string, w: number, h: number, draw: (fill: (color: number, ...rects: Rect[]) => void) => void): void {
+  const g = scene.make.graphics({}, false);
+  draw((color, ...rects) => {
+    g.fillStyle(color, 1);
+    for (const [x, y, rw, rh] of rects) g.fillRect(x, y, rw, rh);
+  });
+  g.generateTexture(key, w, h);
+  g.destroy();
+}
+
+// A hulking rock golem: boulder shoulders and fists, a blocky head with one glowing slit, and stubby legs.
+function huskArt(scene: Phaser.Scene): void {
+  const O = 0x1c1a17;
+  const dark = 0x4a4740;
+  const base = 0x6d6a60;
+  const mid = 0x85816f;
+  const light = 0xa39e8a;
+  const crack = 0x2f2c27;
+  const eye = 0xffa040;
+  enemyFrames.husk.forEach((key, i) => {
+    const lift = i; // frame 1 raises one foot for a lumbering step
+    paint(scene, key, 30, 34, (fill) => {
+      // Outline first (slightly larger shapes), then fill on top.
+      fill(O, [8, 2, 14, 10], [6, 9, 18, 15], [0, 10, 8, 14], [22, 10, 8, 14], [-0, 21, 7, 8], [23, 21, 7, 8], [6, 22, 7, 11 - lift], [17, 22, 7, 11 - (1 - lift)]);
+      // Legs and feet.
+      fill(dark, [7, 23, 5, 8 - lift], [18, 23, 5, 8 - (1 - lift)]);
+      fill(base, [8, 23, 4, 7 - lift], [19, 23, 4, 7 - (1 - lift)]);
+      fill(mid, [6, 30 - lift, 7, 3], [17, 30 - (1 - lift), 7, 3]);
+      // Torso.
+      fill(base, [7, 10, 16, 14]);
+      fill(mid, [9, 11, 6, 6], [16, 13, 5, 5], [11, 19, 8, 4]);
+      fill(light, [9, 11, 3, 2], [16, 13, 3, 1]);
+      fill(dark, [7, 20, 16, 4], [20, 11, 3, 9]);
+      // Shoulders and arms.
+      fill(base, [1, 10, 7, 7], [22, 10, 7, 7]);
+      fill(mid, [2, 10, 4, 3], [23, 10, 4, 3]);
+      fill(light, [2, 10, 2, 1], [23, 10, 2, 1]);
+      fill(base, [1, 17, 5, 5], [24, 17, 5, 5]);
+      fill(dark, [1, 20, 5, 2], [24, 20, 5, 2]);
+      // Fists.
+      fill(mid, [0, 22, 7, 6], [23, 22, 7, 6]);
+      fill(light, [1, 22, 3, 2], [24, 22, 3, 2]);
+      fill(dark, [0, 26, 7, 2], [23, 26, 7, 2]);
+      // Head.
+      fill(base, [9, 3, 12, 8]);
+      fill(mid, [10, 3, 5, 3]);
+      fill(dark, [9, 9, 12, 2]);
+      fill(eye, [11, 6, 8, 2]);
+      // Cracks.
+      fill(crack, [12, 14, 1, 4], [13, 17, 3, 1], [19, 21, 1, 3], [4, 12, 1, 3], [26, 13, 1, 3]);
+    });
+  });
+}
+
+// Ruined walls and pillars for stage 2's road, and bones for the burial ground beyond.
+function ruinArt(scene: Phaser.Scene): void {
+  const mortar = 0x2a2420;
+  const brick = [0x5a4a40, 0x6a5848, 0x4e403a];
+  const chip = 0x7a6a58;
+  paint(scene, Tex.wall, 40, 26, (fill) => {
+    fill(mortar, [0, 8, 40, 18]);
+    // Broken top: uneven courses of bricks.
+    const tops = [10, 6, 8, 4, 9, 7, 5, 9];
+    tops.forEach((top, i) => fill(mortar, [i * 5, top - 1, 5, 27 - top]));
+    for (let row = 0; row < 5; row++) {
+      for (let i = 0; i < 8; i++) {
+        const y = 4 + row * 4;
+        const x = i * 5 + (row % 2 ? 2 : 0);
+        if (y < tops[i % 8]) continue;
+        fill(brick[(i + row) % 3], [x, y, 4, 3]);
+        if ((i * 7 + row * 3) % 5 === 0) fill(chip, [x, y, 2, 1]);
+      }
+    }
+  });
+  paint(scene, Tex.pillar, 14, 40, (fill) => {
+    fill(mortar, [0, 8, 14, 32], [2, 3, 3, 6], [8, 0, 4, 9]);
+    for (let row = 0; row < 8; row++) fill(brick[row % 3], [1, 9 + row * 4, 12, 3]);
+    fill(brick[1], [3, 4, 2, 4], [9, 1, 2, 7]);
+    fill(chip, [1, 9, 4, 1], [8, 17, 4, 1]);
+  });
+  const bone = 0xd8d0bc;
+  const shade = 0xa89f88;
+  const deep = 0x6e6654;
+  paint(scene, Tex.femur, 44, 12, (fill) => {
+    fill(deep, [3, 3, 38, 7], [0, 0, 8, 12], [36, 0, 8, 12]);
+    fill(bone, [4, 3, 36, 5], [1, 1, 6, 5], [1, 7, 6, 4], [37, 1, 6, 5], [37, 7, 6, 4]);
+    fill(shade, [4, 7, 36, 2]);
+  });
+  paint(scene, Tex.skull, 30, 28, (fill) => {
+    fill(deep, [3, 0, 24, 18], [0, 6, 30, 10], [7, 16, 16, 12]);
+    fill(bone, [4, 1, 22, 15], [1, 7, 28, 8], [8, 17, 14, 9]);
+    fill(shade, [1, 13, 28, 3], [8, 22, 14, 3]);
+    fill(0x15110d, [6, 8, 7, 6], [17, 8, 7, 6], [14, 14, 2, 3], [9, 22, 2, 5], [13, 22, 2, 5], [17, 22, 2, 5], [21, 22, 1, 5]);
+  });
+  paint(scene, Tex.ribs, 50, 34, (fill) => {
+    fill(deep, [2, 28, 46, 6]);
+    fill(bone, [3, 29, 44, 3]);
+    // Five pairs of ribs, curving up and over from the spine.
+    for (let i = 0; i < 5; i++) {
+      const x = 5 + i * 9;
+      fill(deep, [x - 1, 4 + Math.abs(2 - i) * 2, 6, 25]);
+      fill(bone, [x, 6 + Math.abs(2 - i) * 2, 2, 23], [x + 1, 5 + Math.abs(2 - i) * 2, 3, 3], [x + 2, 8 + Math.abs(2 - i) * 2, 1, 20]);
+      fill(shade, [x + 3, 9 + Math.abs(2 - i) * 2, 1, 19]);
+    }
+  });
 }

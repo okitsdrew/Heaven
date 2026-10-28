@@ -1,4 +1,10 @@
 import { skillIconUrl } from '../art/skillIcons';
+
+// Faint code-drawn emblems behind the big tree buttons.
+const svg = (body: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>${body}</svg>`)}")`;
+const eyeArt = svg("<path d='M3 32Q32 4 61 32Q32 60 3 32Z' fill='none' stroke='#c9b6ff' stroke-opacity='.45' stroke-width='3'/><circle cx='32' cy='32' r='12' fill='#ff2a2a' fill-opacity='.5'/><circle cx='32' cy='32' r='5' fill='#000'/>");
+const skullArt = svg("<path d='M32 5C17 5 9 16 9 28c0 8 4 12 9 15v10h28V43c5-3 9-7 9-15C55 16 47 5 32 5Z' fill='#f0d8d0' fill-opacity='.6'/><circle cx='22' cy='30' r='7' fill='#000' fill-opacity='.6'/><circle cx='42' cy='30' r='7' fill='#000' fill-opacity='.6'/><path d='M32 36l-4 8h8Z' fill='#000' fill-opacity='.6'/>");
+const wash = (rgb: string) => `linear-gradient(rgba(${rgb}, 0.4), rgba(${rgb}, 0.4))`;
 import { sfx } from '../audio';
 import { cfg } from '../config';
 import { persist, profile } from '../save';
@@ -16,6 +22,7 @@ import {
   maxLevel,
   nextCost,
   refund,
+  sandboxed,
   nodeById,
   nodes,
   SkillId,
@@ -47,6 +54,10 @@ const css = `
 @keyframes flash { from { box-shadow: 0 0 4px #c9b6ff; background: #2a2145; } to { box-shadow: 0 0 22px #e0d0ff; background: #5a3a96; } }
 .tip-above { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); white-space: nowrap; font-size: 12px; color: #e0d0ff; pointer-events: none; }
 .screen button.huge { font-size: 27px; padding: 18px 42px; }
+.screen button.art { display: flex; align-items: flex-end; justify-content: center; min-height: 96px; padding-bottom: 8px; background-repeat: no-repeat; background-position: center 35%; background-size: auto 62%; text-shadow: 0 0 6px #000, 0 0 3px #000; }
+.screen button.home { background-color: #000; border-color: #6d6a7a; }
+.screen button.battle { background-color: #4a0a10; border-color: #d04848; }
+.screen button.skillsbtn { background-color: #16337a; border-color: #86b6ff; }
 .screen button.go { background: #4a2f7a; border-color: #d9c8ff; }
 #summary { display: none; place-items: center; }
 #summary.open { display: grid; }
@@ -64,8 +75,10 @@ const css = `
 #tree .node.dragging { opacity: 0.85; border-style: dashed; z-index: 2; }
 #tree .node { position: absolute; width: 132px; padding: 6px 8px; box-sizing: border-box; text-align: center;
   background: #1b1628; border: 2px solid #4a4166; border-radius: 10px; cursor: pointer; touch-action: none; }
-#tree .node.canbuy { border-color: #c9b6ff; }
+#tree .node.canbuy { border-color: #b8f0b8; box-shadow: 0 0 10px rgba(184, 240, 184, 0.35); background: #1f3324; }
 #tree .node.owned { background: #2a2145; border-color: #9a7fe0; }
+#tree .node.skill.canbuy { box-shadow: none; }
+#tree .node.partial.canbuy { border-color: #b8f0b8; box-shadow: 0 0 10px rgba(184, 240, 184, 0.35); }
 #tree .node.maxed { border-color: #ffd24a; box-shadow: 0 0 16px rgba(255, 210, 74, 0.65); }
 #tree .node.deny { animation: deny 0.6s ease-out; }
 @keyframes deny { 0%, 40% { border-color: #ff3030; box-shadow: 0 0 16px #ff3030; } 100% { box-shadow: none; } }
@@ -93,6 +106,15 @@ const css = `
 #tree .xpbar i { display: block; height: 100%; background: #b070ff; }
 #tree .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 #tree .tools button { padding: 3px 8px; font-size: 12px; }
+div.tipring { position: fixed; z-index: 9; border: 3px dotted #e0d0ff; border-radius: 14px; pointer-events: none; }
+div.traintip.big { width: 520px; padding: 22px 26px; font-size: 28px; }
+div.traintip { position: fixed; z-index: 9; transform: translateX(-50%); width: 260px; padding: 10px 14px; text-align: center; background: #2a2145; border: 1px solid #c9b6ff;
+  color: #e9e3f5; font: 16px/1.3 monospace; cursor: pointer; }
+svg.trainline { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 9; pointer-events: none; }
+div.backbox { position: fixed; right: 16px; bottom: 16px; z-index: 7; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+button.back { background: #4a2f7a; color: #e9e3f5; border: 1px solid #d9c8ff;
+  font: 27px/1.4 monospace; padding: 18px 42px; cursor: pointer; }
+button.back:hover { background: #5d3c96; }
 #tree .bottom { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 12px; z-index: 3; }
 #tree .node.skill { width: 300px; height: 128px; display: flex; flex-direction: column; justify-content: center; }
 .ghost { position: fixed; z-index: 100; transform: translate(-50%, -50%); pointer-events: none; padding: 12px 22px; border: 3px solid #fff;
@@ -147,6 +169,12 @@ export class Screens {
   private view = { x: 0, y: 0, scale: 1 };
   private bottom: HTMLDivElement;
   private opened = false;
+  private back: HTMLDivElement | null = null;
+  private tip: Element[] = [];
+  private tipOff: (() => void) | null = null;
+  // Skill enhancements waiting to fade onto the book, and which reveal is current.
+  private held = new Set<string>();
+  private reveal = 0;
   private selector: HTMLDivElement;
   // Skills that have just been revealed and fade in on the book this once.
   private fadeIds = new Set<string>();
@@ -192,7 +220,119 @@ export class Screens {
     return this.summary.classList.contains('open') || this.tree.classList.contains('open');
   }
 
+  // In the testing grounds a big button over the game leads back to the tree.
+  setTrainingButtons(run: { skills: () => void; home: () => void } | null): void {
+    this.back?.remove();
+    this.back = null;
+    if (!run) return;
+    const box = document.createElement('div');
+    box.className = 'backbox';
+    for (const [label, fn] of [['Home', run.home], ['Change Skills', run.skills]] as const) {
+      const b = this.button(label, fn, 'back');
+      // Keep keyboard focus off it so Space (dash) never presses it.
+      b.tabIndex = -1;
+      b.addEventListener('click', () => b.blur());
+      box.appendChild(b);
+    }
+    document.body.appendChild(box);
+    this.back = box;
+  }
+
+  // Once the other skills have faded in: a note and a dotted line pointing at the Testing Grounds button.
+  // A big note in the middle of the screen. A click anywhere clears it, then `next` runs.
+  private bigTip(text: string, next?: () => void): HTMLDivElement {
+    this.clearTip();
+    const box = this.div('traintip big', undefined, document.body);
+    box.textContent = text;
+    box.style.left = '50%';
+    box.style.top = '50%';
+    box.style.transform = 'translate(-50%, -50%)';
+    this.tip = [box];
+    const off = () => document.removeEventListener('pointerdown', onClick, true);
+    const onClick = () => {
+      this.clearTip();
+      next?.();
+    };
+    document.addEventListener('pointerdown', onClick, true);
+    this.tipOff = off;
+    return box;
+  }
+
+  private showRefundTip(): void {
+    if (!this.tree.classList.contains('open') || this.mode !== 'book') return;
+    this.bigTip('Right-Click to refund a skill/upgrade', () => this.showTrainingTip());
+  }
+
+  private showTrainingTip(): void {
+    const target = this.bottom.querySelector<HTMLElement>('.trainbtn');
+    if (!target || !this.tree.classList.contains('open')) return;
+    const r = target.getBoundingClientRect();
+    const box = this.bigTip('Try out new skills at the Training grounds');
+    const b = box.getBoundingClientRect();
+    this.tip.push(this.dottedLine(b.left + b.width / 2, b.bottom + 6, r.left + r.width / 2, r.top - 8));
+  }
+
+  // The same note for the main tree, pointing at the Skills button the first time Fire Wave is affordable.
+  private showFireTip(): void {
+    const target = this.tree.querySelector<HTMLElement>('button.skills');
+    if (!target || !this.tree.classList.contains('open') || this.mode !== 'main') return;
+    const r = target.getBoundingClientRect();
+    const box = this.bigTip('you can afford your first offensive skill!');
+    const b = box.getBoundingClientRect();
+    const ring = this.div('tipring', undefined, document.body);
+    ring.style.cssText = `left:${r.left - 8}px;top:${r.top - 8}px;width:${r.width + 16}px;height:${r.height + 16}px`;
+    this.tip.push(ring, this.dottedLine(b.left + b.width * 0.85, b.top - 6, r.left + r.width / 2, r.bottom + 12));
+  }
+
+  private dottedLine(x1: number, y1: number, x2: number, y2: number): SVGSVGElement {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'trainline');
+    const a = Math.atan2(y2 - y1, x2 - x1);
+    const head = (d: number) => `${x2 - 14 * Math.cos(a + d)},${y2 - 14 * Math.sin(a + d)}`;
+    svg.innerHTML =
+      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#e0d0ff" stroke-width="3" stroke-dasharray="3 9" stroke-linecap="round"/>` +
+      `<polyline points="${head(-0.5)} ${x2},${y2} ${head(0.5)}" fill="none" stroke="#e0d0ff" stroke-width="3" stroke-linecap="round"/>`;
+    document.body.appendChild(svg);
+    return svg;
+  }
+
+  private revealEnhancements(): void {
+    const run = ++this.reveal;
+    const live = () => this.reveal === run && this.tree.classList.contains('open') && this.mode === 'book';
+    window.setTimeout(() => {
+      if (!live()) return;
+      const ids = [...this.held];
+      this.held.clear();
+      this.zoomToFit('book');
+      this.world.style.transition = 'transform 1.6s ease-in-out';
+      this.held = new Set(ids);
+      this.applyView();
+      window.setTimeout(() => {
+        if (!live()) return;
+        this.world.style.transition = '';
+        this.fadeIds = new Set(ids);
+        this.held.clear();
+        this.refresh();
+        window.setTimeout(() => {
+          this.fadeIds.clear();
+          if (live()) this.refresh();
+        }, 3500);
+      }, 1800);
+    }, 2500);
+  }
+
+  private clearTip(): void {
+    this.tipOff?.();
+    this.tipOff = null;
+    for (const e of this.tip) e.remove();
+    this.tip = [];
+  }
+
   hide(): void {
+    this.clearTip();
+    this.held.clear();
+    this.reveal++;
+    this.world.style.transition = '';
     this.summary.classList.remove('open');
     this.tree.classList.remove('open');
   }
@@ -236,23 +376,37 @@ export class Screens {
     this.summary.classList.add('open');
   }
 
-  showTree(onBattle: () => void, onHome: () => void): void {
+  showTree(onBattle: () => void, onHome: () => void, onTraining?: () => void): void {
     this.openMode('main');
     profile.treeTutorialDone = true;
     persist();
-    this.bottom.replaceChildren(this.button('Home', onHome, 'big huge'), this.button('Battle', onBattle, 'big go huge'));
+    const home = this.button('Home', onHome, 'big huge art home');
+    home.style.backgroundImage = eyeArt;
+    const battle = this.button('Battle', onBattle, 'big huge art battle');
+    battle.style.backgroundImage = `${wash('74, 10, 16')}, ${skullArt}`;
+    this.bottom.replaceChildren(home, battle);
     // Once the book is unlocked, a big button up here opens its skills and Close comes back to the tree.
     if (profile.bookUnlocked) {
-      const skills = this.button('Skills', () => this.showBook(() => this.showTree(onBattle, onHome)), 'big huge skills');
+      const skills = this.button('Skills', () => this.showBook(() => this.showTree(onBattle, onHome, onTraining), onTraining), 'big huge skills art skillsbtn');
+      const aegis = skillIconUrl('aegis');
+      if (aegis) skills.style.backgroundImage = `${wash('22, 51, 122')}, url(${aegis})`;
       if (fireAlert()) this.addBang(skills);
+      if (fireAlert()) requestAnimationFrame(() => this.showFireTip());
       this.bottom.appendChild(skills);
     }
   }
 
   // The book holds the skills; it opens over whatever scene is behind it.
-  showBook(onClose: () => void): void {
+  showBook(onClose: () => void, onTraining?: () => void, closeLabel = 'Close', enhancementReveal = false): void {
     this.openMode('book');
-    this.bottom.replaceChildren(this.button('Close', onClose, 'big huge go skills'));
+    // The skills show first; then the view pulls back and the enhancements fade on around them.
+    if (enhancementReveal) {
+      for (const n of nodes) if (n.tree === 'book' && n.parents.some((p) => isSkill(p))) this.held.add(n.id);
+      this.refresh();
+      this.revealEnhancements();
+    }
+    this.bottom.replaceChildren(this.button(closeLabel, onClose, 'big huge go'));
+    if (onTraining && profile.skillsRevealed) this.bottom.prepend(this.button('Testing Grounds', onTraining, 'big huge trainbtn'));
   }
 
   private openMode(mode: Mode): void {
@@ -273,6 +427,7 @@ export class Screens {
       window.setTimeout(() => {
         this.fadeIds.clear();
         if (this.tree.classList.contains('open')) this.refresh();
+        this.showRefundTip();
       }, 3500);
     }
     // The first visit to the tree after stage 2 opens: its new upgrades fade in, with the view pulled back to show them all.
@@ -291,7 +446,7 @@ export class Screens {
   }
 
   // Pulls the view back so the whole visible tree fits on screen, centred, never closer than it already was.
-  private zoomToFit(): void {
+  private zoomToFit(mode: Mode = 'main'): void {
     const ns = cfg.tree.nodeSize;
     const halfW = 70 * ns;
     const halfH = 80 * ns;
@@ -300,7 +455,7 @@ export class Screens {
     let y0 = Infinity;
     let y1 = -Infinity;
     for (const n of nodes) {
-      if (n.tree === 'book' || !isVisible(n)) continue;
+      if ((n.tree ?? 'main') !== mode || !isVisible(n)) continue;
       const p = this.position(n);
       x0 = Math.min(x0, p.x - halfW);
       x1 = Math.max(x1, p.x + halfW);
@@ -318,6 +473,11 @@ export class Screens {
       x: window.innerWidth / 2 - ((x0 + x1) / 2) * scale,
       y: top + availH / 2 - ((y0 + y1) / 2) * scale,
     };
+  }
+
+  // Visible on the tree right now: unlocked, and not one of the upgrades still held back for their reveal.
+  private vis(n: SkillNode): boolean {
+    return isVisible(n) && !this.held.has(n.id);
   }
 
   private shown(): SkillNode[] {
@@ -416,7 +576,7 @@ export class Screens {
         }
       } else if (isSkill(n.id) && level(n.id) >= 1) this.pickSkill(n.id);
       else if (!canBuy(n)) {
-        if (isVisible(n) && nextCost(n) !== null) this.deny(el);
+        if (this.vis(n) && nextCost(n) !== null) this.deny(el);
       } else if (buy(n)) {
         sfx.play('buy');
         persist();
@@ -534,10 +694,10 @@ export class Screens {
     this.lines.innerHTML = '';
     if (!cfg.tree.showLines) return;
     for (const n of this.shown()) {
-      if (!isVisible(n)) continue;
+      if (!this.vis(n)) continue;
       for (const parentId of n.parents) {
         const parent = nodeById.get(parentId);
-        if (!parent || !isVisible(parent)) continue;
+        if (!parent || !this.vis(parent)) continue;
         const a = this.position(parent);
         const b = this.position(n);
         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -667,12 +827,12 @@ export class Screens {
       const max = maxLevel(n);
       const cost = nextCost(n);
       const per = n.effect ? cfg.upgrade[n.effect] : 0;
-      el.style.display = isVisible(n) ? '' : 'none';
+      el.style.display = this.vis(n) ? '' : 'none';
       const blocked = !!n.excludes?.some((id) => level(id) > 0);
       const unlocked = n.parents.every((p) => level(p) >= 1) && !blocked;
       const equippable = isSkill(n.id) && lvl >= 1;
       el.className =
-        'node' + (n.tree === 'book' ? ' skill' : '') + (lvl > 0 ? ' owned' : ' fresh') + (lvl > 0 && lvl < max ? ' partial' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim') +
+        'node' + (n.tree === 'book' ? ' skill' : '') + (lvl > 0 ? ' owned' : canBuy(n) ? '' : ' fresh') + (lvl > 0 && lvl < max ? ' partial' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim') +
         (this.fadeIds.has(n.id) ? ' fadein' : '') + (this.selSkill === n.id ? ' selected' : '') + (equippable && this.selSlot !== null ? ' pickable' : '');
       if (n.color) {
         // Not bought: a faint outline. Partly bought: the skill's colour and a glow. Maxed: gold.
@@ -682,7 +842,7 @@ export class Screens {
         el.style.boxShadow = done ? '0 0 16px rgba(255, 210, 74, 0.65)' : lvl > 0 ? `0 0 12px ${rgba(n.color, 0.5)}` : '';
       }
       const costText =
-        cost === null ? 'MAX' : blocked ? 'BLOCKED' : cfg.tree.free ? 'free' : `${cost} ${n.currency === 'gold' ? 'souls' : 'SP'}`;
+        cost === null ? 'MAX' : blocked ? 'BLOCKED' : cfg.tree.free || sandboxed() ? 'free' : `${cost} ${n.currency === 'gold' ? 'souls' : 'SP'}`;
       const slot = isSkill(n.id) ? profile.binds.indexOf(n.id) : -1;
       el.innerHTML = `<div class="name">${n.name}</div><div class="desc">${n.desc(per)}</div>` +
         `<div class="lvl">${slot >= 0 ? `Equipped on ${slotKeys[slot]}` : `${lvl}/${max}`}</div><div class="cost">${costText}</div>` +

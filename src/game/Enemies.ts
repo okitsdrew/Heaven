@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { enemyFrames, Tex } from '../art/placeholders';
 import { cfg } from '../config';
-import { toScreen, toWorld } from '../iso';
+import { level } from '../skills';
+import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { Pool } from '../util/pool';
 import { SpatialHash } from '../util/spatialHash';
 import { Hittable } from './Arrows';
@@ -31,6 +32,14 @@ interface Enemy extends Hittable {
   poisonLeft: number;
   poisonAcc: number;
   stun: number;
+  // The husk's leap: 0 walking, 1 crouching on its mark, 2 in the air; the time in that attack, its mark and where it jumped from.
+  leap: number;
+  leapT: number;
+  leapCd: number;
+  tx: number;
+  ty: number;
+  sx: number;
+  sy: number;
   // Which way round the current obstacle this enemy committed to, so it doesn't dither head-on.
   avoid: Obstacle | null;
   side: number;
@@ -53,11 +62,12 @@ const off = { x: 0, y: 0 };
 // Spawns per second at a run time: a flat first stage, a flat second stage, then a ramp to the max at rampEnd.
 export function spawnRateAt(t: number, maxMult = 1): number {
   const s = cfg.spawn;
-  if (t <= s.holdTime) return s.startRate;
+  const taunt = level('taunt') >= 1 ? cfg.upgrade.tauntRate : 0;
+  if (t <= s.holdTime) return s.startRate + taunt;
   const rampStart = s.holdTime + s.secondHold;
-  if (t <= rampStart) return s.secondRate;
+  if (t <= rampStart) return s.secondRate + taunt;
   const f = Phaser.Math.Clamp((t - rampStart) / Math.max(s.rampEnd - rampStart, 1e-3), 0, 1);
-  return s.secondRate + (s.maxRate * maxMult - s.secondRate) * Math.pow(f, s.rateCurve);
+  return s.secondRate + taunt + (s.maxRate * maxMult - s.secondRate - taunt) * Math.pow(f, s.rateCurve);
 }
 
 // Base enemy HP at a run time. A high curve keeps it gentle early with a steep tail.
@@ -81,8 +91,15 @@ export class Enemies {
   // Stage 2 multiplies the top spawn rate and enemy HP.
   stageRate = 1;
   stageHp = 1;
+  // Fixed fights (the training grounds and stage 2): a flat spawn rate and base HP, whatever the clock says.
+  // Stage 2 mixes every kind in, with HP scaled off the base; training sends wraiths only.
+  fixed: { rate: number; hp: number; max: number; wraithsOnly: boolean } | null = null;
+  // The husk's smash has landed; the scene decides who it hits.
+  onSlam: (x: number, y: number, radius: number) => void = () => {};
+  private tele!: Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene) {
+    this.tele = scene.add.graphics().setDepth(-5e7);
     this.pool = new Pool(() => ({
       kind: 'enemy',
       active: false,
@@ -106,6 +123,13 @@ export class Enemies {
       poisonLeft: 0,
       poisonAcc: 0,
       stun: 0,
+      leap: 0,
+      leapT: 0,
+      leapCd: 0,
+      tx: 0,
+      ty: 0,
+      sx: 0,
+      sy: 0,
       avoid: null,
       side: 1,
       sprite: scene.add.image(0, 0, enemyFrames.wraith[0]).setOrigin(0.5, 1).setVisible(false),
@@ -131,21 +155,26 @@ export class Enemies {
     this.spawnAcc = 0;
   }
 
+  // Husks only come in stage 2.
+  private allowed(k: EnemyKind): boolean {
+    return k !== 'husk' || (this.fixed !== null && !this.fixed.wraithsOnly);
+  }
+
   // Picks a type by weight among those that have appeared by this run time.
   private pickType(t: number): EnemyKind {
     let total = 0;
-    for (const k of enemyKinds) if (t >= cfg[k].appearAt) total += cfg[k].weight;
+    for (const k of enemyKinds) if (this.allowed(k) && t >= cfg[k].appearAt) total += cfg[k].weight;
     let r = Math.random() * total;
     for (const k of enemyKinds) {
-      if (t < cfg[k].appearAt) continue;
+      if (!this.allowed(k) || t < cfg[k].appearAt) continue;
       r -= cfg[k].weight;
       if (r <= 0) return k;
     }
     return 'wraith';
   }
 
-  spawn(t: number, px: number, py: number, view: View, type = this.pickType(t)): void {
-    if (this.live.length >= cfg.spawn.maxEnemies) return;
+  spawn(t: number, px: number, py: number, view: View, type: EnemyKind = this.fixed?.wraithsOnly ? 'wraith' : this.pickType(t)): void {
+    if (this.live.length >= (this.fixed?.max ?? cfg.spawn.maxEnemies)) return;
     // A random point on the perimeter of the screen rectangle, pushed just past the edge.
     const w = view.halfW + cfg.spawn.screenMargin;
     const h = view.halfH + cfg.spawn.screenMargin;
@@ -179,7 +208,7 @@ export class Enemies {
     e.x = px + off.x;
     e.y = py + off.y;
     e.radius = c.radius;
-    e.hp = hpAt(t) * c.hpMult * this.stageHp;
+    e.hp = this.fixed ? this.fixed.hp * (this.fixed.wraithsOnly ? 1 : c.hpMult) : hpAt(t) * c.hpMult * this.stageHp;
     e.vx = 0;
     e.vy = 0;
     e.kx = 0;
@@ -194,6 +223,9 @@ export class Enemies {
     e.poisonLeft = 0;
     e.poisonAcc = 0;
     e.stun = 0;
+    e.leap = 0;
+    e.leapT = 0;
+    e.leapCd = 1 + Math.random() * 2;
     e.sprite.setTexture(enemyFrames[type][0]).setVisible(true);
     e.shadow.setVisible(true);
     this.live.push(e);
@@ -268,12 +300,12 @@ export class Enemies {
     lure: { x: number; y: number } | null = null,
   ): void {
     if (spawning && cfg.spawn.enabled) {
-      this.spawnAcc += spawnRateAt(t, this.stageRate) * dt;
+      this.spawnAcc += (this.fixed ? this.fixed.rate : spawnRateAt(t, this.stageRate)) * dt;
       while (this.spawnAcc >= 1) {
         this.spawnAcc -= 1;
         this.spawn(t, px, py, view);
       }
-      if (this.live.length >= cfg.spawn.maxEnemies) this.spawnAcc = 0;
+      if (this.live.length >= (this.fixed?.max ?? cfg.spawn.maxEnemies)) this.spawnAcc = 0;
     }
 
     // Drop the dead and anything that wandered outside the despawn ring (no drops for those).
@@ -306,6 +338,11 @@ export class Enemies {
       if (e.poison > 0 && e.alive) this.poisonTick(e, dt);
       if (e.cold > 0) e.cold -= dt;
       if (!e.alive) continue;
+      if (e.type === 'husk' && this.huskLeap(e, dt, px, py, lure !== null, obstacles)) {
+        e.kx *= kdecay;
+        e.ky *= kdecay;
+        continue;
+      }
 
       let dx = (lure ? lure.x : px) - e.x;
       let dy = (lure ? lure.y : py) - e.y;
@@ -316,18 +353,27 @@ export class Enemies {
       // Steer round obstacles in the way. The first time one blocks the path the enemy picks the side nearer its
       // heading and keeps it until clear, and a close obstacle gets a full sideways push so nothing stalls head-on.
       let blocked: Obstacle | null = null;
+      let worst = Infinity;
       for (const o of obstacles) {
         const ox = e.x - o.x;
         const oy = e.y - o.y;
         const od = Math.hypot(ox, oy) || 1;
         const gap = od - o.radius - e.radius;
-        if (gap > ec.avoidLookahead || ox * dx + oy * dy > 0.3 * od) continue;
+        if (gap > ec.avoidLookahead || ox * dx + oy * dy > 0.3 * od || gap >= worst) continue;
+        worst = gap;
         blocked = o;
-        if (e.avoid !== o) {
-          const cross = -ox * dy + oy * dx;
-          e.side = Math.abs(cross) < 1e-3 ? (e.id % 2 ? 1 : -1) : cross > 0 ? 1 : -1;
-          e.avoid = o;
-        }
+      }
+      if (blocked) {
+        const o = blocked;
+        const ox = e.x - o.x;
+        const oy = e.y - o.y;
+        const od = Math.hypot(ox, oy) || 1;
+        const gap = od - o.radius - e.radius;
+        // Slide along the obstacle the way that gets nearer the target; only when it is dead ahead does it stick with its first pick.
+        const lean = (-oy / od) * dx + (ox / od) * dy;
+        if (e.avoid !== o && Math.abs(lean) < 1e-3) e.side = e.id % 2 ? 1 : -1;
+        if (Math.abs(lean) > 0.25) e.side = lean > 0 ? 1 : -1;
+        e.avoid = o;
         const tx = (-oy / od) * e.side;
         const ty = (ox / od) * e.side;
         const a = Phaser.Math.Clamp(1.4 - gap / Math.max(ec.avoidLookahead, 1e-3), 0.35, 1);
@@ -336,7 +382,6 @@ export class Enemies {
         const l = Math.hypot(dx, dy) || 1;
         dx /= l;
         dy /= l;
-        break;
       }
       if (!blocked) e.avoid = null;
 
@@ -384,6 +429,64 @@ export class Enemies {
       e.y += (e.vy + e.ky) * dt + sy * sepK;
       slideOut(e, obstacles);
     }
+  }
+
+  // The husk's attack. Returns true while it is crouching or in the air, so it does nothing else.
+  private huskLeap(e: Enemy, dt: number, px: number, py: number, lured: boolean, obstacles: readonly Obstacle[]): boolean {
+    const h = cfg.husk;
+    e.leapCd -= dt;
+    if (e.stun > 0 && e.leap > 0) e.leap = 0;
+    if (e.leap === 0) {
+      if (e.leapCd <= 0 && !lured && e.stun <= 0 && Math.hypot(px - e.x, py - e.y) < h.range) {
+        e.leap = 1;
+        e.leapT = 0;
+        e.tx = px;
+        e.ty = py;
+      }
+      return false;
+    }
+    e.leapT += dt;
+    e.vx = 0;
+    e.vy = 0;
+    if (e.leap === 1 && e.leapT >= h.windup) {
+      e.leap = 2;
+      e.sx = e.x;
+      e.sy = e.y;
+    }
+    if (e.leap === 2) {
+      const k = (e.leapT - h.windup) / Math.max(h.airTime, 1e-3);
+      if (k >= 1) {
+        e.x = e.tx;
+        e.y = e.ty;
+        slideOut(e, obstacles);
+        e.leap = 0;
+        e.leapCd = h.cooldown;
+        this.slam(e);
+      } else {
+        e.x = e.sx + (e.tx - e.sx) * k;
+        e.y = e.sy + (e.ty - e.sy) * k;
+      }
+    }
+    return e.leap > 0;
+  }
+
+  // The landing: everything else in the circle is thrown back, and the scene is told so it can check the player.
+  private slam(h: Enemy): void {
+    const r = cfg.husk.slamRadius;
+    for (const e of this.live) {
+      if (e === h || !e.alive) continue;
+      const dx = e.x - h.x;
+      const dy = e.y - h.y;
+      const d = Math.hypot(dx, dy);
+      if (d > r + e.radius) continue;
+      this.knock(e, d > 1e-3 ? dx / d : 1, d > 1e-3 ? dy / d : 0, cfg.husk.slamKnock);
+    }
+    if (this.fx) {
+      toScreen(h.x, h.y, screen);
+      this.fx.smoke(screen.x, screen.y - 6, 14, 30);
+      this.fx.addShake(cfg.husk.slamShake);
+    }
+    this.onSlam(h.x, h.y, r);
   }
 
   private burnTick(e: Enemy, dt: number): void {
@@ -434,7 +537,7 @@ export class Enemies {
   touching(x: number, y: number, r: number): boolean {
     const k = cfg.enemy.contactScale;
     for (const e of this.live) {
-      if (!e.alive) continue;
+      if (!e.alive || e.leap === 2) continue;
       const min = r + e.radius * k;
       const dx = e.x - x;
       const dy = e.y - y;
@@ -446,17 +549,33 @@ export class Enemies {
   render(px: number, dt: number): void {
     const pxs = cfg.render.pixelScale;
     const ec = cfg.enemy;
+    const tele = this.tele;
+    tele.clear();
     for (const e of this.live) {
       if (!e.alive) continue;
       const c = cfg[e.type];
       toScreen(e.x, e.y, screen);
-      const bob = (Math.sin(e.phase) * 0.5 + 0.5) * ec.bobHeight * pxs;
+      let bob = (Math.sin(e.phase) * 0.5 + 0.5) * ec.bobHeight * pxs;
+      let squash = 1;
+      if (e.type === 'husk' && e.leap > 0) {
+        const h = cfg.husk;
+        const k = Math.min(1, e.leapT / (h.windup + h.airTime));
+        const half = ellipseHalfSize(h.slamRadius);
+        toScreen(e.tx, e.ty, off);
+        tele.fillStyle(0xff4a20, 0.12 + 0.3 * k).fillEllipse(off.x, off.y, half.x * 2 * k, half.y * 2 * k);
+        tele.lineStyle(3, 0xff6a30, 0.9).strokeEllipse(off.x, off.y, half.x * 2, half.y * 2);
+        if (e.leap === 1) squash = 1 - 0.18 * Math.min(1, e.leapT / Math.max(h.windup, 1e-3));
+        else {
+          const air = (e.leapT - h.windup) / Math.max(h.airTime, 1e-3);
+          bob = Math.sin(Math.min(1, air) * Math.PI) * h.leapHeight;
+        }
+      }
       const frame = Math.floor((e.phase / Math.max(ec.bobSpeed, 1e-3)) * ec.hemFlicker) % 2;
       const scale = pxs * c.scale;
       e.sprite
         .setTexture(enemyFrames[e.type][frame])
         .setPosition(screen.x, screen.y - bob)
-        .setScale(scale)
+        .setScale(scale, scale * squash)
         .setFlipX(toScreen(px - e.x, 0).x < 0)
         .setDepth(screen.y);
       e.shadow
