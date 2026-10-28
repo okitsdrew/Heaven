@@ -2,7 +2,9 @@ import { cfg } from './config';
 import { persist, profile } from './save';
 
 export function xpToNext(level: number): number {
-  return Math.max(1, Math.round(cfg.xp.curveBase * Math.pow(level, cfg.xp.curveExp)));
+  const x = cfg.xp;
+  const need = [x.level1, x.level2, x.level3, x.level4, x.level5][level - 1] ?? x.laterLevels;
+  return Math.max(1, Math.round(need));
 }
 
 // Returns how many levels were gained. Each level grants skill points.

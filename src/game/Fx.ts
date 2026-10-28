@@ -22,6 +22,8 @@ export class Fx {
   private streakGfx: Phaser.GameObjects.Graphics;
   private streaks: { x0: number; y0: number; x1: number; y1: number; age: number; zip: number; fade: number; width: number }[] = [];
   private shake = 0;
+  private numbersThisFrame = 0;
+  private numbersAlive = 0;
   readonly shakeOffset = { x: 0, y: 0 };
 
   constructor(scene: Phaser.Scene) {
@@ -123,6 +125,9 @@ export class Fx {
 
   damageNumber(x: number, y: number, amount: number): void {
     if (!cfg.feel.damageNumbers) return;
+    // Big groups would otherwise create hundreds of text objects in one frame.
+    if (this.numbersThisFrame >= cfg.feel.maxNumbersPerFrame || this.numbersAlive >= cfg.feel.maxNumbersAlive) return;
+    this.numbersThisFrame++;
     const f = this.spawn(this.texts, 0.55, 1, 1, 1);
     const text = f.obj as Phaser.GameObjects.Text;
     text.setText(String(Math.round(amount))).setPosition(x + (Math.random() - 0.5) * 10, y).setDepth(1e6);
@@ -134,9 +139,12 @@ export class Fx {
   }
 
   update(dt: number): void {
+    this.numbersThisFrame = 0;
+    this.numbersAlive = 0;
     for (const pool of [this.images, this.texts]) {
       for (const f of pool.items) {
         if (!f.active) continue;
+        if (pool === this.texts) this.numbersAlive++;
         f.age += dt;
         const t = f.age / f.life;
         if (t >= 1) {

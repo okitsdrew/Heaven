@@ -4,7 +4,7 @@ import { cfg } from '../config';
 import { Input } from '../input';
 import { toScreen, Vec2 } from '../iso';
 import { Hittable } from './Arrows';
-import { actionFor, canUse } from '../skills';
+import { actionFor, canUse, skillDamage } from '../skills';
 import { Fx } from './Fx';
 import { drawSwordArt, flame, PURPLE_SWORD } from './swordArt';
 import { Player } from './Player';
@@ -164,24 +164,32 @@ export class SwordSlash {
         if (d > c.coneRange + t.radius) continue;
         const pad = d > t.radius ? Math.asin(t.radius / d) : Math.PI;
         const angle = d > 1e-3 ? Math.acos(Phaser.Math.Clamp((dx * player.aimX + dy * player.aimY) / d, -1, 1)) : 0;
-        if (angle <= half + pad) this.onDamage(t, c.coneDamage, t.x, t.y);
+        if (angle <= half + pad) this.onDamage(t, c.coneDamage * skillDamage('swordSlash'), t.x, t.y);
       }
       // Swing 1 goes right to left, swing 2 back from left to right.
       this.effects.push({ kind: 'cone', ox: player.x, oy: player.y, base, sign: swing === 0 ? -1 : 1, age: 0 });
       return;
     }
 
+    // The slam also carries the cone: whatever is in either shape takes one hit.
+    const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
     for (const t of this.targets()) {
       if (!t.alive) continue;
       const rx = t.x - player.x;
       const ry = t.y - player.y;
       const along = rx * player.aimX + ry * player.aimY;
       const side = -rx * player.aimY + ry * player.aimX;
-      if (Math.abs(side) <= c.slamWidth / 2 + t.radius && along >= -t.radius && along <= c.slamLength + t.radius) {
-        this.onDamage(t, c.slamDamage, t.x, t.y);
+      const inSlam = Math.abs(side) <= c.slamWidth / 2 + t.radius && along >= -t.radius && along <= c.slamLength + t.radius;
+      const d = Math.hypot(rx, ry);
+      let inCone = false;
+      if (d <= c.coneRange + t.radius) {
+        const pad = d > t.radius ? Math.asin(t.radius / d) : Math.PI;
+        const angle = d > 1e-3 ? Math.acos(Phaser.Math.Clamp((rx * player.aimX + ry * player.aimY) / d, -1, 1)) : 0;
+        inCone = angle <= half + pad;
       }
+      if (inSlam || inCone) this.onDamage(t, c.slamDamage * skillDamage('swordSlash'), t.x, t.y);
     }
-    this.effects.push({ kind: 'slam', ox: player.x, oy: player.y, base, sign: 1, age: 0 });
+    this.effects.push({ kind: 'cone', ox: player.x, oy: player.y, base, sign: 1, age: 0 });
     this.fx.addShake(c.slamShake);
     this.slamBurst(player.x, player.y, player.aimX, player.aimY);
   }
@@ -262,26 +270,28 @@ export class SwordSlash {
     const p = Math.min(1, s.t / c.telegraphTime);
     const g = this.ground;
     const base = Math.atan2(player.aimY, player.aimX);
-    let poly: Vec2[];
-    if (s.swing < 2) {
+    const cone = (): Vec2[] => {
       const half = Phaser.Math.DegToRad(c.coneAngle) / 2;
-      poly = [toScreen(player.x, player.y)];
-      for (let i = 0; i <= 16; i++) {
-        poly.push(this.world(player.x, player.y, base - half + (i / 16) * half * 2, c.coneRange));
-      }
-    } else {
+      const poly = [toScreen(player.x, player.y)];
+      for (let i = 0; i <= 16; i++) poly.push(this.world(player.x, player.y, base - half + (i / 16) * half * 2, c.coneRange));
+      return poly;
+    };
+    const slam = (): Vec2[] => {
       const hw = c.slamWidth / 2;
       const corner = (side: number, along: number) =>
         toScreen(
           player.x + player.aimX * along - player.aimY * hw * side,
           player.y + player.aimY * along + player.aimX * hw * side,
         );
-      poly = [corner(-1, 0), corner(1, 0), corner(1, c.slamLength), corner(-1, c.slamLength)];
+      return [corner(-1, 0), corner(1, 0), corner(1, c.slamLength), corner(-1, c.slamLength)];
+    };
+    // The final swing is both shapes at once.
+    for (const poly of s.swing < 2 ? [cone()] : [cone(), slam()]) {
+      g.fillStyle(SLASH_LIGHT, 0.06 + 0.22 * p);
+      g.fillPoints(poly, true);
+      g.lineStyle(2, SLASH_LIGHT, 0.4 + 0.5 * p);
+      g.strokePoints(poly, true);
     }
-    g.fillStyle(SLASH_LIGHT, 0.06 + 0.22 * p);
-    g.fillPoints(poly, true);
-    g.lineStyle(2, SLASH_LIGHT, 0.4 + 0.5 * p);
-    g.strokePoints(poly, true);
   }
 
   private drawEffect(e: Effect): void {

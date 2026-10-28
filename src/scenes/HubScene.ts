@@ -29,6 +29,7 @@ import { Input, KeyboardMouseSource } from '../input';
 import { toScreen, toWorld } from '../iso';
 import { persistNow, profile } from '../save';
 import { ghostHint } from '../ui/ghostHint';
+import { completeStoryBeforeStage2, startStage2State } from '../story';
 import { Screens } from '../ui/Screens';
 
 type RoomName = 'hall' | 'throne';
@@ -98,6 +99,10 @@ export class HubScene extends Phaser.Scene {
   private bookOutline!: Phaser.GameObjects.RenderTexture;
   private bookPointed = false;
   private bookIntro = false;
+  private skillsIntro = false;
+  private stage2Intro = false;
+  // 0 to 1: how far Anathema's deep red stage 2 glow has come up.
+  private redGlow = 0;
   private prompt!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
   private fade!: Phaser.GameObjects.Rectangle;
@@ -130,9 +135,12 @@ export class HubScene extends Phaser.Scene {
     super('hub');
   }
 
-  init(data?: { skipHall?: boolean; bookIntro?: boolean }): void {
+  init(data?: { skipHall?: boolean; bookIntro?: boolean; skillsIntro?: boolean; stage2Intro?: boolean }): void {
     this.skipHall = data?.skipHall === true;
     this.bookIntro = data?.bookIntro === true;
+    this.skillsIntro = data?.skillsIntro === true;
+    this.stage2Intro = data?.stage2Intro === true;
+    this.redGlow = 0;
     this.bookPointed = false;
   }
 
@@ -208,15 +216,15 @@ export class HubScene extends Phaser.Scene {
       this.tweens.killAll();
     });
 
-    if (this.bookIntro) {
+    if (this.bookIntro || this.skillsIntro || this.stage2Intro) {
       this.showRoom('throne');
-      this.setFeet(560, H - 90);
+      this.setFeet(930, 384);
       this.player.aimX = 0;
       this.player.aimY = -1;
       this.ambient = this.rooms.throne.ambient();
       this.focus(560, 300, 1.1);
       this.tweens.add({ targets: this.fade, alpha: 0, duration: 900 });
-      void this.bookUnlockScene();
+      void (this.stage2Intro ? this.stage2Scene() : this.skillsIntro ? this.skillsRevealScene() : this.bookUnlockScene());
     } else if (!profile.introDone && !cfg.hub.skipIntro && !this.skipHall) {
       this.showRoom('hall');
       void this.playIntro();
@@ -227,7 +235,7 @@ export class HubScene extends Phaser.Scene {
         persistNow();
       }
       this.showRoom('throne');
-      this.setFeet(560, H - 90);
+      this.setFeet(930, 384);
       this.player.aimX = 0;
       this.player.aimY = -1;
       if (profile.introDone) this.openEyesNow();
@@ -268,6 +276,8 @@ export class HubScene extends Phaser.Scene {
     debris(this.gfx(room, 60, WALL + 20, 1), r, 90, W - 120, H - WALL - 60);
 
     // The open door to the north, torn off one hinge.
+    // Solid black above the wall, so a tall window never shows past its top edge.
+    this.gfx(room, 0, 0, DEPTH_DARK + 1.5).fillStyle(0x000000, 1).fillRect(-600, -600, W + 1200, 600);
     door(this.gfx(room, 560, WALL + 6, 4), true);
 
     // The cell, cut into the wall on the left: a recess behind iron bars with a heavy lock.
@@ -330,6 +340,8 @@ export class HubScene extends Phaser.Scene {
     throne(this.gfx(room, 560, 192, 192), r);
     // The back of the room is solid black that no light reaches; only the eyes and the hands show in it.
     this.band = this.gfx(room, 0, 0, DEPTH_DARK + 1.5);
+    // Solid black above the room too, so a tall window never shows past its top edge.
+    this.band.fillStyle(0x000000, 1).fillRect(-600, -600, W + 1200, 600);
     for (let y = 0; y < 220; y += 2) {
       const a = y < 150 ? 1 : Math.max(0, 1 - (y - 150) / 70) ** 1.5;
       this.band.fillStyle(0x000000, a);
@@ -439,6 +451,24 @@ export class HubScene extends Phaser.Scene {
           this.scene.start('game', { dive: true });
         },
       },
+      {
+        label: 'Skip Stage 2 cutscene',
+        run: () => {
+          this.input2.destroy();
+          Screens.get().hide();
+          completeStoryBeforeStage2();
+          this.scene.restart({ stage2Intro: true });
+        },
+      },
+      {
+        label: 'Skip to stage 2',
+        run: () => {
+          this.input2.destroy();
+          Screens.get().hide();
+          startStage2State();
+          this.scene.start('game', { dive: true });
+        },
+      },
       { label: 'Open upgrade tree', run: () => this.openUpgradeTree() },
       { label: 'Open the book', run: () => this.openBook() },
       {
@@ -472,6 +502,9 @@ export class HubScene extends Phaser.Scene {
           profile.skillTipShown = false;
           profile.bossIntroSeen = false;
           profile.visitedHead = false;
+          profile.stage = 1;
+          profile.quest = 'find';
+          profile.eyeFed = 0;
           persistNow();
         },
       },
@@ -806,7 +839,13 @@ export class HubScene extends Phaser.Scene {
 
     // The severed head pulses a sick green.
     const sick = 0.55 + 0.25 * Math.sin(t * 2.3) + 0.1 * Math.sin(t * 7.1);
-    this.headGlow.setScale(3.8 + 0.4 * Math.sin(t * 1.4)).setAlpha(0.22 * sick);
+    // Stage 2: the glow turns a large, chaotic, deep red.
+    const red = profile.stage >= 2 ? Math.max(this.redGlow, this.stage2Intro ? 0 : 1) : 0;
+    const chaos = Math.sin(t * 5.3) * Math.sin(t * 2.1 + 1) + 0.6 * Math.sin(t * 11.7) + 0.3 * Math.sin(t * 23);
+    this.headGlow
+      .setTint(red > 0 ? 0xc0081c : 0x9cff30)
+      .setScale(3.8 + 0.4 * Math.sin(t * 1.4) + red * (3.4 + 0.9 * chaos))
+      .setAlpha(0.22 * sick + red * (0.45 + 0.25 * chaos));
     // Once he has been told where to go, Anathema flashes a white outline until he goes in.
     const lit = this.headLit && !profile.visitedHead;
     this.headGfx.setAngle(Math.sin(t * 0.7) * 0.8);
@@ -1056,6 +1095,12 @@ export class HubScene extends Phaser.Scene {
     Screens.get().showBook(() => {
       Screens.get().hide();
       this.menu = false;
+      // The first time the book closes with Teleport bought, remind them how to use it.
+      if ((profile.nodes.teleport ?? 0) > 0 && !profile.teleportHintShown) {
+        profile.teleportHintShown = true;
+        persistNow();
+        ghostHint(this, this.fx, ['Right Click to teleport.'], { x: this.cameras.main.width / 2, y: this.cameras.main.height * 0.68, depth: DEPTH_DARK + 3, hold: 2.5, screenSpace: true });
+      }
     });
   }
 
@@ -1199,6 +1244,65 @@ export class HubScene extends Phaser.Scene {
     this.busy = false;
   }
 
+  // After the Mimic falls: the throne is pleased, sends him back in to feed the Mind's Eye, and Anathema turns red.
+  private async stage2Scene(): Promise<void> {
+    this.busy = true;
+    this.controlled = false;
+    this.eyesFollow = true;
+    this.openEyesNow();
+    await this.sleep(1.2);
+    await this.say("now isn't that spectacular", 'right');
+    await this.say('you seem quite comfortable with your new power', 'right');
+    await this.sleep(1);
+    await this.say('Steel yourself, for it is just beginning', 'right');
+    await this.say('Reenter Anathema, but this time, focus', 'right');
+    await this.say("Find his Mind's Eye and feed it", 'right');
+    await this.say('Feed it, and he will reveal himself', 'right');
+    await this.sleep(1);
+    await this.say('Destroy him. DEVOUR HIM', 'right');
+    await this.say('Do this and you will be my Champion', 'right');
+    await this.say('Do NOT fail me, young one', 'right');
+
+    // Anathema starts to glow a large, chaotic, deep red: stage 2.
+    profile.stage = 2;
+    profile.quest = 'find';
+    profile.eyeFed = 0;
+    persistNow();
+    this.focus(930, 300, 1.1);
+    this.bump(6);
+    await this.tweenValue(0, 1, 2500, (v) => (this.redGlow = v));
+    await this.sleep(0.8);
+    this.followPlayer();
+    this.controlled = true;
+    this.busy = false;
+  }
+
+  // After Fire Wave has been used and he falls: the throne is pleased, and the book gives up its other skills.
+  private async skillsRevealScene(): Promise<void> {
+    this.busy = true;
+    this.controlled = false;
+    this.eyesFollow = true;
+    this.openEyesNow();
+    await this.sleep(1.2);
+    await this.say("you're performing quite well", 'right');
+    await this.sleep(0.8);
+    const walk = this.walkTo(172, 404);
+    await this.say('lets see how you can handle other secrets', 'right');
+    await walk;
+    this.face(-1, 0);
+    this.bookPointed = true;
+    this.bookPower = 1.8;
+    void this.sleep(1.4).then(() => (this.bookPower = 1));
+    this.bump(4);
+    await this.sleep(0.8);
+
+    profile.skillsRevealed = true;
+    persistNow();
+    this.followPlayer();
+    this.controlled = true;
+    this.busy = false;
+  }
+
   private async bookCutscene(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
@@ -1248,18 +1352,14 @@ export class HubScene extends Phaser.Scene {
 
     // The eyes drift up to the ceiling and the fighting above.
     await this.sleep(1);
-    this.eyes.glance.y = -1.4;
-    void this.sleep(1.6).then(() => (this.eyes.glance.y = 0));
+    this.eyesFollow = false;
+    this.eyes.glance.y = -1;
     await this.say('these wretched humans...', 'left');
     await this.say("nary a day passes they aren't at war", 'left');
+    await this.say('but...', 'left');
+    this.eyes.glance.y = 0;
+    this.eyesFollow = true;
     await this.say("we're too precious to be collateral damage", 'left');
-
-    // The void closes and he is lowered to the floor.
-    await this.tweenValue(1, 0, 450, (v) => (this.voidK = v), 'Quad.easeIn');
-    this.face(1, -0.4);
-    await this.tw({ targets: this.floatPt, x: 560, y: 376, duration: 1700, ease: 'Sine.easeInOut' });
-    this.carry = false;
-    this.view.armsRate = 0.06;
 
     // A run of short, heavy lines; the eyes go wide on the third.
     const x = 640;
@@ -1280,13 +1380,22 @@ export class HubScene extends Phaser.Scene {
 
     await this.say('let us show them the true scope of war', 'right');
     await this.sleep(1);
+    // The void closes and he is lowered while the throne says he is too weak.
+    const lower = (async () => {
+      await this.tweenValue(1, 0, 450, (v) => (this.voidK = v), 'Quad.easeIn');
+      this.face(1, -0.4);
+      await this.tw({ targets: this.floatPt, x: 560, y: 376, duration: 1700, ease: 'Sine.easeInOut' });
+      this.carry = false;
+      this.view.armsRate = 0.06;
+    })();
     await this.say("but, you're too weak at this moment", 'right');
+    await lower;
 
     // He is sent to the head in the corner and walks there himself, stopping short of its glow.
     this.headLit = true;
     this.focus(W / 2, 300, 1);
     const walk = this.walkTo(930, 336);
-    await this.say('come, darling, learn from Anathema', 'left');
+    await this.say("come, darling, peer into Anathema's mind", 'left');
     await walk;
     this.face(0, -1);
     await this.say('few can withstand his memories for long...', 'left');

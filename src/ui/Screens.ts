@@ -3,6 +3,10 @@ import { persist, profile } from '../save';
 import {
   bind,
   buy,
+  alertFor,
+  fireAlert,
+  markSeen,
+  warpAlert,
   canBuy,
   isSkill,
   isVisible,
@@ -35,6 +39,11 @@ const css = `
   cursor: pointer; }
 .screen button:hover { background: #3d3558; }
 .screen button.big { font-size: 18px; padding: 12px 28px; border-color: #c9b6ff; }
+.screen button:disabled { opacity: 0.3; cursor: not-allowed; }
+.screen button.flash { animation: flash 0.9s ease-in-out infinite alternate; }
+@keyframes flash { from { box-shadow: 0 0 4px #c9b6ff; background: #2a2145; } to { box-shadow: 0 0 22px #e0d0ff; background: #5a3a96; } }
+.tip-above { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); white-space: nowrap; font-size: 12px; color: #e0d0ff; pointer-events: none; }
+.screen button.huge { font-size: 27px; padding: 18px 42px; }
 .screen button.go { background: #4a2f7a; border-color: #d9c8ff; }
 #summary { display: none; place-items: center; }
 #summary.open { display: grid; }
@@ -55,6 +64,10 @@ const css = `
 #tree .node.canbuy { border-color: #c9b6ff; }
 #tree .node.owned { background: #2a2145; border-color: #9a7fe0; }
 #tree .node.maxed { border-color: #f2d7a6; box-shadow: 0 0 12px rgba(242, 215, 166, 0.45); }
+#tree .node.deny { animation: deny 0.6s ease-out; }
+@keyframes deny { 0%, 40% { border-color: #ff3030; box-shadow: 0 0 16px #ff3030; } 100% { box-shadow: none; } }
+#tree .node.fadein, #tree line.fadein { animation: fadein 1.8s ease-out 0.5s both; }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 #tree .node.dim { filter: brightness(0.55); }
 #tree .node .name { color: #f2d7a6; font-weight: bold; font-size: 13px; }
 #tree .node .desc { color: #a79fc0; font-size: 11px; }
@@ -79,6 +92,10 @@ const css = `
 #tree .node.selected { outline: 3px solid #ffffff; outline-offset: 3px; }
 #tree .node.pickable { animation: pick 0.9s ease-in-out infinite alternate; }
 @keyframes pick { from { outline: 2px solid rgba(255,255,255,0.1); outline-offset: 3px; } to { outline: 2px solid rgba(255,255,255,0.8); outline-offset: 3px; } }
+.bang { position: absolute; top: -12px; right: -8px; width: 22px; height: 22px; border-radius: 50%; background: #e02a2a; color: #fff;
+  font: bold 16px/22px monospace; text-align: center; pointer-events: none; box-shadow: 0 0 8px #ff4040; z-index: 5; }
+.screen button { position: relative; }
+.screen button .bang { top: -10px; right: -10px; }
 #tree .selector { position: absolute; left: 16px; bottom: 56px; display: flex; z-index: 3; }
 #tree .slot { width: 132px; text-align: center; }
 #tree .slot .key { font-size: 24px; color: #e9e3f5; margin-bottom: 4px; }
@@ -117,6 +134,8 @@ export class Screens {
   private bottom: HTMLDivElement;
   private opened = false;
   private selector: HTMLDivElement;
+  // Skills that have just been revealed and fade in on the book this once.
+  private fadeIds = new Set<string>();
   private selSkill: SkillId | null = null;
   private selSlot: number | null = null;
   private lastSlotClick = { i: -1, t: 0 };
@@ -184,23 +203,41 @@ export class Screens {
       row.innerHTML = `<span>${k}</span><b>${v}</b>`;
     }
     const buttons = this.div('buttons', undefined, card);
-    buttons.append(this.button('Restart', onRestart, 'big go'), this.button('Upgrade Tree', onTree, 'big'), this.button('Home', onHome, 'big'));
+    // The first time they hold souls here, only the upgrade tree works so they spend them instead of restarting weak.
+    const nudge = profile.gold >= 1 && !profile.treeTutorialDone;
+    const restart = this.button('Restart', onRestart, 'big go');
+    const home = this.button('Home', onHome, 'big');
+    const tree = this.treeButton(onTree);
+    if (nudge) {
+      restart.disabled = true;
+      home.disabled = true;
+      tree.classList.add('flash');
+      const tip = document.createElement('span');
+      tip.className = 'tip-above';
+      tip.textContent = 'enter the upgrade tree';
+      tree.appendChild(tip);
+    }
+    buttons.append(restart, tree, home);
     this.summary.classList.add('open');
   }
 
   showTree(onBattle: () => void, onHome: () => void): void {
     this.openMode('main');
-    this.bottom.replaceChildren(this.button('Home', onHome, 'big'), this.button('Battle', onBattle, 'big go'));
+    profile.treeTutorialDone = true;
+    persist();
+    this.bottom.replaceChildren(this.button('Home', onHome, 'big huge'), this.button('Battle', onBattle, 'big go huge'));
     // Once the book is unlocked, a big button up here opens its skills and Close comes back to the tree.
     if (profile.bookUnlocked) {
-      this.bottom.appendChild(this.button('Skills', () => this.showBook(() => this.showTree(onBattle, onHome)), 'big skills'));
+      const skills = this.button('Skills', () => this.showBook(() => this.showTree(onBattle, onHome)), 'big huge skills');
+      if (fireAlert()) this.addBang(skills);
+      this.bottom.appendChild(skills);
     }
   }
 
   // The book holds the skills; it opens over whatever scene is behind it.
   showBook(onClose: () => void): void {
     this.openMode('book');
-    this.bottom.replaceChildren(this.button('Close', onClose, 'big go'));
+    this.bottom.replaceChildren(this.button('Close', onClose, 'big huge go skills'));
   }
 
   private openMode(mode: Mode): void {
@@ -210,7 +247,18 @@ export class Screens {
     if (this.opened) this.views[this.mode] = this.view;
     this.opened = true;
     this.mode = mode;
-    this.view = this.views[mode] ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 + (mode === 'book' ? -100 : 40), scale: mode === 'book' ? 1 : 0.8 };
+    // Book layout was tuned at 1916x895; scale it so it looks the same on any screen.
+    const fit = mode === 'book' ? Math.min(window.innerWidth / 1916, window.innerHeight / 895) : Math.min(window.innerWidth / 1280, window.innerHeight / 800);
+    this.view = this.views[mode] ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 + (mode === 'book' ? 0 : 40) * fit, scale: (mode === 'book' ? 0.85 : 0.8) * fit };
+    if (mode === 'book' && profile.skillsRevealed && !profile.skillsFaded) {
+      profile.skillsFaded = true;
+      persist();
+      for (const n of nodes) if (n.requires && n.tree === 'book') this.fadeIds.add(n.id);
+      window.setTimeout(() => {
+        this.fadeIds.clear();
+        if (this.tree.classList.contains('open')) this.refresh();
+      }, 3500);
+    }
     this.tree.classList.add('open');
     this.refresh();
   }
@@ -227,6 +275,26 @@ export class Screens {
 
   private makeNode(n: SkillNode): HTMLDivElement {
     const el = this.div('node', undefined, this.world);
+    // Double-clicking an owned skill equips it in the first open slot.
+    el.addEventListener('dblclick', () => {
+      if (!isSkill(n.id) || level(n.id) < 1 || profile.binds.includes(n.id)) return;
+      const free = profile.binds.indexOf(null);
+      if (free < 0) return;
+      bind(n.id, free);
+      this.selSkill = null;
+      this.selSlot = null;
+      persist();
+      this.refresh();
+    });
+    const alert = alertFor(n.id);
+    if (alert) {
+      el.addEventListener('pointerenter', () => {
+        if (!alert()) return;
+        markSeen(n.id);
+        persist();
+        document.querySelectorAll('.bang').forEach((b) => b.remove());
+      });
+    }
     let start: { px: number; py: number; x: number; y: number } | null = null;
     let ghost: HTMLDivElement | null = null;
     let moved = false;
@@ -287,7 +355,9 @@ export class Screens {
           this.refresh();
         }
       } else if (isSkill(n.id) && level(n.id) >= 1) this.pickSkill(n.id);
-      else if (buy(n)) {
+      else if (!canBuy(n)) {
+        if (isVisible(n) && nextCost(n) !== null) this.deny(el);
+      } else if (buy(n)) {
         persist();
         this.refresh();
         if (isSkill(n.id) && !profile.skillTipShown) {
@@ -414,7 +484,8 @@ export class Screens {
         line.setAttribute('y1', String(a.y));
         line.setAttribute('x2', String(b.x));
         line.setAttribute('y2', String(b.y));
-        if (level(n.id) > 0 || level(parentId) > 0) line.setAttribute('class', 'on');
+        if (level(n.id) > 0 || level(parentId) > 0) line.classList.add('on');
+        if (this.fadeIds.has(n.id)) line.classList.add('fadein');
         this.lines.appendChild(line);
       }
     }
@@ -442,7 +513,7 @@ export class Screens {
   }
 
   private renderSelector(): void {
-    this.selector.style.display = this.mode === 'book' ? 'flex' : 'none';
+    this.selector.style.display = this.mode === 'book' || level('teleport') >= 1 ? 'flex' : 'none';
     this.selector.replaceChildren();
     slotKeys.forEach((key, i) => {
       const id = profile.binds[i];
@@ -526,21 +597,22 @@ export class Screens {
       const cost = nextCost(n);
       const per = n.effect ? cfg.upgrade[n.effect] : 0;
       el.style.display = isVisible(n) ? '' : 'none';
-      const unlocked = n.parents.every((p) => level(p) >= 1);
+      const blocked = !!n.excludes?.some((id) => level(id) > 0);
+      const unlocked = n.parents.every((p) => level(p) >= 1) && !blocked;
       const equippable = isSkill(n.id) && lvl >= 1;
       el.className =
         'node' + (n.tree === 'book' ? ' skill' : '') + (lvl > 0 ? ' owned' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim') +
-        (this.selSkill === n.id ? ' selected' : '') + (equippable && this.selSlot !== null ? ' pickable' : '');
+        (this.fadeIds.has(n.id) ? ' fadein' : '') + (this.selSkill === n.id ? ' selected' : '') + (equippable && this.selSlot !== null ? ' pickable' : '');
       if (n.color) {
         el.style.borderColor = hex(n.color);
         el.style.background = `linear-gradient(rgba(0,0,0,0.55), ${rgba(n.color, 0.22)}), #14111c`;
         el.style.boxShadow = lvl > 0 ? `0 0 12px ${rgba(n.color, 0.5)}` : '';
       }
       const costText =
-        cost === null ? 'MAX' : cfg.tree.free ? 'free' : `${cost} ${n.currency === 'gold' ? 'souls' : 'SP'}`;
+        cost === null ? 'MAX' : blocked ? 'BLOCKED' : cfg.tree.free ? 'free' : `${cost} ${n.currency === 'gold' ? 'souls' : 'SP'}`;
       const slot = isSkill(n.id) ? profile.binds.indexOf(n.id) : -1;
       el.innerHTML = `<div class="name">${n.name}</div><div class="desc">${n.desc(per)}</div>` +
-        `<div class="lvl">${slot >= 0 ? `Equipped on ${slotKeys[slot]}` : `${lvl}/${max}`}</div><div class="cost">${costText}</div>`;
+        `<div class="lvl">${slot >= 0 ? `Equipped on ${slotKeys[slot]}` : `${lvl}/${max}`}</div><div class="cost">${costText}</div>` + (alertFor(n.id)?.() ? '<span class="bang">!</span>' : '');
     }
     this.layoutNodes();
   }
@@ -571,6 +643,27 @@ export class Screens {
     if (id) d.id = id;
     parent.appendChild(d);
     return d;
+  }
+
+  // A red flash on a node the player cannot afford.
+  private deny(el: HTMLElement): void {
+    el.classList.remove('deny');
+    void el.offsetWidth;
+    el.classList.add('deny');
+    window.setTimeout(() => el.classList.remove('deny'), 600);
+  }
+
+  private treeButton(run: () => void): HTMLButtonElement {
+    const b = this.button('Upgrade Tree', run, 'big');
+    if (warpAlert()) this.addBang(b);
+    return b;
+  }
+
+  private addBang(el: HTMLElement): void {
+    const bang = document.createElement('span');
+    bang.className = 'bang';
+    bang.textContent = '!';
+    el.appendChild(bang);
   }
 
   private button(label: string, run: () => void, cls = ''): HTMLButtonElement {

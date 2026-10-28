@@ -50,7 +50,7 @@ const css = `
 // How the config sections are grouped in the menu. Sections not listed here land in "other".
 const groups: [string, string[]][] = [
   ['player', ['player', 'bow', 'dash', 'teleport', 'abilities']],
-  ['skills', ['swordSlash', 'fireWave', 'iceStorm', 'doomsday', 'aegis', 'fairy']],
+  ['skills', ['swordSlash', 'fireWave', 'iceStorm', 'doomsday', 'aegis', 'lotus', 'fairy']],
   ['enemies and boss', ['spawn', 'enemy', 'wraith', 'shade', 'husk', 'boss']],
   ['progression', ['run', 'xp', 'gold', 'upgrade', 'tree', 'stun']],
   ['world', ['world', 'map', 'dummy']],

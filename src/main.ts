@@ -3,6 +3,7 @@ import { loadSavedConfig } from './config';
 import { loadProfile } from './save';
 import { GameScene } from './scenes/GameScene';
 import { HubScene } from './scenes/HubScene';
+import { RestScene } from './scenes/RestScene';
 
 loadSavedConfig();
 loadProfile();
@@ -13,8 +14,8 @@ const game = new Phaser.Game({
   backgroundColor: '#0b0a10',
   pixelArt: true,
   roundPixels: true,
-  scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
-  scene: [HubScene, GameScene],
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: 1280, height: 800 },
+  scene: [HubScene, GameScene, RestScene],
 });
 
 // Handy for poking at scenes from the browser console while tuning.

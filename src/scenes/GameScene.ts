@@ -18,12 +18,15 @@ import { LandingBlast } from '../game/LandingBlast';
 import { Player } from '../game/Player';
 import { SwordSlash } from '../game/SwordSlash';
 import { Aegis } from '../game/Aegis';
+import { Lotus } from '../game/Lotus';
+import { Stage2 } from '../game/Stage2';
+import { completeStoryBeforeStage2, startStage2State } from '../story';
 import { HOLY } from '../game/Doomsday';
 import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
-import { canUse, dustFraction, nodeById, skillIds, slotKeys, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
+import { aegisBoost, arrowEffects, canUse, dustFraction, skillDamage, nodeById, skillIds, slotKeys, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
 import { ghostHint } from '../ui/ghostHint';
 import { ThroneBox } from '../ui/ThroneBox';
 import { PurpleWave } from '../game/PurpleWave';
@@ -51,7 +54,8 @@ export class GameScene extends Phaser.Scene {
   private run = { kills: 0, gold: 0, xp: 0, levels: 0 };
   private endTimer = 0;
   private endTitle = '';
-  private endDied = false;
+  // Time running out ends the run like a death for the first-death and unlock flow, without the death effects.
+  private endCounts = false;
   private dead = false;
   private menu = false;
   private gold!: Gold;
@@ -66,6 +70,12 @@ export class GameScene extends Phaser.Scene {
   // Seconds the game is held still while the Aegis takes a hit, just before its counter-blast.
   private aegisFreeze = 0;
   private doomsday!: Doomsday;
+  private lotus!: Lotus;
+  private stage2!: Stage2;
+  // A faint red wash over the ground in stage 2.
+  private tint!: Phaser.GameObjects.Rectangle;
+  // Seconds until the Mimic's defeat sends him back to the hub.
+  private stage2Handoff = 0;
   private hitStop = 0;
   private hud!: Hud;
   private targets = new SpatialHash<Hittable>(64);
@@ -127,7 +137,16 @@ export class GameScene extends Phaser.Scene {
     this.boss.onSlay = (t) => this.creditless(() => this.damage(t, slayDamage));
     this.gold = new Gold(this);
     this.runHud = new RunHud(this);
+    this.stage2 = new Stage2(this, this.fx);
+    this.stage2.onAnnounce = (t) => this.runHud.announce(t);
+    this.stage2.onEnterCave = () => {
+      persistNow();
+      this.input2.destroy();
+      this.scene.start('rest');
+    };
+    this.tint = this.add.rectangle(0, 0, 4000, 4000, cfg.stage2.tint, cfg.stage2.tintAlpha).setOrigin(0).setScrollFactor(0).setDepth(-5e7).setVisible(false);
     this.screens = Screens.get();
+    this.gold.blocksPickup = (x, y) => this.stage2.blocksPickup(x, y);
     this.gold.onCollect = (v) => {
       profile.gold += v;
       this.run.gold += v;
@@ -138,6 +157,7 @@ export class GameScene extends Phaser.Scene {
     this.aegis = new Aegis(this);
     this.swordSlash = new SwordSlash(this, this.fx, () => this.targetList);
     this.doomsday = new Doomsday(this, this.fx, () => this.targetList);
+    this.lotus = new Lotus(this, this.fx, () => this.targetList);
     this.hud = new Hud(this, 4);
     this.wave = new PurpleWave(this, this.fx);
     this.throne = new ThroneBox(this);
@@ -157,20 +177,47 @@ export class GameScene extends Phaser.Scene {
       this.playerView.onTeleport(x0, y0, x1, y1, t);
     };
     this.player.onTeleportArrive = (x, y) => this.playerView.onTeleportArrive(x, y);
-    this.abilities.onCast = (kind) => this.fairies.flare(kind);
+    this.abilities.onCast = (kind) => {
+      this.fairies.flare(kind);
+      if (kind === 'fire' && !profile.firewaveUsed) {
+        profile.firewaveUsed = true;
+        persist();
+      }
+    };
     this.abilities.onAimStart = () => {
       this.swordSlash.armed = false;
       this.doomsday.cancel();
+      this.lotus.cancel();
     };
-    this.abilities.onBurn = (t) => this.enemies.ignite(t);
+    this.abilities.onBurn = (t) => (t.kind === 'boss' ? this.boss.ignite() : this.enemies.ignite(t));
     this.abilities.onFreeze = () => this.boss.freeze();
+    this.abilities.onChill = (t) => (t.kind === 'boss' ? this.boss.chill() : this.enemies.chill(t));
+    this.boss.onDot = (x, y, amount) => {
+      toScreen(x, y, screen);
+      this.fx.damageNumber(screen.x, screen.y - 40, amount);
+    };
     this.enemies.fx = this.fx;
     this.enemies.onBurnTick = (x, y, amount) => {
       toScreen(x, y, screen);
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
+    this.lotus.onAimStart = () => {
+      this.abilities.aiming = null;
+      this.doomsday.cancel();
+      this.swordSlash.cancel();
+    };
+    this.lotus.onDamage = (target, amount, x, y) => {
+      this.damage(target, amount);
+      toScreen(x, y, screen);
+      this.fx.damageNumber(screen.x, screen.y - 40, amount);
+    };
+    this.lotus.onPoison = (target) => {
+      if (target.kind === 'boss') this.boss.poison();
+      else this.enemies.poison(target);
+    };
     this.doomsday.onAimStart = () => {
       this.abilities.aiming = null;
+      this.lotus.cancel();
       this.swordSlash.cancel();
     };
     this.doomsday.onCast = (x, y) => this.player.teleportTo(x, y, cfg.doomsday.windup);
@@ -198,7 +245,22 @@ export class GameScene extends Phaser.Scene {
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
     this.arrows.onHit = (target, damage, hx, hy) => {
+      if (target.kind === 'flower') {
+        this.lotus.shot();
+        return;
+      }
       this.damage(target, damage);
+      // Skill enhancements let arrows carry that skill's status.
+      const fx = arrowEffects();
+      if (target.kind === 'enemy') {
+        if (fx.burn) this.enemies.ignite(target);
+        if (fx.cold) this.enemies.chill(target);
+        if (fx.poison) this.enemies.poison(target);
+      } else if (target.kind === 'boss') {
+        if (fx.burn) this.boss.ignite();
+        if (fx.cold) this.boss.chill();
+        if (fx.poison) this.boss.poison();
+      }
       toScreen(hx, hy, screen);
       this.fx.damageNumber(screen.x, screen.y - cfg.render.arrowHeight - 8, damage);
       this.fx.addShake(cfg.camera.shakeOnHit);
@@ -221,7 +283,8 @@ export class GameScene extends Phaser.Scene {
           this.run.levels += gained;
           this.runHud.announce(`LEVEL ${profile.level}!`);
         }
-        this.gold.drop(x, y, upgrades.goldValue());
+        // Kills inside the Mind's Eye's zone feed it instead of dropping souls.
+        if (!this.stage2.absorb(x, y)) this.gold.drop(x, y, upgrades.goldValue());
       }
       const px = cfg.render.pixelScale;
       const size = cfg[type].scale;
@@ -243,6 +306,12 @@ export class GameScene extends Phaser.Scene {
       profile.skillPoints += cfg.boss.rewardSkillPoints;
       persist();
       this.runHud.announce(`BOSS DEFEATED  +${cfg.boss.rewardSkillPoints} skill point`);
+      // The battle ends: after a beat he is taken to the throne, and stage 2 picks up from this moment.
+      if (profile.stage < 2) {
+        profile.stage2Clock = this.clock;
+        persistNow();
+        this.stage2Handoff = 2.5;
+      }
     };
 
     this.debugGfx = this.add.graphics().setDepth(2e6);
@@ -263,9 +332,9 @@ export class GameScene extends Phaser.Scene {
       { label: 'Clock +60s', run: jump(60) },
       { label: 'Clock to 5:00', run: () => setClock(300) },
       { label: 'Clock to 0', run: () => setClock(0) },
-      { label: 'Spawn boss', run: () => this.spawnBoss() },
-      { label: 'Kill boss', run: () => this.boss.damage(this.boss.hp) },
-      { label: 'Clock to boss spawn -5s', run: () => setClock(cfg.boss.spawnTime - 5) },
+      { label: 'Spawn Accursed Mimic', run: () => this.spawnBoss() },
+      { label: 'Kill Accursed Mimic', run: () => this.boss.damage(this.boss.hp) },
+      { label: 'Clock to Mimic spawn -5s', run: () => setClock(cfg.boss.spawnTime - 5) },
       { label: 'Clock to wave -5s', run: () => setClock(cfg.boss.waveTime - 5) },
       { label: 'Reset throne speech', run: () => { profile.bossIntroSeen = false; persist(); } },
       { label: 'Spawn 50 enemies', run: () => this.spawnBurst(50) },
@@ -275,6 +344,23 @@ export class GameScene extends Phaser.Scene {
         run: () => {
           this.skipToBattle();
           this.startRun();
+        },
+      },
+      { label: 'Reset skill reveal', run: () => { profile.firewaveUsed = false; profile.skillsRevealed = false; persist(); } },
+      {
+        label: 'Skip Stage 2 cutscene',
+        run: () => {
+          completeStoryBeforeStage2();
+          this.input2.destroy();
+          this.scene.start('hub', { stage2Intro: true });
+        },
+      },
+      {
+        label: 'Skip to stage 2',
+        run: () => {
+          startStage2State();
+          this.input2.destroy();
+          this.scene.start('game', { dive: true });
         },
       },
       { label: 'Go home (hub)', run: () => this.goHome() },
@@ -331,13 +417,15 @@ export class GameScene extends Phaser.Scene {
           this.abilities.resetCooldowns();
           this.swordSlash.cooldown = 0;
           this.doomsday.cooldown = 0;
+          this.lotus.cooldown = 0;
         },
       },
       { label: 'Recenter player', run: () => Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0 }) },
     ]);
 
-    this.clockStart = 0;
+    this.clockStart = upgrades.startTime();
     this.clock = this.clockStart;
+    this.applyStage();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input2.destroy());
     if (this.diveIn) this.beginDive();
@@ -439,7 +527,7 @@ export class GameScene extends Phaser.Scene {
 
     this.targets.clear();
     this.dummies.update(dt, this.targets);
-    this.player.fireBlocked = this.swordSlash.blocksFire || this.abilities.blocksFire || this.doomsday.blocksFire;
+    this.player.fireBlocked = this.swordSlash.blocksFire || this.abilities.blocksFire || this.doomsday.blocksFire || this.lotus.blocksFire;
     if (!this.dead) {
       this.player.update(dt, input, aimWorld);
       const body = { x: this.player.x, y: this.player.y, radius: cfg.player.bodyRadius };
@@ -451,12 +539,24 @@ export class GameScene extends Phaser.Scene {
       tickBuffs(dt);
       if (cfg.boss.enabled && !this.waveFired && this.clock >= cfg.boss.waveTime) this.fireWave();
       if (cfg.boss.enabled && !this.bossSpawned && this.clock >= cfg.boss.spawnTime) this.spawnBoss();
-      if (this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
+      if (profile.stage < 2 && this.stage2Handoff <= 0 && this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
     }
 
+    this.lotus.update(dt, this.player, input, cursor);
+    this.stage2.update(dt, this.player, cam);
+    if (this.stage2Handoff > 0) {
+      this.player.graceTime = Math.max(this.player.graceTime, 1);
+      this.stage2Handoff -= dt;
+      if (this.stage2Handoff <= 0) {
+        persistNow();
+        this.input2.destroy();
+        this.scene.start('hub', { stage2Intro: true });
+        return;
+      }
+    }
+    this.boss.lure = this.lotus.lure;
     const view = { halfW: cam.width / 2, halfH: cam.height / 2, heading: this.heading() };
-    const slowAt = (x: number, y: number, r: number) => this.abilities.slowAt(x, y, r);
-    this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, slowAt, !this.dead && this.grace <= 0 && !this.spawnsHeld());
+    this.enemies.update(dt, this.clock, this.player.x, this.player.y, view, this.chunks.obstacles, !this.dead && this.grace <= 0 && !this.spawnsHeld(), this.lotus.lure);
     this.gold.update(dt, this.player.x, this.player.y, !this.dead);
     this.enemies.insertInto(this.targets);
     this.updateWave(dt);
@@ -468,8 +568,9 @@ export class GameScene extends Phaser.Scene {
       this.targetList.push(this.boss);
     }
 
+    this.lotus.insertInto(this.targets);
     this.abilities.obstacles = this.chunks.obstacles;
-    this.arrows.update(dt, this.targets, Math.max(cfg.dummy.radius, this.enemies.maxRadius, this.boss.radius), this.chunks.obstacles);
+    this.arrows.update(dt, this.targets, Math.max(cfg.dummy.radius, this.enemies.maxRadius, this.boss.radius, cfg.lotus.bodyRadius), this.chunks.obstacles);
     this.abilities.update(dt, this.player, input, cursor);
     this.swordSlash.update(dt, this.player, input);
     this.aegis.update(dt, this.player, input, this.dead);
@@ -479,8 +580,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.dead && !this.player.safe && !cfg.debug.godMode) {
       if (this.enemies.touching(this.player.x, this.player.y, cfg.player.hitRadius) && !this.aegisBlock()) this.endRun('You died', true);
     }
-    const bossHit = this.boss.update(dt, this.player.x, this.player.y, this.player.safe || this.dead, cfg.player.hitRadius);
-    if (bossHit && !this.dead && !cfg.debug.godMode && !this.aegisBlock()) this.endRun('Cut down by your shade', true);
+    const bossHit = this.boss.update(dt, this.player.x, this.player.y, this.player.safe || this.dead, cfg.player.hitRadius, this.dead);
+    if (bossHit && !this.dead && !cfg.debug.godMode && !this.aegisBlock()) this.endRun('Cut down by the Accursed Mimic', true);
     if (this.dead) {
       this.endTimer -= dt;
       if (this.endTimer <= 0) this.showSummary();
@@ -506,7 +607,7 @@ export class GameScene extends Phaser.Scene {
     this.arrows.render();
     this.boss.render(dt, cam.width);
     this.dummies.render();
-    this.enemies.render(this.player.x);
+    this.enemies.render(this.player.x, dt);
     this.gold.render(cam);
     this.runHud.update(dt, cam.width, {
       left: upgrades.runTime() - (this.clock - this.clockStart),
@@ -515,12 +616,14 @@ export class GameScene extends Phaser.Scene {
       xp: profile.xp,
       need: xpToNext(profile.level),
       dust: runBuffs.dust,
+      untimed: profile.stage >= 2,
     });
     const info = {
       fireFairy: { remaining: this.abilities.fireCooldown, total: cfg.fireWave.cooldown, active: this.abilities.aiming === 'fire' },
       iceFairy: { remaining: this.abilities.iceCooldown, total: cfg.iceStorm.cooldown, active: this.abilities.aiming === 'ice' },
       doomsday: { remaining: this.doomsday.cooldown, total: cfg.doomsday.cooldown, active: this.doomsday.aiming || this.doomsday.busy },
       aegis: { remaining: this.aegis.cooldown, total: cfg.aegis.cooldown, active: this.aegis.active },
+      lotus: { remaining: this.lotus.cooldown, total: cfg.lotus.cooldown, active: this.lotus.aiming || this.lotus.active },
       swordSlash: { remaining: this.swordSlash.cooldown, total: cfg.swordSlash.cooldown, active: this.swordSlash.armed || this.swordSlash.active },
     };
     this.hud.update(
@@ -540,7 +643,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damage(target: Hittable, amount: number): void {
-    if (target.kind === 'enemy') this.enemies.damage(target, amount, this.player.x, this.player.y);
+    if (target.kind === 'flower') this.lotus.shot();
+    else if (target.kind === 'enemy') this.enemies.damage(target, amount, this.player.x, this.player.y);
     else if (target.kind === 'boss') this.boss.damage(amount);
     else this.dummies.damage(target, amount);
   }
@@ -572,7 +676,7 @@ export class GameScene extends Phaser.Scene {
   private aegisBlast(): void {
     toScreen(this.player.x, this.player.y, screen);
     const hand = { x: screen.x, y: screen.y - 10 * cfg.render.pixelScale };
-    this.doomsday.blastAt(this.player.x, this.player.y, hand, cfg.doomsday.radius * cfg.aegis.radiusMult, cfg.aegis.damage, HOLY);
+    this.doomsday.blastAt(this.player.x, this.player.y, hand, cfg.doomsday.radius * cfg.aegis.radiusMult * aegisBoost(), cfg.aegis.damage * skillDamage('aegis') * aegisBoost(), HOLY);
   }
 
   private creditless(fn: () => void): void {
@@ -582,9 +686,9 @@ export class GameScene extends Phaser.Scene {
     this.credit = was;
   }
 
-  // Enemy spawning pauses from the wave until the boss has had its moment.
+  // Enemy spawning pauses from the wave until the boss has been defeated.
   private spawnsHeld(): boolean {
-    return cfg.boss.enabled && this.clock >= cfg.boss.waveTime && this.clock < cfg.boss.resumeTime;
+    return cfg.boss.enabled && this.clock >= cfg.boss.waveTime && !(this.bossSpawned && !this.boss.alive);
   }
 
   private fireWave(): void {
@@ -607,7 +711,7 @@ export class GameScene extends Phaser.Scene {
         "but im not convinced",
         'these dregs will not be your only opponents',
         'if you seek to best anathema as an equal',
-        'then you should have no problems with the Shade',
+        'then you should have no problems with the Accursed Mimic',
       ])
       .then(() => {
         this.throneTalking = false;
@@ -631,7 +735,7 @@ export class GameScene extends Phaser.Scene {
   private spawnBoss(): void {
     this.bossSpawned = true;
     this.boss.spawn(this.player.x, this.player.y);
-    this.runHud.announce('Your shade approaches');
+    this.runHud.announce('The Accursed Mimic approaches');
     this.fx.addShake(cfg.camera.shakeOnCast);
   }
 
@@ -645,9 +749,11 @@ export class GameScene extends Phaser.Scene {
     if (this.dead) return;
     this.dead = true;
     this.endTitle = title;
-    this.endDied = died;
+    this.endCounts = died || title === "Time's up";
     this.endTimer = died ? 0.9 : 0.5;
     this.swordSlash.interrupt();
+    // Once a fight has ended, Anathema's first-use pull to battle is spent.
+    profile.visitedHead = true;
     persistNow();
     if (!died) return;
     this.playerView.setVisible(false);
@@ -660,8 +766,15 @@ export class GameScene extends Phaser.Scene {
 
   private showSummary(): void {
     this.menu = true;
+    // Fire Wave has been used: the next death goes to the throne, which reveals the other skills.
+    if (this.endCounts && profile.firewaveUsed && !profile.skillsRevealed) {
+      this.screens.hide();
+      persistNow();
+      this.scene.start('hub', { skillsIntro: true });
+      return;
+    }
     // The first death after earning a skill point leads straight to the throne room, where the book is offered.
-    if (this.endDied && profile.introDone && !profile.bookUnlocked && !profile.bookIntroSeen && profile.skillPoints > 0) {
+    if (this.endCounts && profile.introDone && !profile.bookUnlocked && !profile.bookIntroSeen && profile.skillPoints > 0) {
       this.screens.hide();
       // Marked done up front so it can only ever play once, however the scene ends.
       profile.bookIntroSeen = true;
@@ -698,11 +811,27 @@ export class GameScene extends Phaser.Scene {
     this.screens.showTree(() => this.startRun(), () => this.goHome());
   }
 
+  // Stage 2 carries on from where the Mimic fight left off: no more Mimic, a harder crowd, a red tint and the quest.
+  private applyStage(): void {
+    const two = profile.stage >= 2;
+    this.stage2.setActive(two);
+    this.stage2Handoff = 0;
+    this.enemies.stageRate = two ? cfg.stage2.enemyMult : 1;
+    this.enemies.stageHp = two ? cfg.stage2.enemyMult : 1;
+    this.tint.setVisible(two).setFillStyle(cfg.stage2.tint, cfg.stage2.tintAlpha);
+    if (two) {
+      this.bossSpawned = true;
+      this.waveFired = true;
+      this.clockStart = profile.stage2Clock;
+      this.clock = this.clockStart;
+    }
+  }
+
   private startRun(): void {
     this.screens.hide();
     this.menu = false;
     this.dead = false;
-    this.clockStart = 0;
+    this.clockStart = upgrades.startTime();
     this.clock = this.clockStart;
     resetBuffs();
     this.run = { kills: 0, gold: 0, xp: 0, levels: 0 };
@@ -710,10 +839,12 @@ export class GameScene extends Phaser.Scene {
     this.boss.clear();
     this.bossSpawned = false;
     this.waveFired = false;
+    this.stage2Handoff = 0;
     this.wave.stop();
     this.gold.clear();
     this.abilities.reset();
     this.doomsday.reset();
+    this.lotus.reset();
     this.hitStop = 0;
     this.grace = 0;
     this.swordSlash.cancel();
@@ -723,6 +854,7 @@ export class GameScene extends Phaser.Scene {
     Object.assign(this.player, { x: 0, y: 0, vx: 0, vy: 0, dashTime: 0, teleportTime: 0, lockTime: 0 });
     toScreen(0, 0, this.camCenter);
     this.playerView.setVisible(true);
+    this.applyStage();
     this.beginDive();
   }
 

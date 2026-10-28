@@ -35,6 +35,8 @@ export class Gold {
   private near: Pile[] = [];
 
   onCollect: (value: number) => void = () => {};
+  // Piles for which this returns true cannot be picked up (the Mind's Eye's zone).
+  blocksPickup: (x: number, y: number) => boolean = () => false;
 
   constructor(private scene: Phaser.Scene) {}
 
@@ -120,7 +122,7 @@ export class Gold {
     if (collecting) {
       const r = stats.pickupRadius();
       for (const p of this.query(px - r, py - r, px + r, py + r)) {
-        if (Math.hypot(p.x - px, p.y - py) > r) continue;
+        if (Math.hypot(p.x - px, p.y - py) > r || this.blocksPickup(p.x, p.y)) continue;
         this.flying.push({ x: p.x, y: p.y, value: p.value, speed: g.pullSpeed });
         this.kill(p);
       }

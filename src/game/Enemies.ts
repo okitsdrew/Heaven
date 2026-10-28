@@ -24,6 +24,12 @@ interface Enemy extends Hittable {
   // Seconds of burn and stun left, and the time since the last burn tick.
   burn: number;
   burnTick: number;
+  // Poison stacks, seconds left on them, and the time since the last poison tick.
+  // Seconds of cold left; cold enemies are slowed.
+  cold: number;
+  poison: number;
+  poisonLeft: number;
+  poisonAcc: number;
   stun: number;
   // Which way round the current obstacle this enemy committed to, so it doesn't dither head-on.
   avoid: Obstacle | null;
@@ -44,12 +50,14 @@ export interface View {
 const screen = { x: 0, y: 0 };
 const off = { x: 0, y: 0 };
 
-// Spawns per second at a run time: flat for the first stretch, then ramping to the max at rampEnd.
-export function spawnRateAt(t: number): number {
+// Spawns per second at a run time: a flat first stage, a flat second stage, then a ramp to the max at rampEnd.
+export function spawnRateAt(t: number, maxMult = 1): number {
   const s = cfg.spawn;
   if (t <= s.holdTime) return s.startRate;
-  const f = Phaser.Math.Clamp((t - s.holdTime) / Math.max(s.rampEnd - s.holdTime, 1e-3), 0, 1);
-  return s.startRate + (s.maxRate - s.startRate) * Math.pow(f, s.rateCurve);
+  const rampStart = s.holdTime + s.secondHold;
+  if (t <= rampStart) return s.secondRate;
+  const f = Phaser.Math.Clamp((t - rampStart) / Math.max(s.rampEnd - rampStart, 1e-3), 0, 1);
+  return s.secondRate + (s.maxRate * maxMult - s.secondRate) * Math.pow(f, s.rateCurve);
 }
 
 // Base enemy HP at a run time. A high curve keeps it gentle early with a steep tail.
@@ -70,6 +78,9 @@ export class Enemies {
   onKilled: (x: number, y: number, type: EnemyKind) => void = () => {};
   onBurnTick: (x: number, y: number, amount: number) => void = () => {};
   fx: Fx | null = null;
+  // Stage 2 multiplies the top spawn rate and enemy HP.
+  stageRate = 1;
+  stageHp = 1;
 
   constructor(scene: Phaser.Scene) {
     this.pool = new Pool(() => ({
@@ -90,6 +101,10 @@ export class Enemies {
       phase: 0,
       burn: 0,
       burnTick: 0,
+      cold: 0,
+      poison: 0,
+      poisonLeft: 0,
+      poisonAcc: 0,
       stun: 0,
       avoid: null,
       side: 1,
@@ -164,7 +179,7 @@ export class Enemies {
     e.x = px + off.x;
     e.y = py + off.y;
     e.radius = c.radius;
-    e.hp = hpAt(t) * c.hpMult;
+    e.hp = hpAt(t) * c.hpMult * this.stageHp;
     e.vx = 0;
     e.vy = 0;
     e.kx = 0;
@@ -174,6 +189,10 @@ export class Enemies {
     e.avoid = null;
     e.burn = 0;
     e.burnTick = 0;
+    e.cold = 0;
+    e.poison = 0;
+    e.poisonLeft = 0;
+    e.poisonAcc = 0;
     e.stun = 0;
     e.sprite.setTexture(enemyFrames[type][0]).setVisible(true);
     e.shadow.setVisible(true);
@@ -207,6 +226,21 @@ export class Enemies {
     e.burn = cfg.fireWave.burnTime;
   }
 
+  // Chills an enemy; a fresh application restarts the timer.
+  chill(target: Hittable): void {
+    const e = target as Enemy;
+    if (e.kind !== 'enemy' || !e.alive) return;
+    e.cold = cfg.iceStorm.coldTime;
+  }
+
+  // Adds a poison stack and restarts the timer; stacks are unlimited.
+  poison(target: Hittable, stacks = 1): void {
+    const e = target as Enemy;
+    if (e.kind !== 'enemy' || !e.alive) return;
+    e.poison += stacks;
+    e.poisonLeft = cfg.lotus.poisonTime;
+  }
+
   stun(target: Hittable, seconds: number): void {
     const e = target as Enemy;
     if (e.kind !== 'enemy' || !e.alive) return;
@@ -229,11 +263,12 @@ export class Enemies {
     py: number,
     view: View,
     obstacles: readonly Obstacle[],
-    slowAt: (x: number, y: number, r: number) => number,
     spawning: boolean,
+    // Everything heads for this point instead of the player while it is set (the Festering Lotus).
+    lure: { x: number; y: number } | null = null,
   ): void {
     if (spawning && cfg.spawn.enabled) {
-      this.spawnAcc += spawnRateAt(t) * dt;
+      this.spawnAcc += spawnRateAt(t, this.stageRate) * dt;
       while (this.spawnAcc >= 1) {
         this.spawnAcc -= 1;
         this.spawn(t, px, py, view);
@@ -268,10 +303,12 @@ export class Enemies {
       e.flash -= dt;
       e.phase += dt * ec.bobSpeed;
       if (e.burn > 0) this.burnTick(e, dt);
+      if (e.poison > 0 && e.alive) this.poisonTick(e, dt);
+      if (e.cold > 0) e.cold -= dt;
       if (!e.alive) continue;
 
-      let dx = px - e.x;
-      let dy = py - e.y;
+      let dx = (lure ? lure.x : px) - e.x;
+      let dy = (lure ? lure.y : py) - e.y;
       const dist = Math.hypot(dx, dy) || 1;
       dx /= dist;
       dy /= dist;
@@ -303,7 +340,7 @@ export class Enemies {
       }
       if (!blocked) e.avoid = null;
 
-      let speed = c.speedMult * cfg.player.moveSpeed * slowAt(e.x, e.y, e.radius);
+      let speed = c.speedMult * cfg.player.moveSpeed * (e.cold > 0 ? 1 - cfg.iceStorm.slow : 1);
       // The iso projection squashes vertical screen travel, so equalise on-screen speed the way the player's is.
       if (ec.uniformScreenSpeed) {
         toScreen(dx, dy, off);
@@ -356,17 +393,36 @@ export class Enemies {
     const interval = Math.max(c.burnTick, 0.05);
     while (e.burnTick >= interval && e.alive) {
       e.burnTick -= interval;
-      const amount = c.burnDps * interval;
-      e.hp -= amount;
-      this.onBurnTick(e.x, e.y, amount);
-      if (e.hp <= 0) {
-        e.alive = false;
-        e.sprite.setVisible(false);
-        e.shadow.setVisible(false);
-        this.onKilled(e.x, e.y, e.type);
-      }
+      this.tickDamage(e, c.burnDps * interval);
     }
     if (e.burn <= 0) e.burnTick = 0;
+  }
+
+  // Each stack deals its own damage per second until the timer runs out.
+  private poisonTick(e: Enemy, dt: number): void {
+    const c = cfg.lotus;
+    e.poisonLeft -= dt;
+    e.poisonAcc += dt;
+    const interval = Math.max(c.poisonTick, 0.05);
+    while (e.poisonAcc >= interval && e.alive) {
+      e.poisonAcc -= interval;
+      this.tickDamage(e, e.poison * c.poisonDps * interval);
+    }
+    if (e.poisonLeft <= 0) {
+      e.poison = 0;
+      e.poisonAcc = 0;
+    }
+  }
+
+  private tickDamage(e: Enemy, amount: number): void {
+    e.hp -= amount;
+    this.onBurnTick(e.x, e.y, amount);
+    if (e.hp <= 0) {
+      e.alive = false;
+      e.sprite.setVisible(false);
+      e.shadow.setVisible(false);
+      this.onKilled(e.x, e.y, e.type);
+    }
   }
 
   // Inserts live enemies into the shared hit-test hash.
@@ -387,7 +443,7 @@ export class Enemies {
     return false;
   }
 
-  render(px: number): void {
+  render(px: number, dt: number): void {
     const pxs = cfg.render.pixelScale;
     const ec = cfg.enemy;
     for (const e of this.live) {
@@ -409,8 +465,36 @@ export class Enemies {
         .setDepth(screen.y - 1000);
       if (e.flash > 0) e.sprite.setTintFill(0xffffff);
       else if (e.burn > 0) e.sprite.setTint(0xff9a50);
+      else if (e.poison > 0) e.sprite.setTint(0x9aff90);
+      else if (e.cold > 0) e.sprite.setTint(0x8fdcff);
       else if (e.stun > 0) e.sprite.setTint(0xfff0a0);
       else e.sprite.clearTint();
+      if (c.trail > 0 && this.fx && Math.random() < c.trail * dt) {
+        this.fx.particle({
+          x: screen.x - Math.sign(e.vx || 1) * 3 * scale,
+          y: screen.y - (3 + Math.random() * 8) * scale,
+          life: 0.3 + Math.random() * 0.15,
+          from: 0.5 * scale,
+          to: 0.05,
+          alpha: 0.7,
+          tint: Math.random() < 0.5 ? 0xffd21a : 0xfff2a0,
+          depth: screen.y - 1,
+        });
+      }
+      if (e.cold > 0 && this.fx && Math.random() < 0.2) {
+        this.fx.particle({
+          x: screen.x + (Math.random() - 0.5) * 8 * scale / pxs * 1.5,
+          y: screen.y - (4 + Math.random() * 10) * scale,
+          life: 0.4 + Math.random() * 0.25,
+          from: 0.3,
+          to: 0.05,
+          alpha: 0.9,
+          tint: Math.random() < 0.5 ? 0xe8fbff : 0x8fdcff,
+          vy: 10 + Math.random() * 20,
+          vx: (Math.random() - 0.5) * 14,
+          depth: screen.y + 1,
+        });
+      }
       if (e.burn > 0 && this.fx && Math.random() < 0.25) {
         this.fx.particle({
           x: screen.x + (Math.random() - 0.5) * 8 * scale / pxs * 1.5,

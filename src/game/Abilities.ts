@@ -4,7 +4,7 @@ import { Input } from '../input';
 import { ellipseHalfSize, toScreen, Vec2 } from '../iso';
 import { Hittable } from './Arrows';
 import { Fx } from './Fx';
-import { actionFor, canUse, slotActions } from '../skills';
+import { actionFor, canUse, skillDamage, slotActions } from '../skills';
 import type { Obstacle } from './Chunks';
 import { Player } from './Player';
 
@@ -66,6 +66,8 @@ export class Abilities {
   onDamage: (target: Hittable, amount: number, x: number, y: number) => void = () => {};
   onBurn: (target: Hittable) => void = () => {};
   onFreeze: (target: Hittable) => void = () => {};
+  // Chills an enemy; cold lasts a few seconds after the storm and slows it.
+  onChill: (target: Hittable) => void = () => {};
   onCast: (kind: 'fire' | 'ice') => void = () => {};
   onAimStart: () => void = () => {};
 
@@ -107,14 +109,6 @@ export class Abilities {
     return { x: w.ox + w.dirX * w.dist, y: w.oy + w.dirY * w.dist };
   }
 
-  // Strongest slow multiplier (1 = none) from any storm covering a circle. Slows never stack.
-  slowAt(x: number, y: number, radius: number): number {
-    for (const s of this.storms) {
-      if (Math.hypot(x - s.x, y - s.y) <= cfg.iceStorm.radius + radius) return 1 - cfg.iceStorm.slow;
-    }
-    return 1;
-  }
-
   update(dt: number, player: Player, input: Input, cursor: Vec2 | null): void {
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
     this.iceCooldown = Math.max(0, this.iceCooldown - dt);
@@ -126,8 +120,9 @@ export class Abilities {
     const iceKey = actionFor('iceFairy');
     for (const key of [...slotActions, 'abilityF'] as const) {
       if (!input.justPressed(key)) continue;
-      if (key === fireKey) this.aiming = this.aiming === 'fire' ? null : 'fire';
-      else if (key === iceKey) this.aiming = this.aiming === 'ice' ? null : 'ice';
+      // Nothing is shown at the mouse while a spell is cooling down.
+      if (key === fireKey) this.aiming = this.aiming === 'fire' ? null : this.fireCooldown <= 0 ? 'fire' : this.aiming;
+      else if (key === iceKey) this.aiming = this.aiming === 'ice' ? null : this.iceCooldown <= 0 ? 'ice' : this.aiming;
       else this.aiming = null;
     }
     if (this.aiming === 'fire' && !canUse('fireFairy')) this.aiming = null;
@@ -212,7 +207,7 @@ export class Abilities {
         const side = -rx * w.dirY + ry * w.dirX;
         if (Math.abs(side) <= c.width / 2 + t.radius && along >= lo - t.radius && along <= hi + t.radius) {
           w.hits.add(t.id);
-          this.onDamage(t, c.damage, t.x, t.y);
+          this.onDamage(t, c.damage * skillDamage('fireFairy'), t.x, t.y);
           this.onBurn(t);
         }
       }
@@ -262,12 +257,24 @@ export class Abilities {
     }
   }
 
-  // Heated ground only ages; it no longer burns anything.
+  // Heated ground ignites anything standing on it until it cools.
   private updatePatches(dt: number): void {
     const c = cfg.fireWave;
     for (let i = this.patches.length - 1; i >= 0; i--) {
-      this.patches[i].age += dt;
-      if (this.patches[i].age >= c.groundTime) this.patches.splice(i, 1);
+      const p = this.patches[i];
+      p.age += dt;
+      if (p.age >= c.groundTime) {
+        this.patches.splice(i, 1);
+        continue;
+      }
+      for (const t of this.targets()) {
+        if (!t.alive) continue;
+        const rx = t.x - p.ox;
+        const ry = t.y - p.oy;
+        const along = rx * p.dirX + ry * p.dirY;
+        const side = -rx * p.dirY + ry * p.dirX;
+        if (Math.abs(side) <= c.width / 2 + t.radius && along >= p.start - t.radius && along <= p.end + t.radius) this.onBurn(t);
+      }
     }
   }
 
@@ -306,8 +313,9 @@ export class Abilities {
       s.flash = 0.08;
       for (const t of this.targets()) {
         if (!t.alive || Math.hypot(t.x - s.x, t.y - s.y) > c.radius + t.radius) continue;
-        this.onDamage(t, c.damage, t.x, t.y);
+        this.onDamage(t, c.damage * skillDamage('iceFairy'), t.x, t.y);
         if (t.kind === 'boss') this.onFreeze(t);
+        this.onChill(t);
       }
     }
 

@@ -28,14 +28,36 @@ export interface SaveData {
   skillTipShown: boolean;
   // The throne's talk before the first Shade has played.
   bossIntroSeen: boolean;
+  // The player has looked at Time Warp since it unlocked, which clears its red alerts.
+  warpSeen: boolean;
+  // Fire Wave has been looked at since the first time it was affordable.
+  fireSeen: boolean;
+  // The right-click teleport tip has been shown in the hub.
+  teleportHintShown: boolean;
+  // Story stage: 1 until the throne's talk after the Mimic falls, then 2.
+  stage: number;
+  // The run clock when the Mimic fell; stage 2 picks up from there.
+  stage2Clock: number;
+  // Stage 2 quest: 'find' the Mind's Eye, 'feed' it, then 'follow' the aura to the Resting Ground.
+  quest: 'find' | 'feed' | 'follow';
+  // Souls the Mind's Eye has taken so far.
+  eyeFed: number;
+  // The death screen has nudged the player into the upgrade tree once.
+  treeTutorialDone: boolean;
+  // The other skills have faded in on the book once.
+  skillsFaded: boolean;
+  // Fire Wave has been cast in a battle, which readies the throne's reveal of the other skills.
+  firewaveUsed: boolean;
+  // The throne has shown the other skills; until then only Teleport and Fire Wave are on the book.
+  skillsRevealed: boolean;
   // Which skill sits on Q, E and R (null when empty).
   binds: (string | null)[];
 }
 
-const SKILL_IDS = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'aegis'];
+const SKILL_IDS = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'aegis', 'lotus'];
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, skillTipShown: false, bossIntroSeen: false, binds: [null, null, null] };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, skillTipShown: false, bossIntroSeen: false, warpSeen: false, fireSeen: false, teleportHintShown: false, stage: 1, stage2Clock: 0, quest: 'find', eyeFed: 0, treeTutorialDone: false, skillsFaded: false, firewaveUsed: false, skillsRevealed: false, binds: [null, null, null] };
 }
 
 function storageGet(key: string): string | null {
@@ -74,6 +96,17 @@ function sanitize(src: unknown): SaveData {
   out.bowHintShown = s.bowHintShown === true;
   out.skillTipShown = s.skillTipShown === true;
   out.bossIntroSeen = s.bossIntroSeen === true;
+  out.warpSeen = s.warpSeen === true;
+  out.fireSeen = s.fireSeen === true;
+  out.teleportHintShown = s.teleportHintShown === true;
+  out.stage = s.stage === 2 ? 2 : 1;
+  out.stage2Clock = num(s.stage2Clock, 0, 0);
+  out.quest = s.quest === 'feed' || s.quest === 'follow' ? s.quest : 'find';
+  out.eyeFed = num(s.eyeFed, 0, 0);
+  out.treeTutorialDone = s.treeTutorialDone === true || out.bookUnlocked || Object.keys(out.nodes).length > 0;
+  out.skillsFaded = s.skillsFaded === true;
+  out.firewaveUsed = s.firewaveUsed === true;
+  out.skillsRevealed = s.skillsRevealed === true;
   if (s.nodes && typeof s.nodes === 'object') {
     for (const [k, v] of Object.entries(s.nodes)) if (typeof v === 'number' && v > 0) out.nodes[k] = Math.floor(v);
   }
@@ -99,6 +132,13 @@ function sanitize(src: unknown): SaveData {
   const old = (src as { skills?: Record<string, unknown> }).skills;
   if (old && typeof old === 'object') {
     for (const [k, v] of Object.entries(old)) if (v === true) out.nodes[k] = Math.max(1, out.nodes[k] ?? 0);
+  }
+  if ((out.nodes.teleport ?? 0) > 0) out.teleportHintShown = true;
+  // Saves that already own a skill beyond Fire Wave have been through the reveal.
+  if (['iceFairy', 'swordSlash', 'doomsday', 'aegis'].some((id) => (out.nodes[id] ?? 0) > 0)) {
+    out.skillsRevealed = true;
+    out.skillsFaded = true;
+    out.firewaveUsed = true;
   }
   // Equipped skills: validated, no repeats, and only owned ones. Old saves had fixed keys (Q fire, E ice, R sword, F doomsday).
   const given = Array.isArray(s.binds) ? s.binds : null;

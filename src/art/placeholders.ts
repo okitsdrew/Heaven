@@ -247,7 +247,7 @@ export function makePlaceholderArt(scene: Phaser.Scene): void {
   ];
   const wraithColors = {
     wraith: { k: 0x1c1826, K: 0x3a3352, E: 0x9fe8ff, e: 0x3f8fb0, O: 0x8a8a98 },
-    shade: { k: 0x141a2a, K: 0x2e3d5c, E: 0xc9b4ff, e: 0x6a4fb0, O: 0x8a8a98 },
+    shade: { k: 0x154f61, K: 0x1f6e86, E: 0xffe14a, e: 0xb08a10, O: 0x8a8a98 },
     husk: { k: 0x221818, K: 0x4a3030, E: 0xffa040, e: 0xa04a18, O: 0x8a8a98 },
   };
   for (const kind of ['wraith', 'shade', 'husk'] as const) {

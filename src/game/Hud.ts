@@ -106,9 +106,10 @@ export class RunHud {
     this.toastTime = 2;
   }
 
-  update(dt: number, width: number, d: { left: number; gold: number; level: number; xp: number; need: number; dust: number }): void {
+  update(dt: number, width: number, d: { left: number; gold: number; level: number; xp: number; need: number; dust: number; untimed?: boolean }): void {
     const secs = Math.max(0, Math.ceil(d.left));
-    this.timer.setPosition(width / 2, 14).setText(`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
+    // Stage 2 has no clock; the quest box takes over.
+    this.timer.setPosition(width / 2, 14).setText(d.untimed ? '' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
     this.timer.setColor(d.left <= 3 ? '#ff7a7a' : '#f2d7a6');
     this.info.setPosition(width / 2, 50).setText(`souls ${d.gold}   level ${d.level}` + (d.dust > 0 ? `   dust +${Math.round(d.dust * 100)}%` : ''));
     const w = 160;

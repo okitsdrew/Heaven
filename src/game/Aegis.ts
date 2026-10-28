@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { cfg } from '../config';
 import { Input } from '../input';
 import { toScreen } from '../iso';
-import { actionFor, canUse } from '../skills';
+import { actionFor, bubbleShield, canUse } from '../skills';
 import { Player } from './Player';
 
 const screen = { x: 0, y: 0 };
@@ -35,6 +35,8 @@ export class Aegis {
   // The hit has been taken: the shield is spent.
   consume(): void {
     this.timeLeft = 0;
+    // A popped Bubble Shield takes a long time to come back.
+    if (bubbleShield()) this.cooldown = cfg.aegis.cooldown * cfg.upgrade.bubbleCooldownMult;
   }
 
   update(dt: number, player: Player, input: Input, dead: boolean): void {
@@ -42,14 +44,22 @@ export class Aegis {
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.timeLeft = Math.max(0, this.timeLeft - dt);
     const key = actionFor('aegis');
-    if (!dead && canUse('aegis') && key && input.justPressed(key) && this.cooldown <= 0 && this.timeLeft <= 0) {
+    const ready = !dead && canUse('aegis') && key;
+    if (bubbleShield()) {
+      // Always up while equipped and off cooldown; it never times out.
+      if (!ready) this.timeLeft = 0;
+      else if (this.cooldown <= 0 && this.timeLeft <= 0) this.timeLeft = 1e9;
+    } else if (this.timeLeft > cfg.aegis.duration) {
+      // Bubble Shield was refunded while it was up.
+      this.timeLeft = 0;
+    } else if (ready && input.justPressed(key) && this.cooldown <= 0 && this.timeLeft <= 0) {
       this.cooldown = cfg.aegis.cooldown;
       this.timeLeft = cfg.aegis.duration;
     }
     this.g.clear();
     this.halo.clear();
-    // The shield is out only while the skill is equipped and ready or raised.
-    if (dead || !canUse('aegis') || !key || (this.cooldown > 0 && this.timeLeft <= 0)) return;
+    // The shield stays out while the skill is equipped, cooldown or not.
+    if (dead || !canUse('aegis') || !key) return;
     toScreen(player.x, player.y, screen);
     const px = cfg.render.pixelScale;
     const a = this.time * cfg.aegis.orbitSpeed;
@@ -66,7 +76,7 @@ export class Aegis {
         this.halo.fillStyle(c, al * pulse * flicker).fillCircle(x, y, r * px * 0.6);
       }
     }
-    this.drawShield(x, y, px * 0.65);
+    this.drawShield(x, y, px * cfg.aegis.shieldScale);
   }
 
   // The player lit white for the instant the hit lands.

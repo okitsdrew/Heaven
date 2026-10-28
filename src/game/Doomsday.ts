@@ -3,7 +3,7 @@ import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { Input } from '../input';
 import { ellipseHalfSize, toScreen, Vec2 } from '../iso';
-import { actionFor, canUse, slotActions } from '../skills';
+import { actionFor, canUse, skillDamage, slotActions } from '../skills';
 import { Hittable } from './Arrows';
 import { Fx } from './Fx';
 import { Player } from './Player';
@@ -119,8 +119,11 @@ export class Doomsday {
     } else if (!this.casting) {
       const key = actionFor('doomsday');
       if (key && input.justPressed(key)) {
-        this.aiming = !this.aiming;
-        if (this.aiming) this.onAimStart();
+        if (this.aiming) this.aiming = false;
+        else if (this.cooldown <= 0) {
+          this.aiming = true;
+          this.onAimStart();
+        }
       }
       for (const other of [...slotActions, 'abilityF'] as const) if (other !== key && input.justPressed(other)) this.aiming = false;
       // A click while it is cooling down does nothing and keeps it aimed.
@@ -186,7 +189,7 @@ export class Doomsday {
 
   // The explosion proper: damage inside the circle, knockback and stun in the wider ring, then the show.
   private detonate(hand: Vec2): void {
-    this.blastAt(this.origin.x, this.origin.y, hand, cfg.doomsday.radius, cfg.doomsday.damage, FIRE);
+    this.blastAt(this.origin.x, this.origin.y, hand, cfg.doomsday.radius, cfg.doomsday.damage * skillDamage('doomsday'), FIRE);
   }
 
   // Any blast of this kind: damage inside the radius, knockback and stun in the wider ring.

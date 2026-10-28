@@ -62,6 +62,8 @@ export class PlayerView {
   sizeMult = 1;
   flicker = 0;
   rise = 1;
+  // Lifts him off the ground (sprite pixels) while his shadow stays put.
+  hover = 0;
   // The hub reaches out with empty hands, slowly: no bow, and a longer raise.
   hideBow = false;
   // The player's own look (black helm, white tabard, cloak). The boss keeps the shade's original body.
@@ -298,7 +300,7 @@ export class PlayerView {
 
     this.body
       .setTexture(this.skin(moving))
-      .setPosition(screen.x, screen.y - bob)
+      .setPosition(screen.x, screen.y - bob - this.hover * px)
       .setScale(px)
       .setFlipX(facingLeft)
       .setDepth(screen.y)
@@ -330,7 +332,7 @@ export class PlayerView {
     const kickT = f.bowKickTime > 0 ? this.kick / f.bowKickTime : 0;
 
     const cx = screen.x;
-    const cy = screen.y - bob + riseDrop;
+    const cy = screen.y - bob + riseDrop - this.hover * px;
     this.updateCloak(dt, cx, cy, px);
     const bowSide = facingLeft ? -1 : 1;
     const dirX = Math.cos(aimAngle);

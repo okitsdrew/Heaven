@@ -33,8 +33,7 @@ function hintLine(scene: Phaser.Scene, fx: Fx, text: string, o: HintOptions): vo
       .text(x, y, c, { fontFamily: 'Georgia, serif', fontSize: `${size}px`, fontStyle: 'italic', color: '#e8f0ff' })
       .setOrigin(0, 0.5)
       .setDepth(o.depth)
-      .setAlpha(0)
-      .setShadow(0, 0, '#a8c4ff', 12, false, true);
+      .setAlpha(0);
     if (o.screenSpace) t.setScrollFactor(0);
     chars.push(t);
     scene.tweens.add({ targets: t, alpha: 0.92, duration: 700, delay: i * 18 });

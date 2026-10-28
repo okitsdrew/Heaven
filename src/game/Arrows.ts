@@ -4,12 +4,12 @@ import { cfg } from '../config';
 import { toScreen, toWorld } from '../iso';
 import { Pool } from '../util/pool';
 import { SpatialHash } from '../util/spatialHash';
-import { stats } from '../skills';
+import { stats, trailColors } from '../skills';
 import { Fx } from './Fx';
 import type { Obstacle } from './Chunks';
 
 export interface Hittable {
-  kind: 'dummy' | 'enemy' | 'boss';
+  kind: 'dummy' | 'enemy' | 'boss' | 'flower';
   id: number;
   x: number;
   y: number;
@@ -35,6 +35,8 @@ interface Arrow {
   sprite: Phaser.GameObjects.Image;
   glow: Phaser.GameObjects.Image;
   trail: number;
+  // How many trail pixels this arrow has shed, to pick the next colour in the chain.
+  chain: number;
 }
 
 const screen = { x: 0, y: 0 };
@@ -71,6 +73,7 @@ export class Arrows {
         .setBlendMode(Phaser.BlendModes.ADD)
         .setVisible(false),
       trail: 0,
+      chain: 0,
     }));
   }
 
@@ -105,6 +108,7 @@ export class Arrows {
       a.hitRadius = b.arrowHitRadius * a.size;
       a.hits.clear();
       a.trail = 0;
+      a.chain = 0;
       a.sprite.setVisible(true).setAlpha(1);
       a.glow.setVisible(true);
     }
@@ -147,6 +151,8 @@ export class Arrows {
       for (const { t, target } of this.contacts) {
         a.hits.add(target.id);
         this.onHit(target, a.damage, a.x + a.dirX * t, a.y + a.dirY * t);
+        // The Festering Lotus is shot without stopping or using up the arrow's pierce.
+        if (target.kind === 'flower') continue;
         if (a.pierce > 0) {
           a.pierce--;
         } else {
@@ -173,6 +179,7 @@ export class Arrows {
 
   render(): void {
     const height = cfg.render.arrowHeight;
+    const slots = trailColors();
     for (const a of this.pool.items) {
       if (!a.active) continue;
       toScreen(a.x, a.y, screen);
@@ -200,7 +207,7 @@ export class Arrows {
           from: 0.3,
           to: 0.05,
           alpha: 0.8,
-          tint: Math.random() < 0.5 ? 0x7a2fd0 : 0x3a0f6a,
+          tint: chainColor(a.chain++ % 4, slots),
           vx: (Math.random() - 0.5) * 20,
           vy: (Math.random() - 0.5) * 20,
           depth: screen.y - 0.2,
@@ -218,6 +225,11 @@ export class Arrows {
     a.sprite.setVisible(false);
     a.glow.setVisible(false);
   }
+}
+
+// The trail repeats default, Q, E, R: a slot with an on-hit effect lends its colour, the rest stay default.
+function chainColor(i: number, slots: (number | null)[]): number {
+  return (i > 0 ? slots[i - 1] : null) ?? 0x7a2fd0;
 }
 
 // Distance along the ray (within [0, len]) where it first touches the circle, or -1.

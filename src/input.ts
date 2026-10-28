@@ -13,6 +13,7 @@ export type Action =
   | 'abilityR'
   | 'abilityF'
   | 'abilityG'
+  | 'abilityH'
   | 'devMenu';
 
 export interface InputSource {
@@ -41,6 +42,7 @@ const keyBindings: Record<string, Action> = {
   KeyR: 'abilityR',
   KeyF: 'abilityF',
   KeyG: 'abilityG',
+  KeyH: 'abilityH',
   Backquote: 'devMenu',
 };
 
@@ -83,7 +85,10 @@ export class KeyboardMouseSource implements InputSource {
     });
     this.listen(window, 'mousemove', (e: MouseEvent) => {
       const rect = this.canvas.getBoundingClientRect();
-      this.pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      this.pointer = {
+        x: (e.clientX - rect.left) * (this.canvas.width / rect.width),
+        y: (e.clientY - rect.top) * (this.canvas.height / rect.height),
+      };
     });
     this.listen(canvas, 'contextmenu', (e: Event) => e.preventDefault());
     this.listen(window, 'blur', () => this.held.clear());
