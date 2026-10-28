@@ -751,7 +751,8 @@ export class Screens {
   }
 }
 
-const SKILL_LAYOUT_KEY = 'heaven.skillLayout.v1';
+// Bumped when the default skill positions are the ones to see, so old dev-menu drags are dropped (v1 held positions that overlapped).
+const SKILL_LAYOUT_KEY = 'heaven.skillLayout.v2';
 
 function loadSkillLayout(): Record<string, { x: number; y: number }> {
   try {
