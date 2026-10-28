@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { sfx } from '../audio';
 import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { toScreen, toWorld, Vec2 } from '../iso';
@@ -100,6 +101,7 @@ export class Stage2 {
     if (profile.quest === 'find') this.setQuest('feed');
     profile.eyeFed += 1;
     persist();
+    sfx.play('soulFeed');
     // Blue souls stream from the kill to the eye.
     toScreen(x, y, screen);
     const sx = screen.x;
@@ -130,6 +132,7 @@ export class Stage2 {
     if (profile.quest === 'feed' && profile.eyeFed >= s.eyeSouls) this.setQuest('follow');
     if (profile.quest === 'follow' && !this.entered && Math.hypot(player.x - this.cave.x, player.y - this.cave.y) <= s.caveRadius) {
       this.entered = true;
+      sfx.play('caveEnter');
       this.onEnterCave();
     }
 
@@ -303,9 +306,10 @@ export class Stage2 {
     const len = Math.hypot(screen.x, screen.y) || 1;
     const ux = screen.x / len;
     const uy = screen.y / len;
-    const R = s.arrowRadius;
-    const cx = cam.width / 2 + ux * R;
-    const cy = cam.height / 2 + uy * R;
+    // Pinned to the edge of the screen along the line from the centre toward the target.
+    const reach = Math.min((cam.width / 2 - s.arrowMargin - 10) / Math.max(Math.abs(ux), 1e-3), (cam.height / 2 - s.arrowMargin) / Math.max(Math.abs(uy), 1e-3));
+    const cx = cam.width / 2 + ux * reach;
+    const cy = cam.height / 2 + uy * reach;
     const px = -uy;
     const py = ux;
     const tip = { x: cx + ux * 26, y: cy + uy * 26 };

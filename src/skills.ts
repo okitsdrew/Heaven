@@ -62,6 +62,12 @@ export const nodes: SkillNode[] = [
   { id: 'doubleGold', name: 'Soul Battery', desc: () => `x${1 + cfg.upgrade.doubleGold} souls per kill, then x${1 + cfg.upgrade.doubleGold + cfg.upgrade.quadGold}`, parents: ['goldValue'], currency: 'gold', levels: 2, base: 500, costs: [500, 1000], effect: null, x: 520, y: 80 },
   { id: 'timeWarp', name: 'Time Warp', desc: () => `Battles start ${cfg.upgrade.warpTime} seconds in`, parents: ['moreTime', 'doubleGold'], requires: () => level('doubleGold') >= 2 && profile.bossIntroSeen, currency: 'gold', levels: 1, base: 5000, costs: [5000], effect: null, x: 700, y: 0 },
 
+  // Unlocked by stage 2: four more upgrades on the main tree. They fade in together on the first visit to the tree after it.
+  { id: 'backshots', name: 'Backshots', desc: () => `Fires a second bow behind you with ${pct(cfg.bow.backshotsMult)} of the shots and pierce`, parents: ['dustDevil'], requires: () => profile.stage >= 2, currency: 'gold', levels: 1, base: 20000, costs: [20000], effect: null, x: 0, y: -570 },
+  { id: 'mrKnowItAll', name: 'Mr. Know it All', desc: () => 'Every skill enhancement works, whether or not its skill is equipped', parents: ['moreMoreBullets'], requires: () => profile.stage >= 2, currency: 'gold', levels: 1, base: 50000, costs: [50000], effect: null, x: 0, y: 440 },
+  { id: 'swiftKick', name: 'Swift Kick', desc: () => `Teleport deals ${cfg.upgrade.swiftKickDamage} damage to enemies you pass through`, parents: ['timeWarp'], requires: () => profile.stage >= 2, currency: 'gold', levels: 1, base: 10000, costs: [10000], effect: null, x: 880, y: 0 },
+  { id: 'zeroGravity', name: 'Zero Gravity', desc: (p) => `+${pct(p)} arrow range`, parents: ['moreDamage'], requires: () => profile.stage >= 2, currency: 'gold', levels: 1, base: 10000, costs: [10000], effect: 'zeroGravity', x: -720, y: 0 },
+
   // The book: Teleport, with the four equippable skills in a row beneath it.
   { id: 'teleport', name: 'Teleport', desc: () => 'Unlocks teleport (right click)', parents: [], currency: 'sp', levels: 1, base: 1, effect: null, x: 0, y: 0, tree: 'book' },
   {
@@ -118,6 +124,9 @@ export const nodes: SkillNode[] = [
 ];
 
 export const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+// The stage 2 upgrades, which fade onto the tree together.
+export const stage2Nodes = ['backshots', 'mrKnowItAll', 'swiftKick', 'zeroGravity'];
 
 export type SkillId = 'fireFairy' | 'iceFairy' | 'swordSlash' | 'doomsday' | 'aegis' | 'lotus';
 export const skillIds: SkillId[] = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'aegis', 'lotus'];
@@ -276,13 +285,18 @@ export function equipped(id: SkillId): boolean {
   return actionFor(id) !== null;
 }
 
+// An enhancement is live while its skill is equipped, or always once Mr. Know it All is owned.
+function enhanced(id: SkillId): boolean {
+  return equipped(id) || level('mrKnowItAll') >= 1;
+}
+
 // Panic Button doubles the Aegis counter-blast's damage and range.
 export function aegisBoost(): number {
-  return level('panicButton') >= 1 && equipped('aegis') ? cfg.upgrade.panicMult : 1;
+  return level('panicButton') >= 1 && enhanced('aegis') ? cfg.upgrade.panicMult : 1;
 }
 
 export function powerhouse(): boolean {
-  return level('powerhouse') >= 1 && equipped('swordSlash');
+  return level('powerhouse') >= 1 && enhanced('swordSlash');
 }
 
 // The colour each of Q, E and R adds to the arrow trail: that slot's on-hit effect, or null when it has none.
@@ -302,14 +316,14 @@ export function bubbleShield(): boolean {
 
 // Which on-hit effects arrows carry: the node is owned and its skill is equipped.
 export function arrowEffects(): { burn: boolean; cold: boolean; poison: boolean } {
-  const on = (node: string, skill: SkillId) => level(node) >= 1 && equipped(skill);
+  const on = (node: string, skill: SkillId) => level(node) >= 1 && enhanced(skill);
   return { burn: on('fireFairyBurn', 'fireFairy'), cold: on('iceFairyCold', 'iceFairy'), poison: on('lotusPoison', 'lotus') };
 }
 
 export function onKillBuffs(): void {
   if (level('moreTime') >= 1) runBuffs.bonusTime += cfg.upgrade.killTime;
   if (level('dustDevil') < 1) return;
-  const eff = level('efficientDust') >= 1 && equipped('doomsday') ? cfg.upgrade.dustEfficiency : 1;
+  const eff = level('efficientDust') >= 1 && enhanced('doomsday') ? cfg.upgrade.dustEfficiency : 1;
   runBuffs.dust = Math.min(cfg.upgrade.dustCap * eff, runBuffs.dust + cfg.upgrade.dustPerKill * eff);
   runBuffs.hold = cfg.upgrade.dustHold;
   runBuffs.left = cfg.upgrade.dustDuration;
@@ -348,7 +362,7 @@ export const stats = {
   pickupRadius: () => cfg.gold.pickupRadius * (1 + sum(['pickupRadius'])),
   arrowSize: () => 1 + sum(['biggerArrows']),
   arrows: () => Math.max(1, Math.round(cfg.bow.arrowsPerShot + sum(['moreBullets', 'moreMoreBullets']))),
-  range: () => cfg.bow.arrowRange * (1 + sum(['range', 'biggerArrows'])),
+  range: () => cfg.bow.arrowRange * (1 + sum(['range', 'biggerArrows', 'zeroGravity'])),
   goldValue: () => Math.max(0, cfg.gold.perKill + sum(['goldValue'])) * (1 + (level('doubleGold') >= 1 ? cfg.upgrade.doubleGold : 0) + (level('doubleGold') >= 2 ? cfg.upgrade.quadGold : 0)),
   moveSpeed: () => cfg.player.moveSpeed * (1 + sum(['moveSpeed']) + dust()),
   runTime: () => (cfg.run.lengthOverride > 0 ? cfg.run.lengthOverride : cfg.run.baseTime + sum(['time']) + runBuffs.bonusTime),

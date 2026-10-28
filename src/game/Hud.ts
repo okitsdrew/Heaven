@@ -1,7 +1,13 @@
 import Phaser from 'phaser';
+import { skillIcon, skillIconKey } from '../art/skillIcons';
+import { sfx } from '../audio';
+import { skillIds } from '../skills';
+import { CRAYON_FONT } from '../hub/Crayon';
 
 export interface HudSlot {
   key: string;
+  // Skill id, for its icon.
+  id?: string;
   color: number;
   enabled: boolean;
   remaining: number;
@@ -9,45 +15,52 @@ export interface HudSlot {
   active?: boolean;
 }
 
-const SIZE = 44;
-const GAP = 10;
+const SIZE = 56;
+const GAP = 12;
+const MARGIN = 24;
 
-// Screen-fixed cooldown boxes along the bottom edge.
+// Screen-fixed skill boxes along the bottom-left: the icon in a box, its key underneath.
 export class Hud {
   private gfx: Phaser.GameObjects.Graphics;
   private labels: Phaser.GameObjects.Text[] = [];
   private timers: Phaser.GameObjects.Text[] = [];
+  private icons: Phaser.GameObjects.Image[] = [];
 
   constructor(scene: Phaser.Scene, slots: number) {
+    for (const id of skillIds) {
+      const canvas = skillIcon(id);
+      if (canvas && !scene.textures.exists(skillIconKey(id))) scene.textures.addCanvas(skillIconKey(id), canvas);
+    }
     this.gfx = scene.add.graphics().setScrollFactor(0).setDepth(5e6);
     for (let i = 0; i < slots; i++) {
+      this.icons.push(scene.add.image(0, 0, '__DEFAULT').setScrollFactor(0).setDepth(5e6 + 1).setVisible(false));
       this.labels.push(
         scene.add
-          .text(0, 0, '', { fontFamily: 'monospace', fontSize: '18px', fontStyle: 'bold', color: '#e9e3f5' })
+          .text(0, 0, '', { fontFamily: 'monospace', fontSize: '18px', fontStyle: 'bold', color: '#e9e3f5', stroke: '#120f18', strokeThickness: 3 })
           .setOrigin(0.5)
           .setScrollFactor(0)
           .setDepth(5e6 + 1),
       );
       this.timers.push(
         scene.add
-          .text(0, 0, '', { fontFamily: 'monospace', fontSize: '13px', color: '#f2d7a6', stroke: '#120f18', strokeThickness: 3 })
+          .text(0, 0, '', { fontFamily: 'monospace', fontSize: '18px', fontStyle: 'bold', color: '#ffffff', stroke: '#120f18', strokeThickness: 4 })
           .setOrigin(0.5)
           .setScrollFactor(0)
-          .setDepth(5e6 + 1),
+          .setDepth(5e6 + 2),
       );
     }
   }
 
-  update(width: number, height: number, slots: HudSlot[]): void {
+  update(_width: number, height: number, slots: HudSlot[]): void {
     const g = this.gfx;
     g.clear();
     const shown = slots.filter((s) => s.enabled);
-    const total = shown.length * SIZE + Math.max(0, shown.length - 1) * GAP;
-    let x = (width - total) / 2;
-    const y = height - SIZE - 36;
+    let x = MARGIN;
+    const y = height - SIZE - MARGIN - 22;
 
     this.labels.forEach((l) => l.setVisible(false));
     this.timers.forEach((t) => t.setVisible(false));
+    this.icons.forEach((im) => im.setVisible(false));
     shown.forEach((s, i) => {
       const ready = s.remaining <= 0.001;
       g.fillStyle(0x14111c, 0.85);
@@ -62,10 +75,14 @@ export class Hud {
       g.lineStyle(s.active ? 4 : 2, s.active ? 0xffffff : s.color, ready || s.active ? 1 : 0.4);
       g.strokeRect(x, y, SIZE, SIZE);
 
-      this.labels[i].setVisible(true).setText(s.key).setPosition(x + SIZE / 2, y + SIZE / 2).setAlpha(ready ? 1 : 0.5);
+      const key = s.id ? skillIconKey(s.id) : null;
+      if (key && this.icons[i].scene.textures.exists(key)) {
+        this.icons[i].setTexture(key).setVisible(true).setPosition(x + SIZE / 2, y + SIZE / 2).setDisplaySize(SIZE - 8, SIZE - 8).setAlpha(ready ? 1 : 0.4);
+      }
+      this.labels[i].setVisible(true).setText(s.key).setPosition(x + SIZE / 2, y + SIZE + 12).setAlpha(ready ? 1 : 0.6);
       if (!ready) {
         const text = s.remaining >= 10 ? String(Math.ceil(s.remaining)) : s.remaining.toFixed(1);
-        this.timers[i].setVisible(true).setText(text).setPosition(x + SIZE / 2, y + SIZE + 10);
+        this.timers[i].setVisible(true).setText(text).setPosition(x + SIZE / 2, y + SIZE / 2);
       }
       x += SIZE + GAP;
     });
@@ -76,6 +93,7 @@ export class Hud {
 export class RunHud {
   private timer: Phaser.GameObjects.Text;
   private info: Phaser.GameObjects.Text;
+  private extra: Phaser.GameObjects.Text;
   private bar: Phaser.GameObjects.Graphics;
   private toast: Phaser.GameObjects.Text;
   private toastTime = 0;
@@ -87,11 +105,9 @@ export class RunHud {
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(5e6);
-    this.info = scene.add
-      .text(0, 50, '', { ...style, fontSize: '15px', color: '#e9e3f5' })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(5e6);
+    const hand = { fontFamily: CRAYON_FONT, stroke: '#07060a', strokeThickness: 5, fontSize: '30px', color: '#ffffff' };
+    this.info = scene.add.text(16, 8, '', { ...hand, lineSpacing: 2 }).setScrollFactor(0).setDepth(5e6);
+    this.extra = scene.add.text(16, 0, '', { ...style, fontSize: '13px', color: '#e9e3f5' }).setScrollFactor(0).setDepth(5e6);
     this.bar = scene.add.graphics().setScrollFactor(0).setDepth(5e6);
     this.toast = scene.add
       .text(0, 120, '', { ...style, fontSize: '22px', fontStyle: 'bold', color: '#d9b8ff' })
@@ -101,7 +117,8 @@ export class RunHud {
       .setVisible(false);
   }
 
-  announce(text: string): void {
+  announce(text: string, chime = true): void {
+    if (chime) sfx.play('toast');
     this.toast.setText(text).setVisible(true).setAlpha(1);
     this.toastTime = 2;
   }
@@ -111,12 +128,15 @@ export class RunHud {
     // Stage 2 has no clock; the quest box takes over.
     this.timer.setPosition(width / 2, 14).setText(d.untimed ? '' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`);
     this.timer.setColor(d.left <= 3 ? '#ff7a7a' : '#f2d7a6');
-    this.info.setPosition(width / 2, 50).setText(`souls ${d.gold}   level ${d.level}` + (d.dust > 0 ? `   dust +${Math.round(d.dust * 100)}%` : ''));
-    const w = 160;
-    const x = width / 2 - w / 2;
+    this.info.setText(`Souls: ${d.gold}\nlvl: ${d.level}`);
+    this.extra.setText(d.dust > 0 ? `dust +${Math.round(d.dust * 100)}%` : '').setY(this.info.y + this.info.height + 24);
+    const w = 130;
+    const x = 18;
+    const y = this.info.y + this.info.height + 2;
     this.bar.clear();
-    this.bar.fillStyle(0x14111c, 0.85).fillRect(x, 74, w, 6);
-    this.bar.fillStyle(0xb070ff, 1).fillRect(x, 74, w * Math.min(1, d.xp / d.need), 6);
+    this.bar.fillStyle(0x07060a, 0.85).fillRect(x - 2, y - 2, w + 4, 18);
+    this.bar.fillStyle(0xff2bd6, 1).fillRect(x, y, w * Math.min(1, d.xp / d.need), 14);
+    this.bar.lineStyle(2, 0xffffff, 1).strokeRect(x - 2, y - 2, w + 4, 18);
     this.toastTime -= dt;
     this.toast.setPosition(width / 2, 120).setAlpha(Math.max(0, Math.min(1, this.toastTime)));
     if (this.toastTime <= 0) this.toast.setVisible(false);

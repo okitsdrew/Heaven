@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { makePlaceholderArt, Tex } from '../art/placeholders';
+import { ambience, sfx } from '../audio';
 import { cfg } from '../config';
 import { DevMenu } from '../dev/DevMenu';
 import { Fx } from '../game/Fx';
@@ -24,7 +25,7 @@ import {
   WALL,
 } from '../hub/draw';
 import { Eyes } from '../hub/Eyes';
-import { book, brazier, debris, drawFlame, severedHead, throne, torch } from '../hub/props';
+import { book, brazier, debris, drawFlame, headWire, severedHead, severedHeadEye, throne, torch } from '../hub/props';
 import { Input, KeyboardMouseSource } from '../input';
 import { toScreen, toWorld } from '../iso';
 import { persistNow, profile } from '../save';
@@ -85,6 +86,8 @@ export class HubScene extends Phaser.Scene {
   private headGfx!: G;
   private headGlow!: Phaser.GameObjects.Image;
   private headOutline!: Phaser.GameObjects.RenderTexture;
+  private headEye!: G;
+  private headEyeGlow!: Phaser.GameObjects.Image;
   private voidGfx!: G;
   private voidK = 0;
   private floatPt = { x: 0, y: 0 };
@@ -184,10 +187,20 @@ export class HubScene extends Phaser.Scene {
     this.view = new PlayerView(this, this.player, this.fx);
     this.view.hero = true;
     this.view.hideBow = true;
+    this.view.stepSound = 'stone';
     // Dashes and teleports look the same here as in a run.
-    this.player.onDashStart = () => this.view.onDashStart();
-    this.player.onTeleport = (x0, y0, x1, y1, t) => this.view.onTeleport(x0, y0, x1, y1, t);
-    this.player.onTeleportArrive = (x, y) => this.view.onTeleportArrive(x, y);
+    this.player.onDashStart = () => {
+      this.view.onDashStart();
+      sfx.play('dash');
+    };
+    this.player.onTeleport = (x0, y0, x1, y1, t) => {
+      this.view.onTeleport(x0, y0, x1, y1, t);
+      sfx.play('teleport');
+    };
+    this.player.onTeleportArrive = (x, y) => {
+      this.view.onTeleportArrive(x, y);
+      sfx.play('teleportArrive');
+    };
     this.dark = new Darkness(this, DEPTH_DARK);
 
     this.rooms = { hall: this.buildHall(), throne: this.buildThrone() };
@@ -211,14 +224,16 @@ export class HubScene extends Phaser.Scene {
       const waiting = this.skipWaiters.splice(0);
       for (const w of waiting) w();
     });
+    ambience.set('hub');
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      ambience.set('none');
       this.input2.destroy();
       this.tweens.killAll();
     });
 
     if (this.bookIntro || this.skillsIntro || this.stage2Intro) {
       this.showRoom('throne');
-      this.setFeet(930, 384);
+      this.setFeet(930, 450);
       this.player.aimX = 0;
       this.player.aimY = -1;
       this.ambient = this.rooms.throne.ambient();
@@ -235,7 +250,7 @@ export class HubScene extends Phaser.Scene {
         persistNow();
       }
       this.showRoom('throne');
-      this.setFeet(930, 384);
+      this.setFeet(930, 450);
       this.player.aimX = 0;
       this.player.aimY = -1;
       if (profile.introDone) this.openEyesNow();
@@ -370,16 +385,24 @@ export class HubScene extends Phaser.Scene {
     this.ellipse(room, 1010, 560, 64, 26);
 
     // The severed head, top right, glowing a putrid green.
-    this.headGfx = this.gfx(room, 930, 258, 258);
+    this.headGfx = this.gfx(room, 930, 324, 324);
     severedHead(this.headGfx, r);
-    this.ellipse(room, 930, 252, 64, 20);
-    this.headGlow = this.add.image(930, 208, Tex.glow).setTint(0x9cff30).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_DARK + 1);
+    this.ellipse(room, 930, 318, 64, 20);
+    this.headGlow = this.add.image(930, 274, Tex.glow).setTint(0x9cff30).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_DARK + 1);
     room.objs.push(this.headGlow);
     this.headOutline = this.outline(this.headGfx, 280, 260, 140, 200).setDepth(DEPTH_DARK + 1.7);
     room.objs.push(this.headOutline);
+    // Stage 2: his eye turns red and flickers. It is the head's eye again, drawn over it (and flipped like the head).
+    this.headEye = this.gfx(room, 930, 324, 324.2);
+    this.headEye.setScale(-1, 1);
+    severedHeadEye(this.headEye, 0xff2020);
+    this.headEyeGlow = this.add.image(890, 253, Tex.glow).setTint(0xff2020).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH_DARK + 1).setScale(0.55).setAlpha(0);
+    room.objs.push(this.headEyeGlow);
+    // His neck stump is plugged into a thick, slack cable that lies in a loop on the floor and runs off behind the throne.
+    headWire(this.gfx(room, 0, 0, 340), this.gfx(room, 0, 0, 5));
     this.interacts.push({
       x: 930,
-      y: 278,
+      y: 344,
       r: 105,
       label: 'Delve into the mind',
       room: 'throne',
@@ -394,10 +417,10 @@ export class HubScene extends Phaser.Scene {
     });
 
     // The barricaded door in the east wall.
-    const bar = this.gfx(room, 1096, 408, 408);
+    const bar = this.gfx(room, 1096, 474, 474);
     bar.setScale(0.8);
     barricade(bar, r);
-    this.interacts.push({ x: 1040, y: 360, r: 80, label: 'Push the door', room: 'throne', act: () => this.toast('Barred from the other side. Something heavy leans against it.') });
+    this.interacts.push({ x: 1040, y: 426, r: 80, label: 'Push the door', room: 'throne', act: () => this.toast('Barred from the other side. Something heavy leans against it.') });
 
     // The floating book in the west.
     this.bookRings = this.gfx(room, 0, 0, 380);
@@ -603,6 +626,7 @@ export class HubScene extends Phaser.Scene {
     if (this.busy) return;
     this.busy = true;
     this.controlled = false;
+    sfx.play('door');
     await this.tw({ targets: this.fade, alpha: 1, duration: 350 });
     this.showRoom(to);
     if (to === 'throne') this.setFeet(560, H - 86);
@@ -631,11 +655,12 @@ export class HubScene extends Phaser.Scene {
       return;
     }
     const e = cfg.entry;
+    sfx.play('battleDive');
     const iris = this.add.graphics().setDepth(2e6 - 1);
     this.iris = iris;
     this.follow = false;
     this.camRate = 7;
-    this.camTarget = { x: 930, y: 250, zoom: this.cam.zoom * e.swirlZoom };
+    this.camTarget = { x: 930, y: 316, zoom: this.cam.zoom * e.swirlZoom };
     const big = 3000;
     const cam = this.cameras.main;
     const fit = Math.min(cam.width / W, cam.height / H);
@@ -776,6 +801,8 @@ export class HubScene extends Phaser.Scene {
     if (this.rumbleTimer <= 0 && cfg.hub.shakeInterval > 0) {
       this.rumbleTimer = cfg.hub.shakeInterval * (0.9 + Math.random() * 0.2);
       this.bump(cfg.hub.shakeStrength);
+      // The occasional loud crash from upstairs lands with the shake, and scales with how hard it shakes.
+      sfx.play('warCrash', { vol: Math.min(1.3, 0.35 + cfg.hub.shakeStrength / 4), pan: (Math.random() - 0.5) * 0.8 });
       for (let i = 0; i < 14; i++) {
         this.fx.particle({
           texture: Tex.smoke,
@@ -817,6 +844,7 @@ export class HubScene extends Phaser.Scene {
         this.fx.particle({ x: f.x + (Math.random() - 0.5) * 10, y: f.y - 30 * f.size, life: 1.1, from: 0.1, to: 0.02, tint: 0xffb040, vx: (Math.random() - 0.5) * 14, vy: -40 - Math.random() * 30, depth: DEPTH_DARK + 1 });
       }
     }
+    ambience.update(dt, this.flames.filter((f) => f.room === this.room).length);
     if (this.room !== 'throne') return;
 
     // The book's heartbeat: a double thump, each one rippling out across the floor.
@@ -824,8 +852,14 @@ export class HubScene extends Phaser.Scene {
     const prev = this.beatPhase - dt / (cfg.hub.heartbeatPeriod / this.bookPower);
     if (this.beatPhase >= 1) this.beatPhase -= 1;
     const cross = (a: number) => (prev < a && this.beatPhase >= a) || (prev > this.beatPhase && (a > prev || a <= this.beatPhase));
-    if (cross(0)) this.rings.push({ age: 0, power: 1 });
-    if (cross(0.24)) this.rings.push({ age: 0, power: 0.65 });
+    if (cross(0)) {
+      this.rings.push({ age: 0, power: 1 });
+      sfx.play('bookBeat', { vol: Math.min(1.4, this.bookPower) });
+    }
+    if (cross(0.24)) {
+      this.rings.push({ age: 0, power: 0.65 });
+      sfx.play('bookBeat', { vol: 0.6 * Math.min(1.4, this.bookPower), pitch: 1.12 });
+    }
     const ph = this.beatPhase;
     const pulse = Math.exp(-((ph / 0.06) ** 2)) + 0.75 * Math.exp(-(((ph - 0.24) / 0.07) ** 2));
     const bob = Math.sin(t * 1.6) * 5;
@@ -839,16 +873,17 @@ export class HubScene extends Phaser.Scene {
 
     // The severed head pulses a sick green.
     const sick = 0.55 + 0.25 * Math.sin(t * 2.3) + 0.1 * Math.sin(t * 7.1);
-    // Stage 2: the glow turns a large, chaotic, deep red.
+    // Stage 2: his eye turns red, flickering very lightly.
     const red = profile.stage >= 2 ? Math.max(this.redGlow, this.stage2Intro ? 0 : 1) : 0;
-    const chaos = Math.sin(t * 5.3) * Math.sin(t * 2.1 + 1) + 0.6 * Math.sin(t * 11.7) + 0.3 * Math.sin(t * 23);
-    this.headGlow
-      .setTint(red > 0 ? 0xc0081c : 0x9cff30)
-      .setScale(3.8 + 0.4 * Math.sin(t * 1.4) + red * (3.4 + 0.9 * chaos))
-      .setAlpha(0.22 * sick + red * (0.45 + 0.25 * chaos));
+    this.headGlow.setTint(0x9cff30).setScale(3.8 + 0.4 * Math.sin(t * 1.4)).setAlpha(0.22 * sick);
     // Once he has been told where to go, Anathema flashes a white outline until he goes in.
     const lit = this.headLit && !profile.visitedHead;
-    this.headGfx.setAngle(Math.sin(t * 0.7) * 0.8);
+    // Resting at a slight angle, with the faintest sway.
+    this.headGfx.setAngle(cfg.hub.headTilt + Math.sin(t * 0.7) * 0.8);
+    const flicker = 0.9 + 0.1 * Math.sin(t * 5.3) + 0.04 * Math.sin(t * 13);
+    this.headEye.setPosition(this.headGfx.x, this.headGfx.y).setAngle(this.headGfx.angle).setAlpha(red * flicker);
+    const tilt = (this.headGfx.angle * Math.PI) / 180;
+    this.headEyeGlow.setPosition(this.headGfx.x - 40 * Math.cos(tilt) + 71 * Math.sin(tilt), this.headGfx.y - 40 * Math.sin(tilt) - 71 * Math.cos(tilt)).setAlpha(0.3 * red * flicker);
     this.headOutline.setPosition(this.headGfx.x, this.headGfx.y).setAngle(this.headGfx.angle).setAlpha(lit ? flash : 0);
     this.drawVoid(t);
 
@@ -974,8 +1009,8 @@ export class HubScene extends Phaser.Scene {
     if (this.room === 'throne') {
       const pulse = 0.5 + 0.5 * Math.sin(this.beatPhase * Math.PI * 2);
       lights.push({ x: 94, y: 370, radius: 120 + 40 * pulse, strength: 0.55 });
-      lights.push({ x: 930, y: 230, radius: 130, strength: 0.4 });
-      lights.push({ x: 1060, y: 360, radius: 120, strength: 0.3 });
+      lights.push({ x: 930, y: 296, radius: 130, strength: 0.4 });
+      lights.push({ x: 1060, y: 426, radius: 120, strength: 0.3 });
     } else {
       lights.push({ x: 560, y: 160, radius: 130, strength: 0.28 });
     }
@@ -1057,6 +1092,7 @@ export class HubScene extends Phaser.Scene {
         onComplete: () => {
           g.setDepth(y);
           this.bump(15);
+          sfx.play('rockDrop');
           this.fx.addShake(6);
           this.fx.smoke(x, y - 6, 22, 24);
           for (let i = 0; i < 10; i++) {
@@ -1081,6 +1117,7 @@ export class HubScene extends Phaser.Scene {
     if (!profile.bookUnlocked) {
       this.bookPower = 1.8;
       this.bump(3);
+      sfx.play('bookDeny');
       void this.sleep(1.4).then(() => (this.bookPower = 1));
       this.toast('The pages will not turn. Not yet.');
       return;
@@ -1188,6 +1225,20 @@ export class HubScene extends Phaser.Scene {
     this.tweens.add({ targets: g, alpha: 1, duration: 200 });
   }
 
+  // Where a text box can sit so it is fully on screen: zoomed in, the camera sees only part of the room, so the
+  // spot picked for the layout is pulled into whatever the camera is settling on. Returns the box's top-left.
+  private placeBox(wantLeft: number, w: number): { left: number; top: number } {
+    const cam = this.cameras.main;
+    const fit = Math.min(cam.width / W, cam.height / H);
+    const halfW = cam.width / (2 * fit * this.camTarget.zoom);
+    const halfH = cam.height / (2 * fit * this.camTarget.zoom);
+    const cx = halfW * 2 >= W ? W / 2 : Phaser.Math.Clamp(this.camTarget.x, halfW, W - halfW);
+    const cy = halfH * 2 >= H ? H / 2 : Phaser.Math.Clamp(this.camTarget.y, halfH, H - halfH);
+    const pad = 14;
+    const left = Math.max(cx - halfW + pad, Math.min(wantLeft, cx + halfW - pad - w));
+    return { left, top: Math.max(16, cy - halfH + pad) };
+  }
+
   private measure(text: string, size: number): number {
     const ctx = document.createElement('canvas').getContext('2d')!;
     ctx.font = `${size}px ${CRAYON_FONT}`;
@@ -1198,12 +1249,14 @@ export class HubScene extends Phaser.Scene {
   private async say(text: string, side: 'left' | 'right'): Promise<void> {
     const size = cfg.hub.textSize;
     const rows = await this.wrapLines(text, size, side === 'left' ? 380 : 410);
-    const x = side === 'right' ? 640 : 54;
     const lh = size * 1.5;
     const w = Math.max(...rows.map((r) => this.measure(r, size)));
-    this.openBox(x - 8, 16, w + 26, rows.length * lh + 22);
-    for (let i = 0; i < rows.length; i++) await this.scrawl(rows[i], x, 46 + i * lh, size);
-    await this.clickToContinue(x - 8 + w + 26, 16 + rows.length * lh + 22);
+    const spot = this.placeBox((side === 'right' ? 640 : 54) - 8, w + 26);
+    const x = spot.left + 8;
+    const top = spot.top + 30;
+    this.openBox(spot.left, spot.top, w + 26, rows.length * lh + 22);
+    for (let i = 0; i < rows.length; i++) await this.scrawl(rows[i], x, top + i * lh, size);
+    await this.clickToContinue(spot.left + w + 26, spot.top + rows.length * lh + 22);
     await this.clearLines();
   }
 
@@ -1268,7 +1321,7 @@ export class HubScene extends Phaser.Scene {
     profile.quest = 'find';
     profile.eyeFed = 0;
     persistNow();
-    this.focus(930, 300, 1.1);
+    this.focus(930, 366, 1.1);
     this.bump(6);
     await this.tweenValue(0, 1, 2500, (v) => (this.redGlow = v));
     await this.sleep(0.8);
@@ -1326,6 +1379,7 @@ export class HubScene extends Phaser.Scene {
     this.eyes.setVisible(true);
     this.eyesFollow = true;
     this.bump(8);
+    sfx.play('eyesOpen');
     await this.tweenValue(0, 0.35, 900, (v) => (this.eyes.open = v));
     await this.tweenValue(0.35, 0.1, 400, (v) => (this.eyes.open = v));
     await this.tweenValue(0.1, 1, 1300, (v) => (this.eyes.open = v));
@@ -1338,6 +1392,7 @@ export class HubScene extends Phaser.Scene {
     this.floatPt = { x: from.x, y: from.y };
     this.carry = true;
     this.view.armsRate = 0.06;
+    sfx.play('voidOpen');
     void this.tweenValue(0, 1, 700, (v) => (this.voidK = v), 'Back.easeOut');
     void this.sleep(1.2).then(() => {
       this.player.armsUpTimer = 0;
@@ -1362,20 +1417,22 @@ export class HubScene extends Phaser.Scene {
     await this.say("we're too precious to be collateral damage", 'left');
 
     // A run of short, heavy lines; the eyes go wide on the third.
-    const x = 640;
     const size = cfg.hub.textSize;
     const lh = size * 1.5;
     const boxW = this.measure('Become my champion', size) + 26;
-    this.openBox(x - 8, 16, boxW, lh * 3 + 22);
-    await this.scrawl('Learn my ways.', x, 46, size);
+    const spot = this.placeBox(640 - 8, boxW);
+    const x = spot.left + 8;
+    const top = spot.top + 30;
+    this.openBox(spot.left, spot.top, boxW, lh * 3 + 22);
+    await this.scrawl('Learn my ways.', x, top, size);
     await this.sleep(0.32);
-    await this.scrawl('Grow in Power', x, 46 + lh, size);
+    await this.scrawl('Grow in Power', x, top + lh, size);
     await this.sleep(0.32);
     // The eyes open wide as the line is being written.
     this.bump(6);
     void this.tweenValue(0, 1, 300, (v) => (this.eyes.wide = v)).then(() => this.sleep(1.2)).then(() => this.tweenValue(1, 0, 500, (v) => (this.eyes.wide = v)));
-    await this.scrawl('Become my champion', x, 46 + lh * 2, size);
-    await this.clickToContinue(x - 8 + boxW, 16 + lh * 3 + 22);
+    await this.scrawl('Become my champion', x, top + lh * 2, size);
+    await this.clickToContinue(spot.left + boxW, spot.top + lh * 3 + 22);
     await this.clearLines();
 
     await this.say('let us show them the true scope of war', 'right');
@@ -1394,7 +1451,7 @@ export class HubScene extends Phaser.Scene {
     // He is sent to the head in the corner and walks there himself, stopping short of its glow.
     this.headLit = true;
     this.focus(W / 2, 300, 1);
-    const walk = this.walkTo(930, 336);
+    const walk = this.walkTo(930, 402);
     await this.say("come, darling, peer into Anathema's mind", 'left');
     await walk;
     this.face(0, -1);

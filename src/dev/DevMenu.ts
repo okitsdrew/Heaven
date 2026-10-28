@@ -1,3 +1,4 @@
+import { sfx, soundNames } from '../audio';
 import {
   deletePreset,
   exportJson,
@@ -54,7 +55,8 @@ const groups: [string, string[]][] = [
   ['enemies and boss', ['spawn', 'enemy', 'wraith', 'shade', 'husk', 'boss']],
   ['progression', ['run', 'xp', 'gold', 'upgrade', 'tree', 'stun']],
   ['world', ['world', 'map', 'dummy']],
-  ['look and feel', ['camera', 'feel', 'render', 'cloak']],
+  ['look and feel', ['camera', 'feel', 'render', 'cloak', 'mist']],
+  ['sound', ['audio']],
   ['system', ['time', 'debug', 'hub']],
 ];
 
@@ -198,6 +200,8 @@ export class DevMenu {
         }
       }
     }
+    const test = this.section('sound test', false, this.root, 'group');
+    for (const name of soundNames) test.appendChild(this.button(name, () => sfx.play(name, { dur: 1.5 })));
     this.refreshPresets();
   }
 

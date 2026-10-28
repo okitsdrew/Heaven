@@ -46,6 +46,8 @@ export interface SaveData {
   treeTutorialDone: boolean;
   // The other skills have faded in on the book once.
   skillsFaded: boolean;
+  // The stage 2 upgrades have faded onto the tree once.
+  stage2TreeShown: boolean;
   // Fire Wave has been cast in a battle, which readies the throne's reveal of the other skills.
   firewaveUsed: boolean;
   // The throne has shown the other skills; until then only Teleport and Fire Wave are on the book.
@@ -57,7 +59,7 @@ export interface SaveData {
 const SKILL_IDS = ['fireFairy', 'iceFairy', 'swordSlash', 'doomsday', 'aegis', 'lotus'];
 
 function fresh(): SaveData {
-  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, skillTipShown: false, bossIntroSeen: false, warpSeen: false, fireSeen: false, teleportHintShown: false, stage: 1, stage2Clock: 0, quest: 'find', eyeFed: 0, treeTutorialDone: false, skillsFaded: false, firewaveUsed: false, skillsRevealed: false, binds: [null, null, null] };
+  return { version: VERSION, gold: 0, skillPoints: 0, level: 1, xp: 0, nodes: {}, introDone: false, bookUnlocked: false, visitedHead: false, bookOpened: false, bookIntroSeen: false, bowHintShown: false, skillTipShown: false, bossIntroSeen: false, warpSeen: false, fireSeen: false, teleportHintShown: false, stage: 1, stage2Clock: 0, quest: 'find', eyeFed: 0, treeTutorialDone: false, skillsFaded: false, stage2TreeShown: false, firewaveUsed: false, skillsRevealed: false, binds: [null, null, null] };
 }
 
 function storageGet(key: string): string | null {
@@ -105,6 +107,7 @@ function sanitize(src: unknown): SaveData {
   out.eyeFed = num(s.eyeFed, 0, 0);
   out.treeTutorialDone = s.treeTutorialDone === true || out.bookUnlocked || Object.keys(out.nodes).length > 0;
   out.skillsFaded = s.skillsFaded === true;
+  out.stage2TreeShown = s.stage2TreeShown === true;
   out.firewaveUsed = s.firewaveUsed === true;
   out.skillsRevealed = s.skillsRevealed === true;
   if (s.nodes && typeof s.nodes === 'object') {

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { sfx } from '../audio';
 import { cfg } from '../config';
 import { Input } from '../input';
 import { toScreen } from '../iso';
@@ -55,6 +56,8 @@ export class Aegis {
     } else if (ready && input.justPressed(key) && this.cooldown <= 0 && this.timeLeft <= 0) {
       this.cooldown = cfg.aegis.cooldown;
       this.timeLeft = cfg.aegis.duration;
+      sfx.play('meep');
+      sfx.play('aegisRaise');
     }
     this.g.clear();
     this.halo.clear();
@@ -69,12 +72,9 @@ export class Aegis {
     this.g.setDepth(depth);
     this.halo.setDepth(depth - 0.5);
     if (this.active) {
-      const pulse = 0.75 + 0.25 * Math.sin(this.time * 12);
-      // Runs out in a flicker over the last second.
+      // One flat disc, the same brightness throughout; it only flickers as it runs out over the last second.
       const flicker = this.timeLeft < 1 ? 0.5 + 0.5 * Math.sin(this.time * 30) : 1;
-      for (const [r, c, al] of [[30, 0xffd21a, 0.18], [20, 0xfff2b0, 0.3], [11, 0xffffff, 0.45]] as const) {
-        this.halo.fillStyle(c, al * pulse * flicker).fillCircle(x, y, r * px * 0.6);
-      }
+      this.halo.fillStyle(0xffe680, 0.4 * flicker).fillCircle(x, y, 30 * px * 0.6 * cfg.aegis.glow);
     }
     this.drawShield(x, y, px * cfg.aegis.shieldScale);
   }

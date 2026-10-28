@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { sfx } from '../audio';
 import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { Input } from '../input';
@@ -216,6 +217,7 @@ export class Doomsday {
 
     this.blasts.push({ ox, oy, hx: hand.x, hy: hand.y, age: 0, radius, pal });
     this.flashAlpha = 1;
+    sfx.play('doomBoom');
     this.fx.addShake(c.shake);
     this.onImpact();
     this.debris(ox, oy, hand, radius, pal);

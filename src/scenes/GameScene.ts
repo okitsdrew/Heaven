@@ -13,7 +13,9 @@ import { Fairies } from '../game/Fairies';
 import { Fx } from '../game/Fx';
 import { Ground } from '../game/Ground';
 import { Gold } from '../game/Gold';
+import { sfx } from '../audio';
 import { Hud, RunHud } from '../game/Hud';
+import { Mist } from '../game/Mist';
 import { LandingBlast } from '../game/LandingBlast';
 import { Player } from '../game/Player';
 import { SwordSlash } from '../game/SwordSlash';
@@ -26,7 +28,7 @@ import { PlayerView } from '../game/PlayerView';
 import { Input, KeyboardMouseSource } from '../input';
 import { ellipseHalfSize, toScreen, toWorld } from '../iso';
 import { exportSave, importSave, persist, persistNow, profile, resetSave } from '../save';
-import { aegisBoost, arrowEffects, canUse, dustFraction, skillDamage, nodeById, skillIds, slotKeys, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
+import { aegisBoost, arrowEffects, canUse, dustFraction, level, skillDamage, nodeById, skillIds, slotKeys, onKillBuffs, resetBuffs, runBuffs, stats as upgrades, tickBuffs, unlockEverything } from '../skills';
 import { ghostHint } from '../ui/ghostHint';
 import { ThroneBox } from '../ui/ThroneBox';
 import { PurpleWave } from '../game/PurpleWave';
@@ -78,6 +80,7 @@ export class GameScene extends Phaser.Scene {
   private stage2Handoff = 0;
   private hitStop = 0;
   private hud!: Hud;
+  private mist!: Mist;
   private targets = new SpatialHash<Hittable>(64);
   private devMenu = DevMenu.get();
   private debugGfx!: Phaser.GameObjects.Graphics;
@@ -128,6 +131,8 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player();
     this.playerView = new PlayerView(this, this.player, this.fx);
     this.playerView.hero = true;
+    this.playerView.stepSound = 'field';
+    this.playerView.backBow = level('backshots') >= 1;
     this.playerView.slashArms = () => this.swordSlash.flapArms();
     this.arrows = new Arrows(this, this.fx);
     this.dummies = new Dummies(this);
@@ -150,6 +155,7 @@ export class GameScene extends Phaser.Scene {
     this.gold.onCollect = (v) => {
       profile.gold += v;
       this.run.gold += v;
+      this.goldSound();
       persist();
     };
     this.fairies = new Fairies(this, this.fx);
@@ -159,6 +165,7 @@ export class GameScene extends Phaser.Scene {
     this.doomsday = new Doomsday(this, this.fx, () => this.targetList);
     this.lotus = new Lotus(this, this.fx, () => this.targetList);
     this.hud = new Hud(this, 4);
+    this.mist = new Mist(this);
     this.wave = new PurpleWave(this, this.fx);
     this.throne = new ThroneBox(this);
     this.blast = new LandingBlast(this, this.fx);
@@ -166,19 +173,33 @@ export class GameScene extends Phaser.Scene {
     this.player.onFire = (_x, _y, dx, dy) => {
       const m = this.playerView.muzzle();
       this.arrows.fire(m.x, m.y, dx, dy);
+      // Backshots: a second bow behind him fires the other way.
+      if (level('backshots') >= 1) {
+        const back = cfg.bow.backshotsMult;
+        this.arrows.fire(2 * this.player.x - m.x, 2 * this.player.y - m.y, -dx, -dy, back);
+      }
       this.playerView.onFire();
+      sfx.play('bow');
     };
     this.player.onDashStart = () => {
       this.swordSlash.interrupt();
       this.playerView.onDashStart();
+      sfx.play('dash');
     };
     this.player.onTeleport = (x0, y0, x1, y1, t) => {
       this.swordSlash.interrupt();
       this.playerView.onTeleport(x0, y0, x1, y1, t);
+      sfx.play('teleport');
+      if (t > 0) this.swiftKick(x0, y0, x1, y1);
     };
-    this.player.onTeleportArrive = (x, y) => this.playerView.onTeleportArrive(x, y);
+    this.player.onTeleportArrive = (x, y) => {
+      this.playerView.onTeleportArrive(x, y);
+      sfx.play('teleportArrive');
+    };
     this.abilities.onCast = (kind) => {
       this.fairies.flare(kind);
+      sfx.play('meep');
+      sfx.play(kind === 'fire' ? 'castFire' : 'castIce');
       if (kind === 'fire' && !profile.firewaveUsed) {
         profile.firewaveUsed = true;
         persist();
@@ -198,6 +219,7 @@ export class GameScene extends Phaser.Scene {
     };
     this.enemies.fx = this.fx;
     this.enemies.onBurnTick = (x, y, amount) => {
+      sfx.play('dotTick', { pan: this.pan(x, y) });
       toScreen(x, y, screen);
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
@@ -208,6 +230,7 @@ export class GameScene extends Phaser.Scene {
     };
     this.lotus.onDamage = (target, amount, x, y) => {
       this.damage(target, amount);
+      sfx.play('hurt', { pan: this.pan(x, y) });
       toScreen(x, y, screen);
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
@@ -220,7 +243,11 @@ export class GameScene extends Phaser.Scene {
       this.lotus.cancel();
       this.swordSlash.cancel();
     };
-    this.doomsday.onCast = (x, y) => this.player.teleportTo(x, y, cfg.doomsday.windup);
+    this.doomsday.onCast = (x, y) => {
+      this.player.teleportTo(x, y, cfg.doomsday.windup);
+      sfx.play('meep');
+      sfx.play('doomCharge', { dur: cfg.doomsday.windup });
+    };
     this.doomsday.onImpact = () => (this.hitStop = 0.14);
     this.doomsday.onDamage = (target, amount, x, y) => {
       this.damage(target, amount);
@@ -234,6 +261,7 @@ export class GameScene extends Phaser.Scene {
     this.doomsday.onKnock = (target, dx, dy, force) => this.enemies.knock(target, dx, dy, force);
     this.swordSlash.onDamage = (target, amount, x, y) => {
       this.damage(target, amount);
+      sfx.play('hurt', { pan: this.pan(x, y) });
       if (target.kind === 'boss') this.boss.stun(cfg.stun.duration);
       else this.enemies.stun(target, cfg.stun.duration);
       toScreen(x, y, screen);
@@ -241,6 +269,7 @@ export class GameScene extends Phaser.Scene {
     };
     this.abilities.onDamage = (target, amount, x, y) => {
       this.damage(target, amount);
+      sfx.play('hurt', { pan: this.pan(x, y) });
       toScreen(x, y, screen);
       this.fx.damageNumber(screen.x, screen.y - 40, amount);
     };
@@ -249,6 +278,7 @@ export class GameScene extends Phaser.Scene {
         this.lotus.shot();
         return;
       }
+      sfx.play('arrowHit', { pan: this.pan(hx, hy) });
       this.damage(target, damage);
       // Skill enhancements let arrows carry that skill's status.
       const fx = arrowEffects();
@@ -268,10 +298,12 @@ export class GameScene extends Phaser.Scene {
     this.arrows.onBlocked = (x, y) => {
       toScreen(x, y, screen);
       this.fx.smoke(screen.x, screen.y - cfg.render.arrowHeight, 3, 3);
+      sfx.play('arrowBlock', { pan: this.pan(x, y) });
     };
     this.dummies.onDestroyed = (x, y) => {
       toScreen(x, y, screen);
       this.fx.smoke(screen.x, screen.y - 8 * cfg.render.pixelScale, 10, 10);
+      sfx.play('enemyDie', { pan: this.pan(x, y), pitch: 0.8 });
     };
     this.enemies.onKilled = (x, y, type) => {
       if (this.credit) {
@@ -281,11 +313,13 @@ export class GameScene extends Phaser.Scene {
         const gained = addXp(cfg.xp.perKill);
         if (gained > 0) {
           this.run.levels += gained;
-          this.runHud.announce(`LEVEL ${profile.level}!`);
+          this.runHud.announce(`LEVEL ${profile.level}!`, false);
+          sfx.play('levelUp');
         }
         // Kills inside the Mind's Eye's zone feed it instead of dropping souls.
         if (!this.stage2.absorb(x, y)) this.gold.drop(x, y, upgrades.goldValue());
       }
+      sfx.play('enemyDie', { pan: this.pan(x, y) });
       const px = cfg.render.pixelScale;
       const size = cfg[type].scale;
       toScreen(x, y, screen);
@@ -302,6 +336,7 @@ export class GameScene extends Phaser.Scene {
       this.fx.smoke(screen.x, screen.y - 10 * px, cfg.boss.deathSmoke, 24 * px);
       this.fx.particle({ x: screen.x, y: screen.y - 10 * px, life: 0.4, from: 6, to: 0, tint: 0xffffff, depth: screen.y + 2 });
       this.fx.addShake(cfg.boss.deathShake);
+      sfx.play('bossDeath');
       this.gold.drop(x, y, cfg.boss.rewardGold);
       profile.skillPoints += cfg.boss.rewardSkillPoints;
       persist();
@@ -317,7 +352,8 @@ export class GameScene extends Phaser.Scene {
     this.debugGfx = this.add.graphics().setDepth(2e6);
     this.vignette = this.add.image(0, 0, Tex.vignette).setOrigin(0).setScrollFactor(0).setDepth(3e6);
     this.stats = this.add
-      .text(8, 8, '', { fontFamily: 'monospace', fontSize: '12px', color: '#9a93b0' })
+      .text(0, 0, '', { fontFamily: 'monospace', fontSize: '12px', color: '#9a93b0', align: 'right' })
+      .setOrigin(1, 1)
       .setScrollFactor(0)
       .setDepth(4e6);
 
@@ -442,6 +478,7 @@ export class GameScene extends Phaser.Scene {
     const img = this.add.image(screen.x, screen.y - cfg.entry.diveHeight, Tex.hero).setScale(px).setAngle(180).setDepth(1e6);
     const shadow = this.add.ellipse(screen.x, screen.y, 90 * px, 22 * px, 0x000000, 0).setDepth(screen.y - 1);
     this.entry = { t: 0, x: screen.x, y: screen.y, img, shadow };
+    sfx.play('dive', { dur: cfg.entry.diveTime });
     const veil = this.add.rectangle(cam.width / 2, cam.height / 2, 10000, 10000, 0x000000).setScrollFactor(0).setDepth(5e6);
     this.tweens.add({ targets: veil, alpha: 0, delay: 100, duration: 300, onComplete: () => veil.destroy() });
   }
@@ -463,6 +500,7 @@ export class GameScene extends Phaser.Scene {
       e.shadow.destroy();
       this.entry = null;
       this.blast.trigger(e.x, e.y);
+      sfx.play('landing');
       this.hitStop = 0.12;
       this.playerView.setVisible(true);
       if (!profile.bowHintShown) {
@@ -478,6 +516,7 @@ export class GameScene extends Phaser.Scene {
     cam.scrollY = this.camCenter.y - cam.height / 2 + this.fx.shakeOffset.y;
     this.ground.update(cam);
     this.chunks.update(dt, cam);
+    this.mist.update(dt, cam.width, cam.height);
     this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
   }
 
@@ -542,6 +581,7 @@ export class GameScene extends Phaser.Scene {
       if (profile.stage < 2 && this.stage2Handoff <= 0 && this.clock - this.clockStart >= upgrades.runTime()) this.endRun("Time's up");
     }
 
+    this.lotus.dead = this.dead;
     this.lotus.update(dt, this.player, input, cursor);
     this.stage2.update(dt, this.player, cam);
     if (this.stage2Handoff > 0) {
@@ -575,6 +615,7 @@ export class GameScene extends Phaser.Scene {
     this.swordSlash.update(dt, this.player, input);
     this.aegis.update(dt, this.player, input, this.dead);
     this.playerView.gauntlet = canUse('doomsday');
+    this.playerView.backBow = level('backshots') >= 1;
     this.playerView.handRaise = this.doomsday.raise;
     this.doomsday.update(dt, this.player, input, cursor, this.playerView.handPos, { width: cam.width, height: cam.height });
     if (!this.dead && !this.player.safe && !cfg.debug.godMode) {
@@ -633,13 +674,50 @@ export class GameScene extends Phaser.Scene {
         const id = profile.binds[i];
         const skill = id && (skillIds as string[]).includes(id) ? (id as keyof typeof info) : null;
         if (!skill || !canUse(skill)) return { key, color: 0, enabled: false, remaining: 0, total: 0 };
-        return { key, color: nodeById.get(skill)?.color ?? 0xffffff, enabled: true, ...info[skill] };
+        return { key, id: skill, color: nodeById.get(skill)?.color ?? 0xffffff, enabled: true, ...info[skill] };
       }),
     );
+    this.mist.update(dt, cam.width, cam.height);
     this.vignette.setDisplaySize(cam.width, cam.height).setAlpha(cfg.render.vignette);
     this.drawDebug();
 
     input.endFrame();
+  }
+
+  // Swift Kick: a teleport hurts everything its path passes through.
+  private swiftKick(x0: number, y0: number, x1: number, y1: number): void {
+    if (level('swiftKick') < 1) return;
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len2 = dx * dx + dy * dy || 1;
+    for (const t of this.targetList) {
+      if (!t.alive) continue;
+      const k = Math.max(0, Math.min(1, ((t.x - x0) * dx + (t.y - y0) * dy) / len2));
+      if (Math.hypot(t.x - (x0 + dx * k), t.y - (y0 + dy * k)) > t.radius + cfg.player.bodyRadius) continue;
+      const amount = cfg.upgrade.swiftKickDamage;
+      this.damage(t, amount);
+      toScreen(t.x, t.y, screen);
+      this.fx.damageNumber(screen.x, screen.y - 40, amount);
+      sfx.play('hurt', { pan: this.pan(t.x, t.y) });
+    }
+  }
+
+  // Left/right placement of a world position relative to the camera.
+  private pan(x: number, y: number): number {
+    const cam = this.cameras.main;
+    toScreen(x, y, screen);
+    return sfx.panAt(screen.x - cam.scrollX, cam.width);
+  }
+
+  private goldStreak = 0;
+  private goldAt = 0;
+
+  // Souls collected in quick succession climb in pitch, up to a point.
+  private goldSound(): void {
+    const now = performance.now();
+    this.goldStreak = now - this.goldAt < 350 ? Math.min(this.goldStreak + 1, 8) : 0;
+    this.goldAt = now;
+    sfx.play('gold', { pitch: 1 + this.goldStreak * 0.05 });
   }
 
   private damage(target: Hittable, amount: number): void {
@@ -668,7 +746,8 @@ export class GameScene extends Phaser.Scene {
   private aegisBlock(): boolean {
     if (!this.aegis.active) return false;
     this.aegis.consume();
-    this.player.graceTime = Math.max(this.player.graceTime, 0.8);
+    sfx.play('aegisBlock');
+    this.player.graceTime = Math.max(this.player.graceTime, cfg.aegis.popInvuln);
     this.aegisFreeze = cfg.aegis.freeze;
     return true;
   }
@@ -696,6 +775,7 @@ export class GameScene extends Phaser.Scene {
     this.waveX = this.player.x;
     this.waveY = this.player.y;
     this.wave.start(this.waveX, this.waveY);
+    sfx.play('waveCast');
     this.speechPending = !profile.bossIntroSeen;
   }
 
@@ -736,6 +816,7 @@ export class GameScene extends Phaser.Scene {
     this.bossSpawned = true;
     this.boss.spawn(this.player.x, this.player.y);
     this.runHud.announce('The Accursed Mimic approaches');
+    sfx.play('bossSpawn');
     this.fx.addShake(cfg.camera.shakeOnCast);
   }
 
@@ -751,6 +832,7 @@ export class GameScene extends Phaser.Scene {
     this.endTitle = title;
     this.endCounts = died || title === "Time's up";
     this.endTimer = died ? 0.9 : 0.5;
+    sfx.play(died ? 'playerDeath' : 'timeUp');
     this.swordSlash.interrupt();
     // Once a fight has ended, Anathema's first-use pull to battle is spent.
     profile.visitedHead = true;
@@ -862,6 +944,7 @@ export class GameScene extends Phaser.Scene {
     const g = this.debugGfx;
     g.clear();
     this.stats.setVisible(cfg.debug.showStats);
+    this.stats.setPosition(this.cameras.main.width - 12, this.cameras.main.height - 10);
     if (cfg.debug.showStats) {
       this.stats.setText(
         [

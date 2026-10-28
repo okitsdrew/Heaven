@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { sfx } from '../audio';
 import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { Input } from '../input';
@@ -118,6 +119,7 @@ export class SwordSlash {
         const swing = cfg.swordSlash.charges - this.charges;
         this.charges--;
         this.slash = { swing: Math.min(swing, 2), phase: 'telegraph', t: 0 };
+        sfx.play('meep', { pitch: swing >= 2 ? 1.35 : 1 });
       }
     }
 
@@ -166,6 +168,7 @@ export class SwordSlash {
         const angle = d > 1e-3 ? Math.acos(Phaser.Math.Clamp((dx * player.aimX + dy * player.aimY) / d, -1, 1)) : 0;
         if (angle <= half + pad) this.onDamage(t, c.coneDamage * skillDamage('swordSlash'), t.x, t.y);
       }
+      sfx.play('slash');
       // Swing 1 goes right to left, swing 2 back from left to right.
       this.effects.push({ kind: 'cone', ox: player.x, oy: player.y, base, sign: swing === 0 ? -1 : 1, age: 0 });
       return;
@@ -191,6 +194,7 @@ export class SwordSlash {
     }
     this.effects.push({ kind: 'cone', ox: player.x, oy: player.y, base, sign: 1, age: 0 });
     this.fx.addShake(c.slamShake);
+    sfx.play('slam');
     this.slamBurst(player.x, player.y, player.aimX, player.aimY);
   }
 

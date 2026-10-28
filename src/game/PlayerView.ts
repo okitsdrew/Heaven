@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { sfx } from '../audio';
 import { heroWalkFrames, Tex, walkFrames } from '../art/placeholders';
 import { cfg } from '../config';
 import { ellipseHalfSize, toScreen, toWorld, Vec2 } from '../iso';
@@ -30,6 +31,10 @@ export class PlayerView {
   private shadow: Phaser.GameObjects.Image;
   private bowGfx: Phaser.GameObjects.Graphics;
   private bowGlow: Phaser.GameObjects.Graphics;
+  private backBowGfx: Phaser.GameObjects.Graphics;
+  private backBowGlow: Phaser.GameObjects.Graphics;
+  // Backshots: a second bow floats behind him.
+  backBow = false;
   private handGlow: Phaser.GameObjects.Image[];
   private bowVis = 0;
   private wispTimer = 0;
@@ -41,6 +46,8 @@ export class PlayerView {
   private readyPulse = 0;
   private wasCooling = false;
   private phase = 0;
+  // Which footstep sound to make, if any; the boss's copy stays silent.
+  stepSound: 'field' | 'stone' | null = null;
   private raise = 0;
   private walk = 0;
   private armsUp = 0;
@@ -82,6 +89,8 @@ export class PlayerView {
     this.eyeGlow = [0, 1].map(() => scene.add.image(0, 0, Tex.glow).setTint(0xa060ff).setBlendMode(Phaser.BlendModes.ADD).setVisible(false));
     this.bowGfx = scene.add.graphics();
     this.bowGlow = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    this.backBowGfx = scene.add.graphics();
+    this.backBowGlow = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
     this.handGlow = [0, 1].map(() =>
       scene.add.image(0, 0, Tex.glow).setTint(0xa060ff).setBlendMode(Phaser.BlendModes.ADD),
     );
@@ -221,7 +230,7 @@ export class PlayerView {
   }
 
   setVisible(visible: boolean): void {
-    for (const o of [this.body, this.shadow, this.cloak, ...this.eyeGlow, this.bowGfx, this.bowGlow, this.arms, this.ring, this.dustRing, this.gauntletGfx, ...this.handGlow]) {
+    for (const o of [this.body, this.shadow, this.cloak, ...this.eyeGlow, this.bowGfx, this.bowGlow, this.backBowGfx, this.backBowGlow, this.arms, this.ring, this.dustRing, this.gauntletGfx, ...this.handGlow]) {
       o.setVisible(visible);
     }
   }
@@ -294,7 +303,11 @@ export class PlayerView {
     const speed = Math.hypot(p.vx, p.vy);
     const sliding = p.sliding;
     const moving = !p.dashing && !sliding && speed > cfg.player.moveSpeed * 0.1;
+    const prevPhase = this.phase;
     this.phase = moving ? (this.phase + (speed * dt) / f.strideLength) % 1 : 0;
+    if (moving && this.stepSound && (this.phase < prevPhase || (prevPhase < 0.5 && this.phase >= 0.5))) {
+      sfx.play(this.stepSound === 'stone' ? 'stepStone' : 'stepField');
+    }
     const bob = moving ? Math.abs(Math.sin(this.phase * Math.PI * 2)) * f.walkBob * px : 0;
     const swing = moving ? Math.sin(this.phase * Math.PI * 2) * 2.5 * px : 0;
 
@@ -415,7 +428,18 @@ export class PlayerView {
     if (this.hideBow) {
       this.bowGfx.clear();
       this.bowGlow.clear();
-    } else this.drawBow(bowPos, bowAngle, bs, vis, prevVis, p.drawProgress, p.readyTimer > 0, dirY < 0 ? -0.5 : 0.5, dt);
+      this.backBowGfx.clear();
+      this.backBowGlow.clear();
+    } else {
+      this.drawBow(this.bowGfx, this.bowGlow, bowPos, bowAngle, bs, vis, prevVis, p.drawProgress, p.readyTimer > 0, dirY < 0 ? -0.5 : 0.5, dt);
+      if (this.backBow) {
+        const behind = { x: cx - dirX * dist, y: cy - CHEST_Y * px - dirY * dist + Math.sin(this.time * 3 + 1.5) * f.bowFloatBob * px };
+        this.drawBow(this.backBowGfx, this.backBowGlow, behind, bowAngle + Math.PI, bs * cfg.bow.backBowScale, vis, prevVis, p.drawProgress, p.readyTimer > 0, dirY < 0 ? 0.5 : -0.5, dt);
+      } else {
+        this.backBowGfx.clear();
+        this.backBowGlow.clear();
+      }
+    }
 
     // Hands glow purple while he is shooting.
     this.handGlow.forEach((img, i) => {
@@ -482,6 +506,8 @@ export class PlayerView {
   }
 
   private drawBow(
+    g: Phaser.GameObjects.Graphics,
+    glow: Phaser.GameObjects.Graphics,
     pos: Vec2,
     angle: number,
     scale: number,
@@ -492,8 +518,6 @@ export class PlayerView {
     depthOffset: number,
     dt: number,
   ): void {
-    const g = this.bowGfx;
-    const glow = this.bowGlow;
     g.clear();
     glow.clear();
     if (vis <= 0.005) return;

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { sfx } from '../audio';
 import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { toScreen, Vec2 } from '../iso';
@@ -448,6 +449,7 @@ export class Boss implements Hittable {
     };
     for (const t of this.targets()) if (t.alive && t.kind !== 'boss' && inCone(t.x, t.y, t.radius)) this.onSlay(t);
     this.fx.addShake(c.slamShake * 0.5);
+    sfx.play('bossSlash');
     this.burst(ax, ay);
     return !playerSafe && inCone(px, py, r);
   }
@@ -590,9 +592,11 @@ export class Boss implements Hittable {
       const reach = 70 * b.size;
       this.stab.x = this.x + this.sim.aimX * reach;
       this.stab.y = this.y + this.sim.aimY * reach;
+      sfx.play('bossWindup', { dur: b.distortWindup, pitch: 0.7 });
     } else {
       this.state = 'telegraph';
       this.timer = this.telegraphTotal = b.windup;
+      sfx.play('bossWindup', { dur: b.windup });
     }
   }
 
@@ -604,6 +608,7 @@ export class Boss implements Hittable {
       if (t.alive && t.kind !== 'boss' && Math.hypot(t.x - this.x, t.y - this.y) <= R + t.radius) this.onSlay(t);
     }
     this.fx.addShake(cfg.boss.distortShake);
+    sfx.play('bossBlast');
     const px2 = cfg.render.pixelScale * cfg.boss.size;
     const smokeTints = [0x050005, 0x120006, 0x240008];
     for (let i = 0; i < 420; i++) {
@@ -860,6 +865,7 @@ export class Boss implements Hittable {
     this.y += dirY * distance;
     this.view.onTeleport(x0, y0, this.x, this.y, 0, cfg.boss.teleportLineWidth);
     this.view.onTeleportArrive(this.x, this.y);
+    sfx.play('teleport', { vol: 0.6, pitch: 0.6 });
     this.teleportGap = cfg.boss.teleportGap;
   }
 

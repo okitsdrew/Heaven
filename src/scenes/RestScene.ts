@@ -33,6 +33,7 @@ export class RestScene extends Phaser.Scene {
     this.player.fireBlocked = true;
     this.view = new PlayerView(this, this.player, this.fx);
     this.view.hero = true;
+    this.view.stepSound = 'stone';
     this.view.hideBow = true;
     this.player.onDashStart = () => this.view.onDashStart();
     this.player.onTeleport = (x0, y0, x1, y1, t) => this.view.onTeleport(x0, y0, x1, y1, t);

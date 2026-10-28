@@ -1,3 +1,5 @@
+import { skillIconUrl } from '../art/skillIcons';
+import { sfx } from '../audio';
 import { cfg } from '../config';
 import { persist, profile } from '../save';
 import {
@@ -19,6 +21,7 @@ import {
   SkillId,
   SkillNode,
   slotKeys,
+  stage2Nodes,
 } from '../skills';
 import { xpToNext } from '../xp';
 
@@ -63,12 +66,22 @@ const css = `
   background: #1b1628; border: 2px solid #4a4166; border-radius: 10px; cursor: pointer; touch-action: none; }
 #tree .node.canbuy { border-color: #c9b6ff; }
 #tree .node.owned { background: #2a2145; border-color: #9a7fe0; }
-#tree .node.maxed { border-color: #f2d7a6; box-shadow: 0 0 12px rgba(242, 215, 166, 0.45); }
+#tree .node.maxed { border-color: #ffd24a; box-shadow: 0 0 16px rgba(255, 210, 74, 0.65); }
 #tree .node.deny { animation: deny 0.6s ease-out; }
 @keyframes deny { 0%, 40% { border-color: #ff3030; box-shadow: 0 0 16px #ff3030; } 100% { box-shadow: none; } }
 #tree .node.fadein, #tree line.fadein { animation: fadein 1.8s ease-out 0.5s both; }
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 #tree .node.dim { filter: brightness(0.55); }
+#tree .node.fresh { filter: saturate(0.55) brightness(0.85); }
+#tree .node.fresh .name { color: #b8ad98; }
+#tree .node.dim.fresh { filter: saturate(0.4) brightness(0.55); }
+#tree .node.partial .lvl { color: #ffd98a; font-weight: bold; }
+#tree .node.maxed .name { color: #ffe27a; }
+#tree .node.maxed .cost { color: #ffd24a; font-weight: bold; }
+#tree .node .pips { display: flex; gap: 4px; justify-content: center; margin-top: 4px; }
+#tree .node .pips i { width: 14px; height: 6px; border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.4); display: block; }
+#tree .node .pips i.on { background: #ffd98a; border-color: #ffd98a; box-shadow: 0 0 6px rgba(255, 217, 138, 0.7); }
+#tree .node.maxed .pips i.on { background: #ffd24a; border-color: #fff0b0; }
 #tree .node .name { color: #f2d7a6; font-weight: bold; font-size: 13px; }
 #tree .node .desc { color: #a79fc0; font-size: 11px; }
 #tree .node .lvl { font-size: 12px; margin-top: 2px; }
@@ -98,7 +111,8 @@ const css = `
 .screen button .bang { top: -10px; right: -10px; }
 #tree .selector { position: absolute; left: 16px; bottom: 56px; display: flex; z-index: 3; }
 #tree .slot { width: 132px; text-align: center; }
-#tree .slot .key { font-size: 24px; color: #e9e3f5; margin-bottom: 4px; }
+#tree .slot .key { font-size: 24px; color: #e9e3f5; margin-top: 4px; }
+#tree .slot .box img { height: 100%; image-rendering: auto; pointer-events: none; }
 #tree .slot .box { height: 84px; border: 3px solid #cfc8e0; margin-left: -3px; display: flex; align-items: center; justify-content: center;
   padding: 4px; box-sizing: border-box; font-size: 12px; font-weight: bold; color: #f2d7a6; background: #14111c; cursor: pointer; }
 #tree .slot:first-child .box { margin-left: 0; }
@@ -184,6 +198,7 @@ export class Screens {
   }
 
   showSummary(s: RunSummary, onRestart: () => void, onTree: () => void, onHome: () => void): void {
+    if (!this.open) sfx.play('menuOpen');
     this.hide();
     const mins = Math.floor(s.time / 60);
     const secs = Math.floor(s.time % 60);
@@ -241,6 +256,7 @@ export class Screens {
   }
 
   private openMode(mode: Mode): void {
+    sfx.play(mode === 'book' ? 'bookOpen' : 'menuOpen');
     this.hide();
     this.selSkill = null;
     this.selSlot = null;
@@ -259,8 +275,49 @@ export class Screens {
         if (this.tree.classList.contains('open')) this.refresh();
       }, 3500);
     }
+    // The first visit to the tree after stage 2 opens: its new upgrades fade in, with the view pulled back to show them all.
+    if (mode === 'main' && profile.stage >= 2 && !profile.stage2TreeShown) {
+      profile.stage2TreeShown = true;
+      persist();
+      for (const id of stage2Nodes) this.fadeIds.add(id);
+      this.zoomToFit();
+      window.setTimeout(() => {
+        this.fadeIds.clear();
+        if (this.tree.classList.contains('open')) this.refresh();
+      }, 3500);
+    }
     this.tree.classList.add('open');
     this.refresh();
+  }
+
+  // Pulls the view back so the whole visible tree fits on screen, centred, never closer than it already was.
+  private zoomToFit(): void {
+    const ns = cfg.tree.nodeSize;
+    const halfW = 70 * ns;
+    const halfH = 80 * ns;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const n of nodes) {
+      if (n.tree === 'book' || !isVisible(n)) continue;
+      const p = this.position(n);
+      x0 = Math.min(x0, p.x - halfW);
+      x1 = Math.max(x1, p.x + halfW);
+      y0 = Math.min(y0, p.y - halfH);
+      y1 = Math.max(y1, p.y + halfH);
+    }
+    if (!Number.isFinite(x0)) return;
+    const top = 70;
+    const bottom = 200;
+    const availW = window.innerWidth - 60;
+    const availH = window.innerHeight - top - bottom;
+    const scale = Math.min(this.view.scale, availW / (x1 - x0), availH / (y1 - y0));
+    this.view = {
+      scale,
+      x: window.innerWidth / 2 - ((x0 + x1) / 2) * scale,
+      y: top + availH / 2 - ((y0 + y1) / 2) * scale,
+    };
   }
 
   private shown(): SkillNode[] {
@@ -281,6 +338,7 @@ export class Screens {
       const free = profile.binds.indexOf(null);
       if (free < 0) return;
       bind(n.id, free);
+      sfx.play('equip');
       this.selSkill = null;
       this.selSlot = null;
       persist();
@@ -301,6 +359,7 @@ export class Screens {
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       if (refund(n)) {
+        sfx.play('refund');
         persist();
         this.refresh();
       }
@@ -351,6 +410,7 @@ export class Screens {
         const slot = this.slotAt(e);
         if (slot !== null && isSkill(n.id)) {
           bind(n.id, slot);
+          sfx.play('equip');
           persist();
           this.refresh();
         }
@@ -358,6 +418,7 @@ export class Screens {
       else if (!canBuy(n)) {
         if (isVisible(n) && nextCost(n) !== null) this.deny(el);
       } else if (buy(n)) {
+        sfx.play('buy');
         persist();
         this.refresh();
         if (isSkill(n.id) && !profile.skillTipShown) {
@@ -495,6 +556,7 @@ export class Screens {
   private pickSkill(id: SkillId): void {
     if (this.selSlot !== null) {
       bind(id, this.selSlot);
+      sfx.play('equip');
       this.selSlot = null;
       this.selSkill = null;
       persist();
@@ -505,6 +567,7 @@ export class Screens {
   private pickSlot(i: number): void {
     if (this.selSkill) {
       bind(this.selSkill, i);
+      sfx.play('equip');
       this.selSkill = null;
       this.selSlot = null;
       persist();
@@ -519,11 +582,18 @@ export class Screens {
       const id = profile.binds[i];
       const node = id ? nodeById.get(id) : undefined;
       const slot = this.div('slot' + (this.selSlot === i ? ' sel' : '') + (this.selSkill ? ' target' : ''), undefined, this.selector);
-      this.div('key', undefined, slot).textContent = key;
       const box = this.div('box', undefined, slot);
+      this.div('key', undefined, slot).textContent = key;
       if (node) {
         const c = hex(node.color ?? 0xffffff);
-        box.textContent = node.name;
+        const icon = skillIconUrl(node.id);
+        if (icon) {
+          const img = document.createElement('img');
+          img.src = icon;
+          img.draggable = false;
+          box.appendChild(img);
+          box.title = node.name;
+        } else box.textContent = node.name;
         box.style.borderColor = c;
         box.style.background = `linear-gradient(rgba(0,0,0,0.5), ${rgba(node.color ?? 0xffffff, 0.3)}), #14111c`;
       }
@@ -564,6 +634,7 @@ export class Screens {
           const to = this.slotAt(e);
           if (to !== null && to !== i && id && isSkill(id)) {
             bind(id, to);
+            sfx.play('equip');
             persist();
             this.refresh();
           }
@@ -601,18 +672,22 @@ export class Screens {
       const unlocked = n.parents.every((p) => level(p) >= 1) && !blocked;
       const equippable = isSkill(n.id) && lvl >= 1;
       el.className =
-        'node' + (n.tree === 'book' ? ' skill' : '') + (lvl > 0 ? ' owned' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim') +
+        'node' + (n.tree === 'book' ? ' skill' : '') + (lvl > 0 ? ' owned' : ' fresh') + (lvl > 0 && lvl < max ? ' partial' : '') + (lvl >= max ? ' maxed' : '') + (canBuy(n) ? ' canbuy' : '') + (unlocked ? '' : ' dim') +
         (this.fadeIds.has(n.id) ? ' fadein' : '') + (this.selSkill === n.id ? ' selected' : '') + (equippable && this.selSlot !== null ? ' pickable' : '');
       if (n.color) {
-        el.style.borderColor = hex(n.color);
-        el.style.background = `linear-gradient(rgba(0,0,0,0.55), ${rgba(n.color, 0.22)}), #14111c`;
-        el.style.boxShadow = lvl > 0 ? `0 0 12px ${rgba(n.color, 0.5)}` : '';
+        // Not bought: a faint outline. Partly bought: the skill's colour and a glow. Maxed: gold.
+        const done = lvl >= max;
+        el.style.borderColor = done ? '#ffd24a' : lvl > 0 ? hex(n.color) : rgba(n.color, 0.4);
+        el.style.background = `linear-gradient(rgba(0,0,0,${lvl > 0 ? 0.55 : 0.7}), ${rgba(n.color, lvl > 0 ? 0.22 : 0.08)}), #14111c`;
+        el.style.boxShadow = done ? '0 0 16px rgba(255, 210, 74, 0.65)' : lvl > 0 ? `0 0 12px ${rgba(n.color, 0.5)}` : '';
       }
       const costText =
         cost === null ? 'MAX' : blocked ? 'BLOCKED' : cfg.tree.free ? 'free' : `${cost} ${n.currency === 'gold' ? 'souls' : 'SP'}`;
       const slot = isSkill(n.id) ? profile.binds.indexOf(n.id) : -1;
       el.innerHTML = `<div class="name">${n.name}</div><div class="desc">${n.desc(per)}</div>` +
-        `<div class="lvl">${slot >= 0 ? `Equipped on ${slotKeys[slot]}` : `${lvl}/${max}`}</div><div class="cost">${costText}</div>` + (alertFor(n.id)?.() ? '<span class="bang">!</span>' : '');
+        `<div class="lvl">${slot >= 0 ? `Equipped on ${slotKeys[slot]}` : `${lvl}/${max}`}</div><div class="cost">${costText}</div>` +
+        (max > 1 ? `<div class="pips">${Array.from({ length: max }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('')}</div>` : '') +
+        (alertFor(n.id)?.() ? '<span class="bang">!</span>' : '');
     }
     this.layoutNodes();
   }
@@ -647,6 +722,7 @@ export class Screens {
 
   // A red flash on a node the player cannot afford.
   private deny(el: HTMLElement): void {
+    sfx.play('deny');
     el.classList.remove('deny');
     void el.offsetWidth;
     el.classList.add('deny');

@@ -83,9 +83,11 @@ export class Arrows {
 
   // Fires a volley; extra arrows fan out around the aim direction. Speed, range and the fan are measured
   // on screen, so every arrow visibly travels the same distance whichever way the iso projection skews it.
-  fire(x: number, y: number, dirX: number, dirY: number): void {
+  fire(x: number, y: number, dirX: number, dirY: number, scale = 1): void {
     const b = cfg.bow;
-    const count = stats.arrows();
+    // `scale` thins out a volley (the Backshots bow behind him): fewer arrows and less pierce.
+    const count = scale === 1 ? stats.arrows() : Math.max(1, Math.round(stats.arrows() * scale));
+    const pierce = scale === 1 ? stats.pierce() : Math.floor(stats.pierce() * scale + 1e-9);
     const aim = toScreen(dirX, dirY);
     const base = Math.atan2(aim.y, aim.x);
     const spread = Phaser.Math.DegToRad(b.spreadDeg);
@@ -103,8 +105,8 @@ export class Arrows {
       a.range = stats.range();
       a.speed = b.arrowSpeed;
       a.damage = stats.damage();
-      a.pierce = stats.pierce();
-      a.size = stats.arrowSize();
+      a.pierce = pierce;
+      a.size = stats.arrowSize() * (scale === 1 ? 1 : cfg.bow.backArrowScale);
       a.hitRadius = b.arrowHitRadius * a.size;
       a.hits.clear();
       a.trail = 0;

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { sfx } from '../audio';
 
 let counter = 0;
 
@@ -66,6 +67,7 @@ export function crayonLine(scene: Phaser.Scene, text: string, size: number, colo
     setReveal(t: number) {
       const v = Phaser.Math.Clamp(t, 0, 1);
       image.setCrop(0, 0, Math.max(0.001, w * v), h);
+      if (v > 0 && v < 1) sfx.play('scribble');
     },
     destroy() {
       image.destroy();

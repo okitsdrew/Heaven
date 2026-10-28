@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { sfx } from '../audio';
 import { Tex } from '../art/placeholders';
 import { cfg } from '../config';
 import { Input } from '../input';
@@ -9,6 +10,9 @@ import { Fx } from './Fx';
 import { Player } from './Player';
 
 interface Flower {
+  // Where the mini flower was on screen, relative to the player, when it was thrown.
+  ox: number;
+  oy: number;
   sx: number;
   sy: number;
   x: number;
@@ -49,12 +53,16 @@ export class Lotus {
   readonly body: Hittable = { kind: 'flower', id: -2, x: 0, y: 0, radius: 0, alive: false };
 
   private flower: Flower | null = null;
+  private planted = false;
   private petals: Petal[] = [];
   private bursts: Burst[] = [];
   private swallowFire = false;
   private pulseCooldown = 0;
   private zoneAcc = 0;
   private time = 0;
+  // 0..1, how fully the mini flower has grown back into orbit after the last one was thrown.
+  private orbitGrow = 0;
+  dead = false;
   private prev: Vec2 | null = null;
   private ground: Phaser.GameObjects.Graphics;
   private glow: Phaser.GameObjects.Graphics;
@@ -148,7 +156,11 @@ export class Lotus {
           const p = this.aimPoint(player, cursor);
           this.aiming = false;
           this.cooldown = c.cooldown;
-          this.flower = { sx: player.x, sy: player.y, x: p.x, y: p.y, age: 0 };
+          const o = this.orbitSpot();
+          this.flower = { ox: o.x, oy: o.y, sx: player.x, sy: player.y, x: p.x, y: p.y, age: 0 };
+          this.planted = false;
+          sfx.play('meep');
+          sfx.play('lotusThrow');
           this.zoneAcc = 0;
         }
       }
@@ -158,6 +170,10 @@ export class Lotus {
     if (f) {
       f.age += dt;
       const landed = this.landed(f);
+      if (landed && !this.planted) {
+        this.planted = true;
+        sfx.play('lotusPlant');
+      }
       this.body.x = f.x;
       this.body.y = f.y;
       this.body.radius = c.bodyRadius;
@@ -208,6 +224,7 @@ export class Lotus {
       if (t.alive && Math.hypot(t.x - f.x, t.y - f.y) <= r + t.radius) this.onDamage(t, c.pulseDamage * skillDamage('lotus'), t.x, t.y);
     }
     this.bursts.push({ x: f.x, y: f.y, age: 0, radius: r, life: 0.45, big: false });
+    sfx.play('lotusPulse');
     this.cloud(f.x, f.y, r, 30);
   }
 
@@ -220,6 +237,7 @@ export class Lotus {
       if (t.alive && Math.hypot(t.x - f.x, t.y - f.y) <= c.radius + t.radius) this.onDamage(t, c.damage * skillDamage('lotus'), t.x, t.y);
     }
     this.bursts.push({ x: f.x, y: f.y, age: 0, radius: c.radius, life: 0.8, big: true });
+    sfx.play('lotusBloom');
     this.cloud(f.x, f.y, c.radius, 110);
     this.fx.addShake(cfg.camera.shakeOnCast * 3);
     this.launchPetals(f.x, f.y, through);
@@ -334,7 +352,14 @@ export class Lotus {
     return pts;
   }
 
-  private draw(_dt: number, player: Player, cursor: Vec2 | null): void {
+  // Where the mini flower circles, as a screen offset from the player's feet.
+  private orbitSpot(): Vec2 {
+    const px = cfg.render.pixelScale;
+    const a = this.time * cfg.lotus.orbitSpeed + Math.PI;
+    return { x: Math.cos(a) * cfg.lotus.orbitRadius * px, y: -14 * px + Math.sin(a) * cfg.lotus.orbitRadius * px * 0.5 };
+  }
+
+  private draw(dt: number, player: Player, cursor: Vec2 | null): void {
     this.clearGfx();
     const c = cfg.lotus;
     const px = cfg.render.pixelScale;
@@ -354,6 +379,9 @@ export class Lotus {
       const gx = f.sx + (f.x - f.sx) * flight;
       const gy = f.sy + (f.y - f.sy) * flight;
       toScreen(gx, gy, screen);
+      // The thrown flower leaves from the spot where the mini one was orbiting, and grows as it flies.
+      screen.x += f.ox * (1 - flight);
+      screen.y += f.oy * (1 - flight);
       const lift = landed ? 0 : Math.sin(flight * Math.PI) * 150;
       const left = landed ? Math.max(0, 1 - (f.age - c.lobTime) / Math.max(c.life, 1e-3)) : 1;
 
@@ -390,15 +418,33 @@ export class Lotus {
       this.art.save();
       this.art.translateCanvas(screen.x, screen.y - lift);
       this.art.rotateCanvas(sway);
-      this.drawLotus(this.art, 0, 0, px * 1.6, hot);
+      this.drawLotus(this.art, 0, 0, px * 1.6 * (c.orbitScale + (1 - c.orbitScale) * flight), hot);
       this.art.restore();
       // A green glow behind the bloom that swells before it goes off.
-      this.glow.fillStyle(GREEN, 0.15 + 0.3 * hot).fillCircle(screen.x, screen.y - lift - 14 * px, (20 + 26 * hot) * px);
+      this.glow.fillStyle(GREEN, 0.15 + 0.3 * hot).fillCircle(screen.x, screen.y - lift - 14 * px, (20 + 26 * hot) * px * (c.orbitScale + (1 - c.orbitScale) * flight));
       toScreen(f.x, f.y, screen);
       if (!landed) {
         toScreen(gx, gy, screen);
         g.fillStyle(0x000000, 0.35).fillEllipse(screen.x, screen.y, 36 * px * 0.5, 36 * px * 0.2);
       }
+    }
+
+    // Ready to throw: a small flower circles the player, growing back in after each throw.
+    const ready = !f && !this.dead && canUse('lotus') && !!actionFor('lotus') && this.cooldown <= 0;
+    this.orbitGrow = ready ? Math.min(1, this.orbitGrow + dt / 0.35) : 0;
+    if (ready && this.orbitGrow > 0) {
+      toScreen(player.x, player.y, screen);
+      const o = this.orbitSpot();
+      const a = this.time * c.orbitSpeed + Math.PI;
+      const ex = screen.x + o.x;
+      const ey = screen.y + o.y;
+      const s = px * 1.6 * c.orbitScale * this.orbitGrow;
+      this.art.setDepth(screen.y + Math.sin(a) * 10 + 4);
+      this.art.save();
+      this.art.translateCanvas(ex, ey);
+      this.art.rotateCanvas(Math.sin(this.time * 1.7) * 0.12);
+      this.drawLotus(this.art, 0, 0, s, 0);
+      this.art.restore();
     }
 
     for (const b of this.bursts) this.drawBurst(g, b);
